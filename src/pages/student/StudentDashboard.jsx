@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { STUDENT_DASHBOARD_DATA } from '../../mock/studentData';
+import { studentApi } from '../../services/api';
 import {
   Calendar,
   Video,
@@ -18,7 +19,19 @@ import {
 } from 'lucide-react';
 
 export function StudentDashboard({ onNavigateToAiTutor }) {
-  const data = STUDENT_DASHBOARD_DATA;
+  const [data, setData] = useState(STUDENT_DASHBOARD_DATA);
+
+  useEffect(() => {
+    let mounted = true;
+    studentApi.getDashboard().then((res) => {
+      if (mounted && res) {
+        setData(res);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <div className="space-y-6">

@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { MOCK_USERS } from '../mock/authData';
+import { authApi } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -7,6 +8,23 @@ export function AuthProvider({ children }) {
   // Default to student, but can easily switch
   const [currentUser, setCurrentUser] = useState(MOCK_USERS.student);
   const [currentRole, setCurrentRole] = useState('student');
+  const [isLoadingAuth, setIsLoadingAuth] = useState(false);
+
+  useEffect(() => {
+    // Check if token exists to hydrate user
+    const initAuth = async () => {
+      try {
+        const user = await authApi.getMe();
+        if (user) {
+          setCurrentUser(user);
+          setCurrentRole(user.role);
+        }
+      } catch {
+        // Fallback to default mock user
+      }
+    };
+    initAuth();
+  }, []);
 
   const switchRole = (role) => {
     if (MOCK_USERS[role]) {
@@ -15,18 +33,27 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const login = (role) => {
-    switchRole(role);
+  const login = async (role, identifier, password) => {
+    setIsLoadingAuth(true);
+    try {
+      const user = await authApi.login(identifier, password, role);
+      if (user) {
+        setCurrentUser(user);
+        setCurrentRole(user.role || role);
+      }
+    } finally {
+      setIsLoadingAuth(false);
+    }
   };
 
   const logout = () => {
-    // Return to login screen
+    authApi.logout();
     setCurrentRole('guest');
     setCurrentUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ currentUser, currentRole, switchRole, login, logout }}>
+    <AuthContext.Provider value={{ currentUser, currentRole, switchRole, login, logout, isLoadingAuth }}>
       {children}
     </AuthContext.Provider>
   );

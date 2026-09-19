@@ -39,9 +39,9 @@ export function LoginPage({ onLoginSuccess }) {
     }
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e?.preventDefault();
-    login(selectedRole);
+    await login(selectedRole, identifier, password);
     onLoginSuccess?.(selectedRole);
   };
 

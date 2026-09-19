@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
 import { TEACHER_ANALYTICS_DATA } from '../../mock/teacherData';
+import { teacherApi } from '../../services/api';
 import {
   Filter,
   Download,
@@ -20,16 +21,29 @@ import {
 } from 'lucide-react';
 
 export function TeacherAnalytics({ onNavigateCreateAssignment }) {
-  const data = TEACHER_ANALYTICS_DATA;
+  const [data, setData] = useState(TEACHER_ANALYTICS_DATA);
   const [selectedClass, setSelectedClass] = useState(data.currentClass);
   const [selectedTopicFilter, setSelectedTopicFilter] = useState('Tất cả chuyên đề');
   const [studentSearch, setStudentSearch] = useState('');
   const [activeRosterTab, setActiveRosterTab] = useState('all');
   const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
   const [notifySuccess, setNotifySuccess] = useState(false);
+  const [isSubmittingNotify, setIsSubmittingNotify] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    teacherApi.getAnalytics().then((res) => {
+      if (mounted && res) {
+        setData(res);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Filter students
-  const filteredStudents = data.students.filter((st) => {
+  const filteredStudents = (data?.students || []).filter((st) => {
     const matchSearch =
       st.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
       st.code.toLowerCase().includes(studentSearch.toLowerCase());
@@ -40,12 +54,18 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
     return true;
   });
 
-  const handleSendNotification = () => {
-    setNotifySuccess(true);
-    setTimeout(() => {
-      setNotifySuccess(false);
-      setIsNotifyModalOpen(false);
-    }, 1800);
+  const handleSendNotification = async () => {
+    setIsSubmittingNotify(true);
+    try {
+      await teacherApi.notifyParents();
+      setNotifySuccess(true);
+      setTimeout(() => {
+        setNotifySuccess(false);
+        setIsNotifyModalOpen(false);
+      }, 1800);
+    } finally {
+      setIsSubmittingNotify(false);
+    }
   };
 
   return (

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { AI_TUTOR_INITIAL_DATA } from '../../mock/aiTutorData';
+import { aiTutorApi } from '../../services/api';
 import {
   Sparkles,
   History,
@@ -29,33 +30,48 @@ export function AiTutorPage() {
   const [quizFeedback, setQuizFeedback] = useState(null);
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isAiTyping, setIsAiTyping] = useState(false);
 
-  const handleSend = () => {
+  useEffect(() => {
+    let mounted = true;
+    aiTutorApi.getMessages().then((msgs) => {
+      if (mounted && msgs && msgs.length > 0) {
+        setData((prev) => ({ ...prev, messages: msgs }));
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleSend = async () => {
     if (!inputText.trim()) return;
+    const text = inputText;
     const newMsg = {
       id: `user_${Date.now()}`,
       sender: 'user',
       time: 'Vừa xong',
       studentName: 'Khoa Lê',
-      text: inputText,
+      text: text,
     };
     setData((prev) => ({
       ...prev,
-      messages: [
-        ...prev.messages,
-        newMsg,
-        {
-          id: `ai_${Date.now()}`,
-          sender: 'ai',
-          time: 'Vừa xong',
-          badge: 'Phản hồi Socratic',
-          content: {
-            intro: `Cảm ơn em đã hỏi về "${inputText}". Thầy sẽ gợi ý từng bước: Trước hết, em hãy xác định các hệ số chính trong phương trình để mình cùng phân tích nhé!`,
-          },
-        },
-      ],
+      messages: [...prev.messages, newMsg],
     }));
     setInputText('');
+    setIsAiTyping(true);
+
+    try {
+      const reply = await aiTutorApi.sendMessage(text, selectedTopic);
+      if (reply) {
+        setData((prev) => ({
+          ...prev,
+          messages: [...prev.messages, reply],
+        }));
+      }
+    } finally {
+      setIsAiTyping(false);
+    }
   };
 
   const handleOptionClick = (opt) => {

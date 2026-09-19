@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
 import { PARENT_DASHBOARD_DATA } from '../../mock/parentData';
+import { parentApi } from '../../services/api';
 import {
   TrendingUp,
   Award,
@@ -26,6 +27,19 @@ export function ParentDashboard() {
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [hasConfirmedMeeting, setHasConfirmedMeeting] = useState(false);
   const [copiedBank, setCopiedBank] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    parentApi.getChildrenData().then((res) => {
+      if (mounted && res) {
+        setData(res);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const currentChild = data.children.find((c) => c.id === selectedChildId) || data.children[0];
 
@@ -33,6 +47,21 @@ export function ParentDashboard() {
     navigator.clipboard?.writeText?.(currentChild.tuition.qrInfo.accountNumber);
     setCopiedBank(true);
     setTimeout(() => setCopiedBank(false), 2000);
+  };
+
+  const handleConfirmPayment = async () => {
+    try {
+      await parentApi.payTuition(1);
+      setPaymentSuccess(true);
+      // Reload fresh children data
+      const updated = await parentApi.getChildrenData();
+      if (updated) setData(updated);
+    } finally {
+      setTimeout(() => {
+        setIsQrModalOpen(false);
+        setPaymentSuccess(false);
+      }, 1000);
+    }
   };
 
   return (
@@ -467,9 +496,9 @@ export function ParentDashboard() {
               variant="primary"
               size="md"
               className="w-full justify-center"
-              onClick={() => setIsQrModalOpen(false)}
+              onClick={handleConfirmPayment}
             >
-              Tôi đã thanh toán
+              {paymentSuccess ? '✓ Đã ghi nhận giao dịch!' : 'Tôi đã thanh toán chuyển khoản'}
             </Button>
           </div>
         </div>

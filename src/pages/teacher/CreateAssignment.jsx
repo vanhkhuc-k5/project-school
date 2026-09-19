@@ -3,6 +3,7 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { CREATE_ASSIGNMENT_INITIAL } from '../../mock/teacherData';
+import { teacherApi } from '../../services/api';
 import {
   Save,
   Send,
@@ -25,13 +26,29 @@ export function CreateAssignment({ onBackToDashboard }) {
   const [selectedStudentPreviewTab, setSelectedStudentPreviewTab] = useState(1);
   const [selectedOptionInPreview, setSelectedOptionInPreview] = useState('A');
   const [isPublished, setIsPublished] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handlePublish = () => {
-    setIsPublished(true);
-    setTimeout(() => {
-      setIsPublished(false);
-      onBackToDashboard?.();
-    }, 2000);
+  const handlePublish = async () => {
+    setIsSaving(true);
+    try {
+      await teacherApi.createAssignment({
+        title: formData.title,
+        subject: formData.subject,
+        targetClass: formData.targetClass,
+        dueDate: formData.dueDate,
+        maxScore: formData.maxScore,
+        questions: formData.questions,
+      });
+      setIsPublished(true);
+      setTimeout(() => {
+        setIsPublished(false);
+        onBackToDashboard?.();
+      }, 1500);
+    } catch (err) {
+      console.error('Failed to create assignment:', err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

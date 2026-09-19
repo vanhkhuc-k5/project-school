@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
 import { ADMIN_DASHBOARD_DATA } from '../../mock/adminData';
+import { adminApi } from '../../services/api';
 import {
   Users,
   Briefcase,
@@ -23,30 +24,57 @@ import {
 } from 'lucide-react';
 
 export function AdminDashboard() {
-  const data = ADMIN_DASHBOARD_DATA;
+  const [data, setData] = useState(ADMIN_DASHBOARD_DATA);
   const [selectedYear, setSelectedYear] = useState('Năm học 2024 - 2025');
   const [selectedTerm, setSelectedTerm] = useState('Học kỳ II (Hiện tại)');
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
   const [broadcastSent, setBroadcastSent] = useState(false);
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastContent, setBroadcastContent] = useState('');
 
-  const handleSyncMoet = () => {
+  useEffect(() => {
+    let mounted = true;
+    adminApi.getOverview().then((res) => {
+      if (mounted && res) {
+        setData(res);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleSyncMoet = async () => {
     setIsSyncing(true);
-    setTimeout(() => {
-      setIsSyncing(false);
+    try {
+      await adminApi.syncMoet();
       setSyncSuccess(true);
+      const res = await adminApi.getOverview();
+      if (res) setData(res);
       setTimeout(() => setSyncSuccess(false), 3000);
-    }, 1500);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
-  const handleSendBroadcast = (e) => {
+  const handleSendBroadcast = async (e) => {
     e.preventDefault();
     setBroadcastSent(true);
-    setTimeout(() => {
+    try {
+      await adminApi.broadcastNotice(broadcastTitle || 'Thông báo từ Ban Giám Hiệu', broadcastContent);
+      const res = await adminApi.getOverview();
+      if (res) setData(res);
+      setTimeout(() => {
+        setBroadcastSent(false);
+        setIsBroadcastModalOpen(false);
+        setBroadcastTitle('');
+        setBroadcastContent('');
+      }, 1500);
+    } catch {
       setBroadcastSent(false);
-      setIsBroadcastModalOpen(false);
-    }, 1800);
+    }
   };
 
   return (
@@ -523,7 +551,9 @@ export function AdminDashboard() {
             </label>
             <input
               type="text"
-              defaultValue="Thông báo về Lịch thi Học kỳ II & Kế hoạch ngoại khóa 2024-2025"
+              value={broadcastTitle}
+              onChange={(e) => setBroadcastTitle(e.target.value)}
+              placeholder="Thông báo về Lịch thi Học kỳ II & Kế hoạch ngoại khóa..."
               className="w-full h-10 px-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none"
               required
             />
@@ -535,7 +565,9 @@ export function AdminDashboard() {
             </label>
             <textarea
               rows={4}
-              defaultValue="Ban Giám Hiệu nhà trường xin trân trọng thông báo đến toàn thể giáo viên, học sinh và quý phụ huynh kế hoạch ôn thi và thời khóa biểu tập trung cho kỳ thi sắp tới..."
+              value={broadcastContent}
+              onChange={(e) => setBroadcastContent(e.target.value)}
+              placeholder="Ban Giám Hiệu nhà trường xin trân trọng thông báo đến toàn thể giáo viên, học sinh và quý phụ huynh..."
               className="w-full p-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none resize-none"
               required
             />
