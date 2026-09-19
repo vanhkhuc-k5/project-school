@@ -180,4 +180,182 @@ router.post('/intervene-notify', optionalAuth, (req, res) => {
   res.json({ success: true, message: 'Đã gửi thông báo thành công đến phụ huynh!' });
 });
 
+// Get Classes and Student Roster with live gradebook
+router.get('/classes', optionalAuth, (req, res) => {
+  const classId = req.query.classId || 'cls_10A1';
+
+  const classes = db.prepare('SELECT * FROM classes ORDER BY grade_level, name').all();
+
+  const students = db.prepare(`
+    SELECT s.*, u.name, u.code, u.phone, u.avatar
+    FROM students s
+    JOIN users u ON s.user_id = u.id
+    WHERE s.class_id = ?
+    ORDER BY s.class_rank ASC, s.gpa DESC
+  `).all(classId);
+
+  // Attach recent grades
+  const formattedStudents = students.map((s) => {
+    const recentGrades = db.prepare(`
+      SELECT subject, test_name, score, graded_at
+      FROM grades
+      WHERE student_id = ?
+      ORDER BY graded_at DESC
+      LIMIT 3
+    `).all(s.id);
+
+    return {
+      id: s.id,
+      code: s.code || 'HS-10-001',
+      name: s.name,
+      phone: s.phone,
+      avatar: s.avatar,
+      gpa: s.gpa,
+      rank: s.class_rank || '12',
+      attendance: `${s.attendance_rate || 96}%`,
+      status: s.gpa >= 8.0 ? 'Giỏi / Xuất sắc' : s.gpa >= 6.5 ? 'Khá' : 'Cần theo dõi',
+      statusType: s.gpa >= 8.0 ? 'success' : s.gpa >= 6.5 ? 'info' : 'warning',
+      recentGrades,
+    };
+  });
+
+  res.json({
+    success: true,
+    currentClassId: classId,
+    classes: classes.map((c) => ({ id: c.id, name: c.name, grade: c.grade_level, count: 42 })),
+    students: formattedStudents,
+  });
+});
+
+// Teacher enters or edits a student's grade
+router.post('/grades', optionalAuth, (req, res) => {
+  const { studentId, subject, testName, score, maxScore, comment } = req.body;
+
+  if (!studentId || score === undefined) {
+    return res.status(400).json({ success: false, message: 'Thiếu thông tin điểm số' });
+  }
+
+  const gradeId = `grd_${Date.now()}`;
+  db.prepare(`
+    INSERT INTO grades (id, student_id, subject, test_name, score, max_score, teacher_name, comment)
+    VALUES (?, ?, ?, ?, ?, ?, 'Cô Mai Lan', ?)
+  `).run(gradeId, studentId, subject || 'Toán học 10', testName || 'Kiểm tra thường xuyên', parseFloat(score), maxScore || 10, comment || 'Đã ghi nhận điểm kiểm tra.');
+
+  // Recalculate student GPA
+  const avgRow = db.prepare('SELECT AVG(score) as avg FROM grades WHERE student_id = ?').get(studentId);
+  if (avgRow && avgRow.avg) {
+    const newGpa = parseFloat(avgRow.avg.toFixed(2));
+    db.prepare('UPDATE students SET gpa = ? WHERE id = ?').run(newGpa, studentId);
+  }
+
+  // Log activity
+  const student = db.prepare('SELECT u.name FROM students s JOIN users u ON s.user_id = u.id WHERE s.id = ?').get(studentId);
+  db.prepare(`
+    INSERT INTO audit_logs (id, actor_name, role, action, badge, badge_type)
+    VALUES (?, 'Cô Mai Lan', 'teacher', ?, 'Đã cập nhật', 'success')
+  `).run(`log_${Date.now()}`, `Đã cập nhật điểm số ${score}đ môn ${subject || 'Toán'} cho học sinh ${student?.name || studentId}.`);
+
+  res.json({ success: true, message: 'Cập nhật điểm thành công!', gradeId });
+});
+
+// Get Assignments with grading queue & submissions
+router.get('/assignments', optionalAuth, (req, res) => {
+  const assignments = db.prepare(`
+    SELECT a.*,
+      (SELECT COUNT(*) FROM assignment_questions q WHERE q.assignment_id = a.id) as question_count,
+      (SELECT COUNT(*) FROM assignment_submissions s WHERE s.assignment_id = a.id) as submitted_count,
+      (SELECT COUNT(*) FROM assignment_submissions s WHERE s.assignment_id = a.id AND s.status = 'graded') as graded_count,
+      (SELECT AVG(s.score) FROM assignment_submissions s WHERE s.assignment_id = a.id) as avg_score
+    FROM assignments a
+    ORDER BY a.created_at DESC
+  `).all();
+
+  // Get submissions queue
+  const submissions = db.prepare(`
+    SELECT sub.*, a.title as assignment_title, a.subject as assignment_subject, u.name as student_name, u.code as student_code, c.name as class_name
+    FROM assignment_submissions sub
+    JOIN assignments a ON sub.assignment_id = a.id
+    JOIN students s ON sub.student_id = s.id
+    JOIN users u ON s.user_id = u.id
+    JOIN classes c ON s.class_id = c.id
+    ORDER BY sub.submitted_at DESC
+    LIMIT 20
+  `).all();
+
+  res.json({
+    success: true,
+    assignments: assignments.map((a) => ({
+      id: a.id,
+      title: a.title,
+      subject: a.subject,
+      type: a.type,
+      targetClasses: JSON.parse(a.target_classes || '[]'),
+      dueDate: a.due_date,
+      dueTime: a.due_time,
+      durationMinutes: a.duration_minutes,
+      questionCount: a.question_count || 5,
+      submittedCount: a.submitted_count || 0,
+      gradedCount: a.graded_count || 0,
+      avgScore: a.avg_score ? parseFloat(a.avg_score.toFixed(1)) : null,
+      status: 'active',
+    })),
+    gradingQueue: submissions.map((sub) => ({
+      id: sub.id,
+      assignmentId: sub.assignment_id,
+      assignmentTitle: sub.assignment_title,
+      subject: sub.assignment_subject,
+      studentName: sub.student_name,
+      studentCode: sub.student_code,
+      className: sub.class_name,
+      status: sub.status,
+      score: sub.score,
+      submittedAt: sub.submitted_at,
+      feedback: sub.teacher_feedback,
+    })),
+  });
+});
+
+// Grade student submission
+router.post('/submissions/:id/grade', optionalAuth, (req, res) => {
+  const submissionId = req.params.id;
+  const { score, feedback } = req.body;
+
+  db.prepare(`
+    UPDATE assignment_submissions
+    SET score = ?, teacher_feedback = ?, status = 'graded'
+    WHERE id = ?
+  `).run(parseFloat(score), feedback || 'Đã chấm điểm hoàn tất.', submissionId);
+
+  res.json({ success: true, message: 'Chấm bài hoàn tất!' });
+});
+
+// Teacher pedagogical summary report
+router.get('/reports', optionalAuth, (req, res) => {
+  const avgScoresByTopic = [
+    { topic: 'Khảo sát hàm số bậc hai', avg: 8.6, passRate: '95%', target: '90%' },
+    { topic: 'Bất phương trình & Dấu tam thức', avg: 7.8, passRate: '88%', target: '85%' },
+    { topic: 'Hệ thức lượng trong tam giác', avg: 7.2, passRate: '82%', target: '80%' },
+    { topic: 'Hình học không gian & Khoảng cách', avg: 5.4, passRate: '54%', target: '75%' },
+    { topic: 'Đại số tổ hợp & Nhị thức Newton', avg: 7.9, passRate: '85%', target: '80%' },
+  ];
+
+  res.json({
+    success: true,
+    data: {
+      termName: 'Báo cáo Sư phạm Tổng kết Giữa Kỳ I (2024 - 2025)',
+      teacherName: 'Cô Mai Lan',
+      department: 'Tổ Toán - Tin học',
+      classSummary: {
+        totalStudents: 42,
+        evaluatedCount: 42,
+        excellentCount: 16,
+        goodCount: 18,
+        averageCount: 6,
+        warningCount: 2,
+      },
+      topics: avgScoresByTopic,
+    },
+  });
+});
+
 export default router;

@@ -65,11 +65,37 @@ export const studentApi = {
     return res?.success ? res.data : STUDENT_DASHBOARD_DATA;
   },
 
+  async getAssignments() {
+    const res = await request('/student/assignments');
+    return res?.success ? res.assignments : [];
+  },
+
+  async getAssignmentDetail(id) {
+    const res = await request(`/student/assignments/${id}`);
+    return res?.success ? res.assignment : null;
+  },
+
   async submitAssignment(id, answers) {
     const res = await request(`/student/assignments/${id}/submit`, {
       method: 'POST',
       body: JSON.stringify({ studentAnswers: answers }),
     });
+    return res;
+  },
+
+  async getGrades() {
+    const res = await request('/student/grades');
+    return res?.success ? res.data : null;
+  },
+
+  async getResources(filters = {}) {
+    const query = new URLSearchParams(filters).toString();
+    const res = await request(`/student/resources${query ? `?${query}` : ''}`);
+    return res?.success ? res.resources : [];
+  },
+
+  async downloadResource(id) {
+    const res = await request(`/student/resources/${id}/download`, { method: 'POST' });
     return res?.success ?? true;
   },
 };
@@ -79,6 +105,38 @@ export const teacherApi = {
   async getAnalytics() {
     const res = await request('/teacher/analytics');
     return res?.success ? res.data : TEACHER_ANALYTICS_DATA;
+  },
+
+  async getClasses(classId) {
+    const query = classId ? `?classId=${classId}` : '';
+    const res = await request(`/teacher/classes${query}`);
+    return res?.success ? res : null;
+  },
+
+  async updateGrade(data) {
+    const res = await request('/teacher/grades', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return res?.success ?? true;
+  },
+
+  async getAssignments() {
+    const res = await request('/teacher/assignments');
+    return res?.success ? res : null;
+  },
+
+  async gradeSubmission(id, score, feedback) {
+    const res = await request(`/teacher/submissions/${id}/grade`, {
+      method: 'POST',
+      body: JSON.stringify({ score, feedback }),
+    });
+    return res?.success ?? true;
+  },
+
+  async getReports() {
+    const res = await request('/teacher/reports');
+    return res?.success ? res.data : null;
   },
 
   async createAssignment(data) {

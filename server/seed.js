@@ -6,12 +6,8 @@ export function seedDatabase() {
 
   // Check if already seeded
   const existingUsers = db.prepare('SELECT COUNT(*) as count FROM users').get();
-  if (existingUsers.count > 0) {
-    console.log('Database already has data. Skipping fresh seed.');
-    return;
-  }
-
-  console.log('Seeding fresh database with authentic school data...');
+  if (existingUsers.count === 0) {
+    console.log('Seeding fresh database with authentic school data...');
   const passwordHash = bcrypt.hashSync('123456', 10);
 
   // 1. Insert Core Users
@@ -244,15 +240,71 @@ export function seedDatabase() {
     'Parabol có bề lõm quay lên nên a > 0. Đỉnh I(1; -2).'
   );
 
+  insertQuestion.run(
+    'q_10_3',
+    'asg_toan_10',
+    3,
+    'Trục đối xứng của đồ thị hàm số y = 2x² - 4x + 5 là đường thẳng nào sau đây?',
+    1.0,
+    0,
+    null,
+    JSON.stringify([
+      { id: 'A', text: 'A.  x = 1', isCorrect: true },
+      { id: 'B', text: 'B.  x = -1', isCorrect: false },
+      { id: 'C', text: 'C.  x = 2', isCorrect: false },
+      { id: 'D', text: 'D.  x = -2', isCorrect: false },
+    ]),
+    'Trục đối xứng là đường thẳng x = -b / (2a) = -(-4) / (2 * 2) = 1.'
+  );
+
+  insertQuestion.run(
+    'q_10_4',
+    'asg_toan_10',
+    4,
+    'Tập nghiệm của bất phương trình x² - 5x + 6 ≤ 0 là đoạn hoặc khoảng nào?',
+    1.0,
+    0,
+    null,
+    JSON.stringify([
+      { id: 'A', text: 'A.  [2 ; 3]', isCorrect: true },
+      { id: 'B', text: 'B.  (2 ; 3)', isCorrect: false },
+      { id: 'C', text: 'C.  (-∞ ; 2] ∪ [3 ; +∞)', isCorrect: false },
+      { id: 'D', text: 'D.  (-∞ ; 2) ∪ (3 ; +∞)', isCorrect: false },
+    ]),
+    'Tam thức f(x) = x² - 5x + 6 có 2 nghiệm phân biệt x1 = 2, x2 = 3. Hệ số a = 1 > 0 nên trong khoảng hai nghiệm f(x) ≤ 0.'
+  );
+
+  insertQuestion.run(
+    'q_10_5',
+    'asg_toan_10',
+    5,
+    'Một quả bóng được ném lên theo phương trình độ cao h(t) = -5t² + 20t + 1 (m). Hỏi bóng đạt độ cao cực đại tại thời điểm nào?',
+    1.0,
+    0,
+    null,
+    JSON.stringify([
+      { id: 'A', text: 'A.  t = 2 giây', isCorrect: true },
+      { id: 'B', text: 'B.  t = 4 giây', isCorrect: false },
+      { id: 'C', text: 'C.  t = 1.5 giây', isCorrect: false },
+      { id: 'D', text: 'D.  t = 2.5 giây', isCorrect: false },
+    ]),
+    'Độ cao cực đại đạt tại đỉnh parabol: t = -b / (2a) = -20 / (2 * (-5)) = 2 (s). Khi đó h_max = 21m.'
+  );
+
   // 7. Seed Grades
   const insertGrade = db.prepare(`
     INSERT INTO grades (id, student_id, subject, test_name, score, max_score, teacher_name, comment, graded_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  insertGrade.run('grd_1', 'std_khang', 'Hóa học 11', 'Kiểm tra 1 tiết - Cân bằng phản ứng oxi hóa khử', 9.5, 10, 'Thầy Tuấn Anh', 'Lập luận chặt chẽ, xác định đúng số oxi hóa và cân bằng nhanh xuất sắc.', '2024-10-23');
-  insertGrade.run('grd_2', 'std_khang', 'Tiếng Anh', 'Unit 4: Reading Comprehension Test', 8.0, 10, 'Cô Mai', 'Kỹ năng skimming tốt, cần rèn luyện thêm phần từ vựng chuyên ngành.', '2024-10-22');
-  insertGrade.run('grd_3', 'std_khang', 'Lịch sử', 'Bài kiểm tra thường xuyên số 2', 8.5, 10, 'Thầy Hùng', 'Nắm vững các mốc sự kiện quan trọng, trình bày mạch lạc.', '2024-10-20');
+  insertGrade.run('grd_1', 'std_khang', 'Toán học 10', 'Kiểm tra 15 phút - Khảo sát hàm số bậc hai', 9.0, 10, 'Cô Mai Lan', 'Vẽ đồ thị chính xác, xác định trục đối xứng và tìm cực trị thành thạo.', '2024-10-24');
+  insertGrade.run('grd_2', 'std_khang', 'Vật lý 10', 'Kiểm tra 1 tiết - Định luật II Newton', 8.5, 10, 'Thầy Hữu Bình', 'Nắm vững các dạng bài phân tích lực, giải bài tập ma sát tốt.', '2024-10-23');
+  insertGrade.run('grd_3', 'std_khang', 'Hóa học 10', 'Kiểm tra 1 tiết - Cân bằng phản ứng oxi hóa khử', 9.5, 10, 'Thầy Tuấn Anh', 'Lập luận chặt chẽ, xác định đúng số oxi hóa và cân bằng nhanh xuất sắc.', '2024-10-23');
+  insertGrade.run('grd_4', 'std_khang', 'Tiếng Anh 10', 'Unit 4: Reading Comprehension & Lexicon', 8.0, 10, 'Cô Mai', 'Kỹ năng skimming tốt, cần rèn luyện thêm phần từ vựng chuyên ngành.', '2024-10-22');
+  insertGrade.run('grd_5', 'std_khang', 'Ngữ văn 10', 'Bài viết số 2: Nghị luận văn học', 7.75, 10, 'Cô Thanh Hằng', 'Cảm thụ tác phẩm sâu sắc, hành văn mạch lạc, cần mở rộng dẫn chứng liên hệ.', '2024-10-21');
+  insertGrade.run('grd_6', 'std_khang', 'Lịch sử 10', 'Bài kiểm tra thường xuyên số 2', 8.5, 10, 'Thầy Hùng', 'Nắm vững các mốc sự kiện quan trọng, trình bày mạch lạc.', '2024-10-20');
+  insertGrade.run('grd_7', 'std_khang', 'Sinh học 10', 'Thực hành cấu trúc tế bào nhân thực', 9.0, 10, 'Cô Quỳnh Nga', 'Kỹ năng soi kính hiển vi quang học chuẩn xác, bản vẽ chú thích rõ ràng.', '2024-10-18');
+  insertGrade.run('grd_8', 'std_khang', 'Tin học 10', 'Lập trình Python: Thuật toán sắp xếp & Tìm kiếm', 10.0, 10, 'Thầy Quang Minh', 'Code tối ưu độ phức tạp thời gian O(n log n), tư duy logic rất tốt.', '2024-10-16');
 
   // Grades for Minh Khôi (Parent portal)
   insertGrade.run('grd_k1', 'std_khoi', 'Toán Chuyên', 'Kiểm tra 1 tiết', 9.5, 10, 'Cô Mai Lan', 'Đạt xuất sắc, giải bài sáng tạo.', '2024-10-23');
@@ -354,18 +406,25 @@ export function seedDatabase() {
     0,
     JSON.stringify([])
   );
+}
 
-  // 11. Seed Audit Logs
-  const insertAudit = db.prepare(`
-    INSERT INTO audit_logs (id, actor_name, role, action, badge, badge_type)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
+  // 12. Seed Study Resources
+  const existingResources = db.prepare('SELECT COUNT(*) as count FROM study_resources').get();
+  if (existingResources.count === 0) {
+    const insertResource = db.prepare(`
+      INSERT INTO study_resources (id, subject, title, type, file_size, grade_level, download_url, downloads_count, uploaded_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-  insertAudit.run('log_1', 'Cô Nguyễn Mai Hương', 'teacher', 'Vừa hoàn tất cập nhật điểm kiểm tra 1 tiết lớp 12A1.', 'Đã duyệt điểm', 'success');
-  insertAudit.run('log_2', 'Thầy Trần Hữu Bình', 'teacher', 'Đã nộp đề thi giữa kỳ II lên ngân hàng đề.', 'Chờ BGH duyệt', 'warning');
-  insertAudit.run('log_3', 'Quản trị viên hệ thống', 'admin', 'Đã tạo 03 tài khoản Giáo viên hợp đồng mới.', 'Hệ thống', 'neutral');
-  insertAudit.run('log_4', 'Thầy Lê Hoàng Long', 'teacher', 'Vừa khóa bảng điểm chính thức lớp 10B3 theo quy chế.', 'Hoàn thành', 'success');
-  insertAudit.run('log_5', 'Phụ huynh em Trần Tuấn Kiệt', 'parent', 'Đã đóng học phí trực tuyến qua cổng ngân hàng.', 'Đã thanh toán', 'success');
+    insertResource.run('res_1', 'Toán học', 'Đề cương ôn thi Học kỳ I: Hàm số bậc hai & Bất phương trình', 'pdf', '3.4 MB', 10, '#download-res-1', 142, 'Cô Mai Lan');
+    insertResource.run('res_2', 'Toán học', 'Tuyển tập 100 câu trắc nghiệm chuyên đề Hệ thức lượng trong tam giác', 'exam', '1.8 MB', 10, '#download-res-2', 98, 'Tổ Toán - Tin');
+    insertResource.run('res_3', 'Vật lý', 'Tóm tắt lý thuyết & Công thức giải nhanh: Động lực học chất điểm', 'pdf', '2.6 MB', 10, '#download-res-3', 115, 'Thầy Trần Hữu Bình');
+    insertResource.run('res_4', 'Vật lý', 'Video bài giảng: Phân tích lực ma sát và chuyển động trên mặt phẳng nghiêng', 'video', '185 MB', 10, '#download-res-4', 76, 'Thầy Trần Hữu Bình');
+    insertResource.run('res_5', 'Tiếng Anh', 'Bộ đề thi thử IELTS Reading & Vocab Academic B2 (Khối 10 & 11)', 'exam', '4.2 MB', 10, '#download-res-5', 210, 'Cô Lê Thanh Mai');
+    insertResource.run('res_6', 'Hóa học', 'Sơ đồ tư duy: Bảng tuần hoàn các nguyên tố & Liên kết hóa học', 'pdf', '5.1 MB', 10, '#download-res-6', 84, 'Thầy Tuấn Anh');
+    insertResource.run('res_7', 'Ngữ văn', 'Tài liệu hướng dẫn kỹ năng viết bài văn Nghị luận xã hội 600 từ', 'pdf', '1.2 MB', 10, '#download-res-7', 165, 'Cô Nguyễn Mai Hương');
+    insertResource.run('res_8', 'Tin học', 'Giáo trình thực hành lập trình Python cơ bản đến nâng cao (THPT)', 'pdf', '8.9 MB', 10, '#download-res-8', 190, 'Thầy Quang Minh');
+  }
 
   console.log('Database seeded successfully with authentic school records.');
 }

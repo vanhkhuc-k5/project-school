@@ -169,6 +169,19 @@ export function initSchema() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (student_id) REFERENCES students(id)
     );
+
+    CREATE TABLE IF NOT EXISTS study_resources (
+      id TEXT PRIMARY KEY,
+      subject TEXT NOT NULL,
+      title TEXT NOT NULL,
+      type TEXT NOT NULL, -- 'pdf', 'video', 'exam'
+      file_size TEXT,
+      grade_level INTEGER NOT NULL,
+      download_url TEXT,
+      downloads_count INTEGER DEFAULT 0,
+      uploaded_by TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
   console.log('SQLite Schema initialized successfully.');
 }

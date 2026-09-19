@@ -11,10 +11,18 @@ import { AdminLayout } from './layouts/AdminLayout';
 // Pages
 import { LoginPage } from './pages/auth/LoginPage';
 import { StudentDashboard } from './pages/student/StudentDashboard';
+import { StudentAssignmentsPage } from './pages/student/StudentAssignmentsPage';
+import { StudentResourcesPage } from './pages/student/StudentResourcesPage';
+import { StudentGradesPage } from './pages/student/StudentGradesPage';
 import { AiTutorPage } from './pages/student/AiTutorPage';
+
 import { TeacherDashboard } from './pages/teacher/TeacherDashboard';
+import { TeacherClassesPage } from './pages/teacher/TeacherClassesPage';
+import { TeacherAssignmentsPage } from './pages/teacher/TeacherAssignmentsPage';
 import { TeacherAnalytics } from './pages/teacher/TeacherAnalytics';
+import { TeacherReportsPage } from './pages/teacher/TeacherReportsPage';
 import { CreateAssignment } from './pages/teacher/CreateAssignment';
+
 import { ParentDashboard } from './pages/parent/ParentDashboard';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 
@@ -28,7 +36,7 @@ function AppContent() {
         setCurrentView('student-dashboard');
         break;
       case 'teacher':
-        setCurrentView('teacher-analytics');
+        setCurrentView('teacher-dashboard');
         break;
       case 'parent':
         setCurrentView('parent-dashboard');
@@ -49,17 +57,31 @@ function AppContent() {
 
     // Student views
     if (currentRole === 'student') {
-      const studentTab = currentView === 'student-ai-tutor' ? 'ai-tutor' : 'home';
+      let studentTab = 'home';
+      if (currentView === 'student-assignments') studentTab = 'assignments';
+      else if (currentView === 'student-resources') studentTab = 'resources';
+      else if (currentView === 'student-grades') studentTab = 'grades';
+      else if (currentView === 'student-ai-tutor') studentTab = 'ai-tutor';
+
       return (
         <StudentLayout
           currentTab={studentTab}
           onTabChange={(tabId) => {
             if (tabId === 'ai-tutor') setCurrentView('student-ai-tutor');
+            else if (tabId === 'assignments') setCurrentView('student-assignments');
+            else if (tabId === 'resources') setCurrentView('student-resources');
+            else if (tabId === 'grades') setCurrentView('student-grades');
             else setCurrentView('student-dashboard');
           }}
         >
-          {currentView === 'student-ai-tutor' ? (
+          {studentTab === 'ai-tutor' ? (
             <AiTutorPage />
+          ) : studentTab === 'assignments' ? (
+            <StudentAssignmentsPage />
+          ) : studentTab === 'resources' ? (
+            <StudentResourcesPage />
+          ) : studentTab === 'grades' ? (
+            <StudentGradesPage />
           ) : (
             <StudentDashboard
               onNavigateToAiTutor={() => setCurrentView('student-ai-tutor')}
@@ -71,30 +93,42 @@ function AppContent() {
 
     // Teacher views
     if (currentRole === 'teacher') {
-      let teacherTab = 'analytics';
-      if (currentView === 'teacher-dashboard') teacherTab = 'overview';
-      if (currentView === 'teacher-create-assignment') teacherTab = 'assignments';
+      let teacherTab = 'overview';
+      if (currentView === 'teacher-classes') teacherTab = 'classes';
+      else if (currentView === 'teacher-assignments' || currentView === 'teacher-create-assignment') teacherTab = 'assignments';
+      else if (currentView === 'teacher-analytics') teacherTab = 'analytics';
+      else if (currentView === 'teacher-reports') teacherTab = 'reports';
 
       return (
         <TeacherLayout
           currentTab={teacherTab}
           onTabChange={(tabId) => {
             if (tabId === 'overview') setCurrentView('teacher-dashboard');
-            else if (tabId === 'assignments') setCurrentView('teacher-create-assignment');
-            else setCurrentView('teacher-analytics');
+            else if (tabId === 'classes') setCurrentView('teacher-classes');
+            else if (tabId === 'assignments') setCurrentView('teacher-assignments');
+            else if (tabId === 'analytics') setCurrentView('teacher-analytics');
+            else if (tabId === 'reports') setCurrentView('teacher-reports');
           }}
         >
           {currentView === 'teacher-create-assignment' ? (
             <CreateAssignment
-              onBackToDashboard={() => setCurrentView('teacher-analytics')}
+              onBackToDashboard={() => setCurrentView('teacher-assignments')}
             />
-          ) : currentView === 'teacher-dashboard' ? (
-            <TeacherDashboard
-              onNavigateAnalytics={() => setCurrentView('teacher-analytics')}
+          ) : teacherTab === 'classes' ? (
+            <TeacherClassesPage />
+          ) : teacherTab === 'assignments' ? (
+            <TeacherAssignmentsPage
               onNavigateCreateAssignment={() => setCurrentView('teacher-create-assignment')}
             />
-          ) : (
+          ) : teacherTab === 'analytics' ? (
             <TeacherAnalytics
+              onNavigateCreateAssignment={() => setCurrentView('teacher-create-assignment')}
+            />
+          ) : teacherTab === 'reports' ? (
+            <TeacherReportsPage />
+          ) : (
+            <TeacherDashboard
+              onNavigateAnalytics={() => setCurrentView('teacher-analytics')}
               onNavigateCreateAssignment={() => setCurrentView('teacher-create-assignment')}
             />
           )}
