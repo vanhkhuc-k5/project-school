@@ -71,15 +71,19 @@ router.post('/chat', optionalAuth, (req, res) => {
     VALUES (?, ?, ?, 'ai', ?, ?)
   `).run(aiMsgId, studentId, topic || 'Toán 10', aiReplyText, JSON.stringify(aiContent));
 
+  const responsePayload = {
+    id: aiMsgId,
+    sender: 'ai',
+    text: aiReplyText,
+    time: 'Vừa xong',
+    badge: 'Phản hồi Socratic thời gian thực',
+    content: aiContent,
+  };
+
   res.json({
     success: true,
-    reply: {
-      id: aiMsgId,
-      sender: 'ai',
-      time: 'Vừa xong',
-      badge: 'Phản hồi Socratic thời gian thực',
-      content: aiContent,
-    }
+    reply: responsePayload,
+    aiReply: responsePayload,
   });
 });
 

@@ -1,6 +1,7 @@
 import express from 'express';
 import { db } from '../db.js';
 import { supabase, isSupabaseConfigured } from '../supabase.js';
+import { isPostgresConfigured, pgQuery } from '../postgres.js';
 import { optionalAuth } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -282,6 +283,43 @@ router.post('/users', optionalAuth, async (req, res) => {
   }
 
   res.json({ success: true, message: 'Tạo tài khoản người dùng thành công!', userId });
+});
+
+router.put('/users/:id', optionalAuth, async (req, res) => {
+  const { id } = req.params;
+  const { name, email, phone, role, code } = req.body;
+
+  if (isPostgresConfigured()) {
+    await pgQuery(`
+      UPDATE users
+      SET name = COALESCE($1, name),
+          email = COALESCE($2, email),
+          phone = COALESCE($3, phone),
+          role = COALESCE($4, role),
+          code = COALESCE($5, code)
+      WHERE id = $6
+    `, [name || null, email || null, phone || null, role || null, code || null, id]);
+  } else if (isSupabaseConfigured()) {
+    const updates = {};
+    if (name) updates.name = name;
+    if (email) updates.email = email;
+    if (phone) updates.phone = phone;
+    if (role) updates.role = role;
+    if (code) updates.code = code;
+    await supabase.from('users').update(updates).eq('id', id);
+  } else {
+    db.prepare(`
+      UPDATE users
+      SET name = COALESCE(?, name),
+          email = COALESCE(?, email),
+          phone = COALESCE(?, phone),
+          role = COALESCE(?, role),
+          code = COALESCE(?, code)
+      WHERE id = ?
+    `).run(name, email, phone, role, code, id);
+  }
+
+  res.json({ success: true, message: 'Cập nhật tài khoản thành công!' });
 });
 
 router.delete('/users/:id', optionalAuth, async (req, res) => {

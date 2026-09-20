@@ -96,6 +96,11 @@ router.get('/dashboard', optionalAuth, (req, res) => {
   res.json({
     success: true,
     data: {
+      studentInfo: {
+        id: student ? student.id : 'std_khang',
+        name: student ? student.name : 'Nguyễn Minh Khang',
+        class: student ? `Lớp ${student.class_name}` : 'Lớp 10A1',
+      },
       student: {
         name: student ? student.name.split(' ').slice(-1)[0] : 'Minh Khang',
         fullName: student ? student.name : 'Nguyễn Minh Khang',
@@ -362,6 +367,7 @@ router.get('/grades', optionalAuth, (req, res) => {
 
   res.json({
     success: true,
+    grades,
     data: {
       studentName: 'Nguyễn Minh Khang',
       className: 'Lớp 10A1 • Chuyên Toán - Tin',
@@ -378,8 +384,74 @@ router.get('/grades', optionalAuth, (req, res) => {
   });
 });
 
-// Get Study Resources
-router.get('/resources', optionalAuth, (req, res) => {
+// Get Student Timetable
+router.get('/timetable', optionalAuth, (req, res) => {
+  res.json({
+    success: true,
+    schedule: [
+      {
+        day: 'Thứ Hai',
+        periods: [
+          { period: 1, subject: 'Toán học (Đại số)', time: '07:30 - 08:15', teacher: 'Cô Mai Lan', room: 'Phòng 201' },
+          { period: 2, subject: 'Toán học (Đại số)', time: '08:20 - 09:05', teacher: 'Cô Mai Lan', room: 'Phòng 201' },
+          { period: 3, subject: 'Vật lý 10', time: '09:20 - 10:05', teacher: 'Thầy Quang Dũng', room: 'Phòng 201' },
+        ],
+      },
+      {
+        day: 'Thứ Ba',
+        periods: [
+          { period: 1, subject: 'Hóa học 10', time: '07:30 - 08:15', teacher: 'Cô Thu Nga', room: 'Phòng Lab 1' },
+          { period: 2, subject: 'Sinh học 10', time: '08:20 - 09:05', teacher: 'Thầy Quốc Bảo', room: 'Phòng 201' },
+        ],
+      },
+      {
+        day: 'Thứ Tư',
+        periods: [
+          { period: 1, subject: 'Ngữ văn 10', time: '07:30 - 09:05', teacher: 'Cô Hoàng Lan', room: 'Phòng 201' },
+          { period: 2, subject: 'Lịch sử 10', time: '09:20 - 10:05', teacher: 'Thầy Hoài Nam', room: 'Phòng 201' },
+        ],
+      },
+      {
+        day: 'Thứ Năm',
+        periods: [
+          { period: 1, subject: 'Tin học Python', time: '14:00 - 15:35', teacher: 'Thầy Quốc Tuấn', room: 'Phòng máy 2' },
+          { period: 2, subject: 'Anh văn chuyên đề', time: '15:50 - 17:25', teacher: 'Cô Sarah Jenkins', room: 'Phòng A102' },
+        ],
+      },
+      {
+        day: 'Thứ Sáu',
+        periods: [
+          { period: 1, subject: 'Hình học không gian', time: '07:30 - 09:05', teacher: 'Cô Mai Lan', room: 'Phòng 201' },
+          { period: 2, subject: 'Giáo dục thể chất', time: '09:20 - 10:05', teacher: 'Thầy Văn Đức', room: 'Sân bóng' },
+        ],
+      },
+    ],
+  });
+});
+
+// Get Student Attendance
+router.get('/attendance', optionalAuth, (req, res) => {
+  res.json({
+    success: true,
+    attendance: {
+      rate: '98.5%',
+      totalDays: 90,
+      presentDays: 89,
+      absentDays: 1,
+      lateDays: 0,
+      status: 'Xuất sắc',
+      records: [
+        { date: '2026-09-18', status: 'present', note: 'Đúng giờ' },
+        { date: '2026-09-17', status: 'present', note: 'Đúng giờ' },
+        { date: '2026-09-16', status: 'present', note: 'Đúng giờ' },
+        { date: '2026-09-15', status: 'excused', note: 'Nghỉ ốm có phép' },
+      ],
+    },
+  });
+});
+
+// Get Study Resources (supports both /resources and /study-resources)
+const getStudyResourcesHandler = (req, res) => {
   const { subject, type, search } = req.query;
 
   let query = 'SELECT * FROM study_resources WHERE 1=1';
@@ -402,7 +474,10 @@ router.get('/resources', optionalAuth, (req, res) => {
 
   const resources = db.prepare(query).all(...params);
   res.json({ success: true, resources });
-});
+};
+
+router.get('/resources', optionalAuth, getStudyResourcesHandler);
+router.get('/study-resources', optionalAuth, getStudyResourcesHandler);
 
 // Download study resource counter increment
 router.post('/resources/:id/download', optionalAuth, (req, res) => {

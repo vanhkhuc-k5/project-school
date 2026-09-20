@@ -8,6 +8,7 @@
     "server": "node server/index.js",
     "seed": "node server/seed.js",
     "seed:supabase": "node server/supabase/seed-runner.js",
+    "test": "node tests/runner.js",
     "dev:all": "concurrently \"node server/index.js\" \"vite\"",
     "build": "vite build",
     "preview": "vite preview"

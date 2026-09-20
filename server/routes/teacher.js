@@ -4,6 +4,24 @@ import { optionalAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Get Teacher Dashboard Overview Data
+router.get('/dashboard', optionalAuth, (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      teacherName: 'Cô Mai Lan',
+      department: 'Tổ Toán - Tin học',
+      homeroomClass: '10A1',
+      stats: {
+        totalStudents: 42,
+        activeAssignments: 5,
+        submittedToday: 18,
+        pendingReview: 4,
+      },
+    },
+  });
+});
+
 // Get Teacher Analytics Data
 router.get('/analytics', (req, res) => {
   // Query all students in Class 10A1

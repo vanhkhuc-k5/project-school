@@ -97,11 +97,57 @@ router.get('/children', optionalAuth, (req, res) => {
 
   res.json({
     success: true,
+    children: formattedChildren,
     data: {
       currentChildId: formattedChildren[0]?.id || 'std_khoi',
       children: formattedChildren,
       notifications: formattedNotices,
-    }
+    },
+  });
+});
+
+// Get Parent Dashboard Overview Data
+router.get('/dashboard', optionalAuth, (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      parentName: 'Bác Nguyễn Văn Hồi',
+      phone: '0912 345 678',
+      childrenCount: 2,
+      activeTerm: 'Học kỳ I (2024 - 2025)',
+    },
+  });
+});
+
+// Get Tuition details
+router.get('/tuition', optionalAuth, (req, res) => {
+  const childId = req.query.childId || 'std_khoi';
+  const invoice = db.prepare('SELECT * FROM tuition_invoices WHERE student_id = ? LIMIT 1').get(childId);
+  res.json({
+    success: true,
+    invoice: invoice
+      ? {
+          id: invoice.id,
+          period: invoice.period,
+          totalAmount: invoice.total_amount,
+          dueDate: invoice.due_date,
+          status: invoice.status,
+          bankName: invoice.bank_name || 'Vietcombank',
+          accountNumber: invoice.account_number || '1903456789012',
+          accountName: invoice.account_name || 'TRUONG THPT CHUYEN EDUPORTAL',
+          transferMemo: invoice.transfer_memo,
+        }
+      : {
+          id: 'inv_default',
+          period: 'Tháng 11/2024',
+          totalAmount: 3250000,
+          dueDate: '10/11/2024',
+          status: 'pending',
+          bankName: 'Vietcombank',
+          accountNumber: '1903456789012',
+          accountName: 'TRUONG THPT CHUYEN EDUPORTAL',
+          transferMemo: 'HOCPHI KHOI 10A1',
+        },
   });
 });
 
@@ -250,15 +296,18 @@ router.get('/leave-requests', optionalAuth, (req, res) => {
 });
 
 router.post('/leave-requests', optionalAuth, (req, res) => {
-  const { studentId, startDate, endDate, reasonType, reasonDetail, emergencyPhone } = req.body;
-  if (!studentId || !startDate || !endDate || !reasonType) {
+  const { studentId, startDate, endDate, emergencyPhone } = req.body;
+  const reasonType = req.body.reasonType || req.body.reason || 'Việc gia đình';
+  const reasonDetail = req.body.reasonDetail || req.body.reason || 'Xin phép nghỉ học';
+
+  if (!studentId || !startDate || !endDate) {
     return res.status(400).json({ success: false, message: 'Vui lòng điền đầy đủ thông tin đơn nghỉ học' });
   }
   const newId = `leave_${Date.now()}`;
   db.prepare(`
-    INSERT INTO leave_requests (id, student_id, parent_id, start_date, end_date, reason_type, reason_detail, emergency_phone, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-  `).run(newId, studentId, 'usr_parent_1', startDate, endDate, reasonType, reasonDetail || '', emergencyPhone || '');
+    INSERT INTO leave_requests (id, student_id, parent_id, start_date, end_date, reason, reason_type, reason_detail, emergency_phone, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+  `).run(newId, studentId, 'usr_parent_1', startDate, endDate, reasonDetail, reasonType, reasonDetail, emergencyPhone || '');
 
   // Query student info
   const student = db.prepare(`

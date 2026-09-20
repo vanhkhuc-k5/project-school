@@ -37,3 +37,5 @@ export async function query(text, params = []) {
   }
   return pool.query(text, params);
 }
+
+export const pgQuery = query;
