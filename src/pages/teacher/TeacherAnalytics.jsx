@@ -3,6 +3,7 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
+import { TEACHER_ANALYTICS_DATA } from '../../mock/teacherData';
 import { teacherApi } from '../../services/api';
 import { useSync } from '../../context/SyncContext';
 import {

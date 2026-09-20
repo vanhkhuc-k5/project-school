@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
+import { CREATE_ASSIGNMENT_INITIAL } from '../../mock/teacherData';
 import { teacherApi } from '../../services/api';
 import { useSync } from '../../context/SyncContext';
 import {
