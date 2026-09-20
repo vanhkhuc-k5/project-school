@@ -15,6 +15,8 @@ import {
   Filter,
   Eye,
   BookOpen,
+  Bookmark,
+  Star,
 } from 'lucide-react';
 
 export function StudentResourcesPage() {
@@ -24,6 +26,15 @@ export function StudentResourcesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [previewResource, setPreviewResource] = useState(null);
   const [downloadSuccessId, setDownloadSuccessId] = useState(null);
+  const [favorites, setFavorites] = useState(() => {
+    try {
+      const saved = localStorage.getItem('eduportal_resource_favorites');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
 
   const subjects = ['Tất cả', 'Toán học', 'Vật lý', 'Tiếng Anh', 'Hóa học', 'Ngữ văn', 'Tin học'];
 
@@ -43,12 +54,27 @@ export function StudentResourcesPage() {
     fetchResources();
   }, [selectedSubject, selectedType, searchQuery]);
 
+  const toggleFavorite = (id) => {
+    setFavorites((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem('eduportal_resource_favorites', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
   const handleDownload = async (res) => {
     await studentApi.downloadResource(res.id);
     setDownloadSuccessId(res.id);
     fetchResources();
     setTimeout(() => setDownloadSuccessId(null), 2500);
   };
+
+  const filteredResources = resources.filter((item) => {
+    if (showOnlyFavorites && !favorites[item.id]) return false;
+    return true;
+  });
 
   return (
     <div className="space-y-6">
@@ -77,6 +103,19 @@ export function StudentResourcesPage() {
               className="h-10 pl-9 pr-4 bg-white border border-hairline rounded text-xs text-text-primary focus:border-ocean outline-none w-64"
             />
           </div>
+
+          <button
+            type="button"
+            onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
+            className={`h-10 px-3.5 rounded border text-xs flex items-center gap-1.5 transition-all ${
+              showOnlyFavorites
+                ? 'bg-amber-50 text-amber-900 border-amber-300 font-medium'
+                : 'bg-white border-hairline text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <Star className={`w-3.5 h-3.5 ${showOnlyFavorites ? 'fill-amber-500 text-amber-600' : ''}`} />
+            <span>Đã lưu</span>
+          </button>
         </div>
       </div>
 
@@ -99,11 +138,12 @@ export function StudentResourcesPage() {
 
       {/* Resource Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {resources.map((item) => {
+        {filteredResources.map((item) => {
           const isExam = item.type === 'exam';
           const isVideo = item.type === 'video';
           const Icon = isVideo ? Video : isExam ? FileCheck : FileText;
           const isDownloaded = downloadSuccessId === item.id;
+          const isFav = Boolean(favorites[item.id]);
 
           return (
             <Card key={item.id} padding="p-5" className="flex flex-col justify-between hover:border-ocean/40 transition-all group">
@@ -120,9 +160,19 @@ export function StudentResourcesPage() {
                   >
                     <Icon className="w-5 h-5 stroke-[1.75]" />
                   </span>
-                  <Badge variant={isVideo ? 'info' : isExam ? 'warning' : 'neutral'} size="sm">
-                    {item.subject}
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => toggleFavorite(item.id)}
+                      className="p-1 hover:bg-surface-neutral rounded text-text-secondary transition-colors"
+                      title={isFav ? 'Bỏ lưu' : 'Lưu tài liệu'}
+                    >
+                      <Bookmark className={`w-4 h-4 ${isFav ? 'fill-amber-500 text-amber-500' : ''}`} />
+                    </button>
+                    <Badge variant={isVideo ? 'info' : isExam ? 'warning' : 'neutral'} size="sm">
+                      {item.subject}
+                    </Badge>
+                  </div>
                 </div>
 
                 <div>

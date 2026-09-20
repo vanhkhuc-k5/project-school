@@ -79,6 +79,36 @@ export function AiTutorPage() {
     setQuizFeedback(opt.feedback);
   };
 
+  const handleGeneratePracticeQuiz = () => {
+    setIsAiTyping(true);
+    setTimeout(() => {
+      const quizMsg = {
+        id: `ai_quiz_${Date.now()}`,
+        sender: 'ai',
+        time: 'Vừa xong',
+        badge: 'Bộ đề luyện tập thông minh',
+        content: {
+          intro: `Gia sư AI đã tổng hợp bộ 3 câu hỏi trắc nghiệm trọng tâm về chuyên đề "${selectedTopic}". Hãy chọn câu trả lời đúng bên dưới để hệ thống đánh giá mức độ hiểu bài nhé:`,
+          interactiveTask: {
+            title: `Câu hỏi củng cố: ${selectedTopic}`,
+            prompt: 'Điều kiện cần và đủ để tam thức bậc hai f(x) = ax² + bx + c luôn dương với mọi x thuộc R là:',
+            options: [
+              { id: 'A', text: 'a > 0 và Δ < 0', isCorrect: true, feedback: 'Chính xác! Khi a > 0 và Δ < 0 thì đồ thị parabol nằm hoàn toàn phía trên trục hoành.' },
+              { id: 'B', text: 'a > 0 và Δ > 0', isCorrect: false, feedback: 'Chưa đúng. Khi Δ > 0 thì tam thức có 2 nghiệm phân biệt và đổi dấu qua 2 nghiệm đó.' },
+              { id: 'C', text: 'a < 0 và Δ < 0', isCorrect: false, feedback: 'Chưa đúng. Khi a < 0 và Δ < 0 thì f(x) luôn âm với mọi x.' },
+              { id: 'D', text: 'a > 0 và Δ = 0', isCorrect: false, feedback: 'Chưa đủ. Khi Δ = 0 thì f(x) ≥ 0, có 1 điểm tại x = -b/2a bằng 0 chứ không dương hẳn.' },
+            ],
+          },
+        },
+      };
+      setData((prev) => ({
+        ...prev,
+        messages: [...prev.messages, quizMsg],
+      }));
+      setIsAiTyping(false);
+    }, 600);
+  };
+
   const handleCopyFormula = () => {
     navigator.clipboard?.writeText?.('x = (-b ± √Δ) / 2a');
     setCopied(true);
@@ -114,11 +144,16 @@ export function AiTutorPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Sparkles}
+              onClick={handleGeneratePracticeQuiz}
+            >
+              Luyện tập nhanh
+            </Button>
             <Button variant="secondary" size="sm" icon={History}>
               Lịch sử
-            </Button>
-            <Button variant="secondary" size="sm" icon={BookOpen}>
-              Lời giải
             </Button>
             <Button
               variant="primary"
@@ -126,7 +161,7 @@ export function AiTutorPage() {
               icon={RotateCcw}
               onClick={() => setData(AI_TUTOR_INITIAL_DATA)}
             >
-              Tạo mới
+              Làm mới
             </Button>
           </div>
         </div>

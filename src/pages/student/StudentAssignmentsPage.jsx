@@ -19,6 +19,8 @@ import {
   HelpCircle,
   Send,
   RotateCcw,
+  Flag,
+  Bookmark,
 } from 'lucide-react';
 
 export function StudentAssignmentsPage() {
@@ -30,6 +32,7 @@ export function StudentAssignmentsPage() {
   const [examDetail, setExamDetail] = useState(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [studentAnswers, setStudentAnswers] = useState({});
+  const [flaggedQuestions, setFlaggedQuestions] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [examResult, setExamResult] = useState(null);
   const [timeLeft, setTimeLeft] = useState(45 * 60);
@@ -45,12 +48,20 @@ export function StudentAssignmentsPage() {
     fetchAssignments();
   }, [lastSync]);
 
-  // Timer countdown
+  // Timer countdown with auto-submit on expiry
   useEffect(() => {
     let timer;
     if (isExamModalOpen && !examResult && timeLeft > 0) {
       timer = setInterval(() => {
-        setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            // Auto-submit when time expires
+            handleSubmitExam();
+            return 0;
+          }
+          return prev - 1;
+        });
       }, 1000);
     }
     return () => clearInterval(timer);
@@ -63,6 +74,7 @@ export function StudentAssignmentsPage() {
       setSelectedAssignment(asg);
       setCurrentQuestionIndex(0);
       setStudentAnswers(detail.submission?.answers || {});
+      setFlaggedQuestions({});
       setExamResult(
         detail.isSubmitted
           ? {
@@ -75,6 +87,13 @@ export function StudentAssignmentsPage() {
       setTimeLeft((detail.durationMinutes || 45) * 60);
       setIsExamModalOpen(true);
     }
+  };
+
+  const toggleFlagQuestion = (questionId) => {
+    setFlaggedQuestions((prev) => ({
+      ...prev,
+      [questionId]: !prev[questionId],
+    }));
   };
 
   const handleSelectOption = (questionId, optionId) => {
@@ -244,13 +263,14 @@ export function StudentAssignmentsPage() {
             {/* Question Navigator Pills */}
             <div className="flex flex-wrap gap-1.5 pb-2">
               {examDetail.questions?.map((q, idx) => {
-                const isAnswered = studentAnswers[q.id] !== undefined;
+                const isAnswered = studentAnswers[q.id] !== undefined && studentAnswers[q.id] !== '';
                 const isCurrent = idx === currentQuestionIndex;
+                const isFlagged = Boolean(flaggedQuestions[q.id]);
                 return (
                   <button
                     key={q.id}
                     onClick={() => setCurrentQuestionIndex(idx)}
-                    className={`w-8 h-8 rounded text-xs font-medium transition-all ${
+                    className={`relative w-8 h-8 rounded text-xs font-medium transition-all ${
                       isCurrent
                         ? 'bg-primary text-white ring-2 ring-ocean/30 font-bold'
                         : isAnswered
@@ -259,6 +279,9 @@ export function StudentAssignmentsPage() {
                     }`}
                   >
                     {idx + 1}
+                    {isFlagged && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full ring-2 ring-white" title="Câu đã đánh dấu xem lại" />
+                    )}
                   </button>
                 );
               })}
@@ -272,9 +295,26 @@ export function StudentAssignmentsPage() {
                     <span className="text-ocean mr-1.5 font-bold">Câu {currentQuestionIndex + 1}:</span>
                     {currentQ.prompt}
                   </h3>
-                  <Badge variant="neutral" size="sm">
-                    {currentQ.points} điểm
-                  </Badge>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {!examResult && (
+                      <button
+                        type="button"
+                        onClick={() => toggleFlagQuestion(currentQ.id)}
+                        className={`px-2.5 py-1 rounded text-xs flex items-center gap-1.5 transition-colors ${
+                          flaggedQuestions[currentQ.id]
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300 font-medium'
+                            : 'bg-surface-neutral text-text-secondary hover:text-text-primary border border-hairline'
+                        }`}
+                        title="Đánh dấu câu này để kiểm tra lại trước khi nộp bài"
+                      >
+                        <Flag className={`w-3.5 h-3.5 ${flaggedQuestions[currentQ.id] ? 'fill-amber-500 text-amber-600' : ''}`} />
+                        <span className="hidden sm:inline">{flaggedQuestions[currentQ.id] ? 'Đã đánh dấu' : 'Xem lại sau'}</span>
+                      </button>
+                    )}
+                    <Badge variant="neutral" size="sm">
+                      {currentQ.points} điểm
+                    </Badge>
+                  </div>
                 </div>
 
                 {/* Optional Graph/Plot info */}
@@ -288,54 +328,68 @@ export function StudentAssignmentsPage() {
                   </div>
                 )}
 
-                {/* Radio Options */}
-                <div className="space-y-2.5">
-                  {currentQ.options?.map((opt) => {
-                    const isSelected = studentAnswers[currentQ.id] === opt.id;
-                    const showCorrection = Boolean(examResult);
-                    const isCorrect = opt.isCorrect;
+                {/* Question Options or Essay Input */}
+                {currentQ.options && currentQ.options.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {currentQ.options.map((opt) => {
+                      const isSelected = studentAnswers[currentQ.id] === opt.id;
+                      const showCorrection = Boolean(examResult);
+                      const isCorrect = opt.isCorrect;
 
-                    let optStyle = 'border-hairline bg-white hover:bg-surface-neutral/40';
-                    if (isSelected && !showCorrection) {
-                      optStyle = 'border-ocean bg-sky/30 text-primary font-medium ring-1 ring-ocean/40';
-                    }
-                    if (showCorrection) {
-                      if (isCorrect) {
-                        optStyle = 'border-emerald-500 bg-emerald-50 text-emerald-900 font-medium';
-                      } else if (isSelected && !isCorrect) {
-                        optStyle = 'border-red-400 bg-red-50 text-red-900 line-through';
+                      let optStyle = 'border-hairline bg-white hover:bg-surface-neutral/40';
+                      if (isSelected && !showCorrection) {
+                        optStyle = 'border-ocean bg-sky/30 text-primary font-medium ring-1 ring-ocean/40';
                       }
-                    }
+                      if (showCorrection) {
+                        if (isCorrect) {
+                          optStyle = 'border-emerald-500 bg-emerald-50 text-emerald-900 font-medium';
+                        } else if (isSelected && !isCorrect) {
+                          optStyle = 'border-red-400 bg-red-50 text-red-900 line-through';
+                        }
+                      }
 
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => handleSelectOption(currentQ.id, opt.id)}
-                        disabled={Boolean(examResult)}
-                        className={`w-full text-left p-3.5 rounded border transition-all flex items-center justify-between text-xs ${optStyle}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span
-                            className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[11px] ${
-                              isSelected ? 'bg-ocean text-white' : 'bg-surface-neutral text-text-secondary'
-                            }`}
-                          >
-                            {opt.id}
-                          </span>
-                          <span>{opt.text}</span>
-                        </div>
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => handleSelectOption(currentQ.id, opt.id)}
+                          disabled={Boolean(examResult)}
+                          className={`w-full text-left p-3.5 rounded border transition-all flex items-center justify-between text-xs ${optStyle}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[11px] ${
+                                isSelected ? 'bg-ocean text-white' : 'bg-surface-neutral text-text-secondary'
+                              }`}
+                            >
+                              {opt.id}
+                            </span>
+                            <span>{opt.text}</span>
+                          </div>
 
-                        {showCorrection && isCorrect && (
-                          <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Đáp án đúng</span>
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                          {showCorrection && isCorrect && (
+                            <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Đáp án đúng</span>
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-text-primary">Bài làm / Câu trả lời tự luận của bạn:</label>
+                    <textarea
+                      value={studentAnswers[currentQ.id] || ''}
+                      onChange={(e) => handleSelectOption(currentQ.id, e.target.value)}
+                      disabled={Boolean(examResult)}
+                      rows={5}
+                      placeholder="Nhập lời giải chi tiết, các bước biến đổi hoặc giải thích đáp số..."
+                      className="w-full p-3.5 bg-white border border-hairline rounded text-xs text-text-primary focus:border-ocean focus:ring-1 focus:ring-ocean outline-none transition-all"
+                    />
+                  </div>
+                )}
 
                 {/* Explanation in Review Mode */}
                 {examResult && currentQ.explanation && (
