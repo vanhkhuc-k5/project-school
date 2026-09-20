@@ -95,7 +95,8 @@ export function LoginPage({ onLoginSuccess }) {
     try {
       const result = await login(selectedRole, identifier.trim(), password.trim());
       if (result?.success) {
-        onLoginSuccess?.(selectedRole);
+        const targetRole = result.user?.role || selectedRole;
+        onLoginSuccess?.(targetRole);
       } else {
         setErrorMessage(result?.message || 'Tài khoản hoặc mật khẩu không chính xác');
       }
