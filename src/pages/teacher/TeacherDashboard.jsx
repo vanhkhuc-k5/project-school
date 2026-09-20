@@ -16,7 +16,12 @@ import {
   Plus,
 } from 'lucide-react';
 
-export function TeacherDashboard({ onNavigateAnalytics, onNavigateCreateAssignment }) {
+export function TeacherDashboard({
+  onNavigateAnalytics,
+  onNavigateCreateAssignment,
+  onNavigateClasses,
+  onNavigateAssignments,
+}) {
   const { syncStatus } = useSync();
   const pendingGrading = syncStatus?.pendingGradingCount ?? 15;
 
@@ -54,13 +59,13 @@ export function TeacherDashboard({ onNavigateAnalytics, onNavigateCreateAssignme
 
       {/* 4 KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card padding="p-5">
+        <Card padding="p-5" className="cursor-pointer hover:border-ocean transition-colors" onClick={onNavigateClasses}>
           <div className="text-xs text-text-secondary">Tổng học sinh phụ trách</div>
           <div className="text-3xl font-semibold text-primary mt-2">79 em</div>
           <div className="text-xs text-text-secondary mt-2">Lớp 10A1 (39) & 10A2 (40)</div>
         </Card>
 
-        <Card padding="p-5">
+        <Card padding="p-5" className="cursor-pointer hover:border-danger transition-colors" onClick={onNavigateAssignments}>
           <div className="flex justify-between items-start">
             <span className="text-xs text-text-secondary">Bài cần chấm điểm</span>
             <Badge variant="danger">Gấp</Badge>
@@ -69,7 +74,7 @@ export function TeacherDashboard({ onNavigateAnalytics, onNavigateCreateAssignme
           <div className="text-xs text-text-secondary mt-2">Hạn chót chấm: Hôm nay 18:00</div>
         </Card>
 
-        <Card padding="p-5">
+        <Card padding="p-5" className="cursor-pointer hover:border-primary transition-colors" onClick={onNavigateAnalytics}>
           <div className="flex justify-between items-start">
             <span className="text-xs text-text-secondary">Đạt chuẩn năng lực</span>
             <Badge variant="success">+3.2%</Badge>
@@ -78,7 +83,7 @@ export function TeacherDashboard({ onNavigateAnalytics, onNavigateCreateAssignme
           <div className="text-xs text-text-secondary mt-2">34/42 em lớp 10A1 đạt chỉ tiêu</div>
         </Card>
 
-        <Card padding="p-5">
+        <Card padding="p-5" className="cursor-pointer hover:border-warning transition-colors" onClick={onNavigateAnalytics}>
           <div className="flex justify-between items-start">
             <span className="text-xs text-text-secondary">Cảnh báo can thiệp</span>
             <Badge variant="warning">3 học sinh</Badge>
@@ -109,7 +114,7 @@ export function TeacherDashboard({ onNavigateAnalytics, onNavigateCreateAssignme
                 <div className="text-sm font-medium text-text-primary">Đại số 10: Dấu của tam thức bậc hai</div>
                 <div className="text-xs text-text-secondary">Lớp 10A1 • Phòng 302</div>
               </div>
-              <Button variant="secondary" size="sm">Sổ điểm danh</Button>
+              <Button variant="secondary" size="sm" onClick={onNavigateClasses}>Sổ điểm danh</Button>
             </div>
 
             <div className="p-4 bg-sky/30 rounded border border-ocean/20 flex items-center justify-between">
@@ -121,7 +126,7 @@ export function TeacherDashboard({ onNavigateAnalytics, onNavigateCreateAssignme
                 <div className="text-sm font-medium text-text-primary">Hình học 10: Tích vô hướng của 2 vectơ</div>
                 <div className="text-xs text-text-secondary">Lớp 10A2 • Phòng 304</div>
               </div>
-              <Button variant="primary" size="sm">Vào lớp</Button>
+              <Button variant="primary" size="sm" onClick={onNavigateClasses}>Vào lớp</Button>
             </div>
           </div>
         </Card>

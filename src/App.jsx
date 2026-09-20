@@ -155,6 +155,8 @@ function AppContent() {
             <TeacherDashboard
               onNavigateAnalytics={() => setCurrentView('teacher-analytics')}
               onNavigateCreateAssignment={() => setCurrentView('teacher-create-assignment')}
+              onNavigateClasses={() => setCurrentView('teacher-classes')}
+              onNavigateAssignments={() => setCurrentView('teacher-assignments')}
             />
           )}
         </TeacherLayout>

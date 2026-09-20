@@ -92,11 +92,21 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="secondary" size="md" icon={Filter}>
-            Lọc nâng cao
+          <Button
+            variant="secondary"
+            size="md"
+            icon={Filter}
+            onClick={() => setActiveRosterTab(activeRosterTab === 'all' ? 'high_risk' : 'all')}
+          >
+            {activeRosterTab === 'high_risk' ? 'Tất cả học sinh' : 'Lọc học sinh nguy cơ'}
           </Button>
-          <Button variant="primary" size="md" icon={Download}>
-            Xuất báo cáo PDF/Excel
+          <Button
+            variant="primary"
+            size="md"
+            icon={Download}
+            onClick={() => window.print()}
+          >
+            In báo cáo sư phạm
           </Button>
         </div>
       </div>

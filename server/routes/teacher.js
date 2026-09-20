@@ -227,6 +227,81 @@ router.get('/classes', optionalAuth, (req, res) => {
   });
 });
 
+// Record daily class attendance
+router.post('/attendance', optionalAuth, (req, res) => {
+  const { classId, date, records } = req.body;
+  if (!classId || !Array.isArray(records)) {
+    return res.status(400).json({ success: false, message: 'Dữ liệu điểm danh không hợp lệ' });
+  }
+
+  const attDate = date || new Date().toISOString().split('T')[0];
+
+  // Ensure attendance table exists
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS class_attendance (
+      id TEXT PRIMARY KEY,
+      class_id TEXT NOT NULL,
+      student_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      status TEXT NOT NULL,
+      note TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(class_id, student_id, date)
+    );
+  `);
+
+  const insertStmt = db.prepare(`
+    INSERT INTO class_attendance (id, class_id, student_id, date, status, note)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(class_id, student_id, date) DO UPDATE SET
+      status = excluded.status,
+      note = excluded.note
+  `);
+
+  let unexcusedCount = 0;
+  for (const rec of records) {
+    const recId = `att_${classId}_${rec.studentId}_${attDate}`;
+    insertStmt.run(recId, classId, rec.studentId, attDate, rec.status || 'present', rec.note || '');
+    if (rec.status === 'unexcused') {
+      unexcusedCount++;
+      const student = db.prepare('SELECT u.name FROM students s JOIN users u ON s.user_id = u.id WHERE s.id = ?').get(rec.studentId);
+      db.prepare(`
+        INSERT INTO school_notices (id, title, content, category, tag, tag_type, sender, can_confirm)
+        VALUES (?, ?, ?, 'parent', 'Vắng mặt', 'danger', 'Giáo viên chủ nhiệm', 1)
+      `).run(
+        `notif_abs_${Date.now()}_${rec.studentId}`,
+        `Cảnh báo chuyên cần: Em ${student?.name || 'học sinh'} vắng mặt không phép`,
+        `Nhà trường thông báo em ${student?.name || 'học sinh'} vắng mặt không có phép trong buổi học ngày ${attDate}. Kính đề nghị phụ huynh liên hệ gấp với giáo viên chủ nhiệm.`
+      );
+    }
+  }
+
+  // Audit log
+  db.prepare(`
+    INSERT INTO audit_logs (id, actor_name, role, action, badge, badge_type)
+    VALUES (?, 'Cô Mai Lan', 'teacher', ?, 'Điểm danh', 'info')
+  `).run(`log_${Date.now()}`, `Đã hoàn tất điểm danh ngày ${attDate} cho lớp ${classId} (${records.length} học sinh).`);
+
+  res.json({
+    success: true,
+    message: `Đã lưu điểm danh ngày ${attDate} thành công!`,
+    unexcusedAlerts: unexcusedCount,
+  });
+});
+
+// Get attendance for a class on a date
+router.get('/attendance', optionalAuth, (req, res) => {
+  const classId = req.query.classId || 'cls_10A1';
+  const date = req.query.date || new Date().toISOString().split('T')[0];
+
+  try {
+    const rows = db.prepare('SELECT * FROM class_attendance WHERE class_id = ? AND date = ?').all(classId, date);
+    res.json({ success: true, date, classId, records: rows });
+  } catch {
+    res.json({ success: true, date, classId, records: [] });
+  }
+});
+
 // Teacher enters or edits a student's grade
 router.post('/grades', optionalAuth, (req, res) => {
   const { studentId, subject, testName, score, maxScore, comment } = req.body;

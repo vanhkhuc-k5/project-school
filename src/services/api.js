@@ -157,6 +157,20 @@ export const teacherApi = {
     });
     return res?.success ?? true;
   },
+
+  async recordAttendance(classId, records, date) {
+    const res = await request('/teacher/attendance', {
+      method: 'POST',
+      body: JSON.stringify({ classId, records, date }),
+    });
+    return res;
+  },
+
+  async getAttendance(classId, date) {
+    const query = new URLSearchParams({ classId: classId || 'cls_10A1', ...(date ? { date } : {}) }).toString();
+    const res = await request(`/teacher/attendance?${query}`);
+    return res?.success ? res.records : [];
+  },
 };
 
 // 4. Parent API
