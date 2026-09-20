@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { db } from '../db.js';
+import { query as pgQuery, isPostgresConfigured } from '../postgres.js';
 import { supabase, isSupabaseConfigured } from '../supabase.js';
 import { JWT_SECRET, authenticateToken, requireRole, validateInput } from '../middleware/auth.js';
 
@@ -20,7 +21,17 @@ router.post('/login', async (req, res) => {
   let user = null;
 
   try {
-    if (isSupabaseConfigured()) {
+    if (isPostgresConfigured()) {
+      const q = `
+        SELECT * FROM users
+        WHERE (email = $1 OR username = $1 OR code = $1)
+        ${role ? 'AND role = $2' : ''}
+        LIMIT 1
+      `;
+      const params = role ? [identifier, role] : [identifier];
+      const result = await pgQuery(q, params);
+      user = result.rows[0];
+    } else if (isSupabaseConfigured()) {
       let query = supabase
         .from('users')
         .select('*')
@@ -30,12 +41,8 @@ router.post('/login', async (req, res) => {
         query = query.eq('role', role);
       }
 
-      const { data, error } = await query.limit(1);
-      if (error) {
-        console.error('Supabase query error:', error);
-      } else if (data && data.length > 0) {
-        user = data[0];
-      }
+      const { data } = await query.limit(1);
+      user = data?.[0];
     } else {
       user = db.prepare(`
         SELECT * FROM users
@@ -74,16 +81,19 @@ router.get('/me', authenticateToken, async (req, res) => {
   let user = null;
 
   try {
-    if (isSupabaseConfigured()) {
-      const { data, error } = await supabase
+    if (isPostgresConfigured()) {
+      const result = await pgQuery(
+        'SELECT id, username, email, role, name, code, phone, avatar FROM users WHERE id = $1',
+        [req.user.id]
+      );
+      user = result.rows[0];
+    } else if (isSupabaseConfigured()) {
+      const { data } = await supabase
         .from('users')
         .select('id, username, email, role, name, code, phone, avatar')
         .eq('id', req.user.id)
         .single();
-
-      if (!error && data) {
-        user = data;
-      }
+      user = data;
     } else {
       user = db.prepare(
         'SELECT id, username, email, role, name, code, phone, avatar FROM users WHERE id = ?'
@@ -113,7 +123,10 @@ router.post('/change-password', authenticateToken, async (req, res) => {
   }
 
   let user = null;
-  if (isSupabaseConfigured()) {
+  if (isPostgresConfigured()) {
+    const result = await pgQuery('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    user = result.rows[0];
+  } else if (isSupabaseConfigured()) {
     const { data } = await supabase.from('users').select('*').eq('id', req.user.id).single();
     user = data;
   } else {
@@ -131,7 +144,9 @@ router.post('/change-password', authenticateToken, async (req, res) => {
 
   const newHash = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS);
 
-  if (isSupabaseConfigured()) {
+  if (isPostgresConfigured()) {
+    await pgQuery('UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2', [newHash, req.user.id]);
+  } else if (isSupabaseConfigured()) {
     await supabase.from('users').update({ password_hash: newHash, must_change_password: false }).eq('id', req.user.id);
   } else {
     db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(newHash, req.user.id);
@@ -155,9 +170,12 @@ router.post('/register',
 
     // Kiểm tra trùng lặp
     let existing = null;
-    if (isSupabaseConfigured()) {
+    if (isPostgresConfigured()) {
+      const result = await pgQuery('SELECT id FROM users WHERE username = $1 OR email = $2', [username, email]);
+      existing = result.rows[0];
+    } else if (isSupabaseConfigured()) {
       const { data } = await supabase.from('users').select('id').or(`username.eq.${username},email.eq.${email}`).limit(1);
-      existing = data && data.length > 0 ? data[0] : null;
+      existing = data?.[0];
     } else {
       existing = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email);
     }
@@ -170,7 +188,12 @@ router.post('/register',
     const passwordHash = bcrypt.hashSync(defaultPassword, BCRYPT_ROUNDS);
     const userId = `usr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    if (isSupabaseConfigured()) {
+    if (isPostgresConfigured()) {
+      await pgQuery(`
+        INSERT INTO users (id, username, email, password_hash, role, name, code, phone, avatar, must_change_password)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, true)
+      `, [userId, username, email, passwordHash, newRole, name, code || null, phone || null]);
+    } else if (isSupabaseConfigured()) {
       await supabase.from('users').insert({
         id: userId,
         username,

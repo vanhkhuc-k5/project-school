@@ -3,6 +3,8 @@ dotenv.config();
 
 import express from 'express';
 import cors from 'cors';
+import './postgres.js';
+import './supabase.js';
 import { seedDatabase } from './seed.js';
 
 // Import route modules
