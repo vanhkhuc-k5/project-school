@@ -31,3 +31,6 @@ dist-ssr
 
 # SQLite Database
 database.sqlite*
+
+# Archives
+*.zip
