@@ -1,39 +1,64 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const dbPath = path.join(__dirname, '..', 'database.sqlite');
+const dbPath = process.env.DB_PATH
+  ? path.resolve(process.env.DB_PATH)
+  : path.join(__dirname, '..', 'database.sqlite');
+
 export const db = new Database(dbPath);
 
 // Enable WAL mode for high performance concurrent reads and writes
 db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
 
 // Initialize schema
 export function initSchema() {
   db.exec(`
+    -- ========================================
+    -- CORE: Người dùng & Phân quyền
+    -- ========================================
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL, -- 'student', 'teacher', 'parent', 'admin'
+      role TEXT NOT NULL CHECK(role IN ('student', 'teacher', 'parent', 'admin')),
       name TEXT NOT NULL,
       code TEXT,
       phone TEXT,
       avatar TEXT,
+      must_change_password INTEGER DEFAULT 1,
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- ========================================
+    -- HỌC VỤ: Môn học, Lớp, Phân công
+    -- ========================================
+    CREATE TABLE IF NOT EXISTS subjects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      code TEXT UNIQUE NOT NULL,
+      department TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS classes (
       id TEXT PRIMARY KEY,
-      name TEXT NOT NULL, -- '10A1', '10A2', '11A1'
-      grade_level INTEGER NOT NULL, -- 10, 11, 12
+      name TEXT NOT NULL,
+      grade_level INTEGER NOT NULL,
       academic_year TEXT NOT NULL,
       homeroom_teacher_id TEXT,
-      FOREIGN KEY (homeroom_teacher_id) REFERENCES users(id)
+      max_students INTEGER DEFAULT 45,
+      FOREIGN KEY (homeroom_teacher_id) REFERENCES users(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS students (
@@ -44,18 +69,33 @@ export function initSchema() {
       gpa REAL DEFAULT 0,
       class_rank TEXT,
       attendance_rate REAL DEFAULT 100,
-      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (class_id) REFERENCES classes(id),
-      FOREIGN KEY (parent_id) REFERENCES users(id)
+      FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS teacher_assignments (
+      id TEXT PRIMARY KEY,
+      teacher_id TEXT NOT NULL,
+      class_id TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      academic_year TEXT NOT NULL,
+      FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+      FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+      UNIQUE(teacher_id, class_id, subject_id, academic_year)
+    );
+
+    -- ========================================
+    -- GIẢNG DẠY: Bài tập, Câu hỏi, Nộp bài
+    -- ========================================
     CREATE TABLE IF NOT EXISTS assignments (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       subject TEXT NOT NULL,
-      type TEXT NOT NULL DEFAULT 'quiz', -- 'quiz', 'essay', 'attachment'
+      type TEXT NOT NULL DEFAULT 'quiz' CHECK(type IN ('quiz', 'essay', 'attachment')),
       instructions TEXT,
-      target_classes TEXT NOT NULL, -- JSON array string: ["10A1", "10A2"]
+      target_classes TEXT NOT NULL,
       due_date TEXT NOT NULL,
       due_time TEXT NOT NULL,
       duration_minutes INTEGER DEFAULT 45,
@@ -75,7 +115,7 @@ export function initSchema() {
       points REAL DEFAULT 1.0,
       has_plot INTEGER DEFAULT 0,
       plot_data TEXT,
-      options TEXT NOT NULL, -- JSON array of options: [{"id":"A","text":"...","isCorrect":true}]
+      options TEXT NOT NULL,
       explanation TEXT,
       FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE
     );
@@ -84,15 +124,18 @@ export function initSchema() {
       id TEXT PRIMARY KEY,
       assignment_id TEXT NOT NULL,
       student_id TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'submitted', -- 'in_progress', 'submitted', 'graded'
+      status TEXT NOT NULL DEFAULT 'submitted' CHECK(status IN ('in_progress', 'submitted', 'graded')),
       score REAL,
-      student_answers TEXT, -- JSON map
+      student_answers TEXT,
       submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       teacher_feedback TEXT,
       FOREIGN KEY (assignment_id) REFERENCES assignments(id),
       FOREIGN KEY (student_id) REFERENCES students(id)
     );
 
+    -- ========================================
+    -- ĐIỂM SỐ & NĂNG LỰC
+    -- ========================================
     CREATE TABLE IF NOT EXISTS grades (
       id TEXT PRIMARY KEY,
       student_id TEXT NOT NULL,
@@ -100,6 +143,8 @@ export function initSchema() {
       test_name TEXT NOT NULL,
       score REAL NOT NULL,
       max_score REAL DEFAULT 10,
+      coefficient REAL DEFAULT 1.0,
+      semester INTEGER DEFAULT 1,
       teacher_name TEXT NOT NULL,
       comment TEXT,
       graded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -117,15 +162,54 @@ export function initSchema() {
       FOREIGN KEY (student_id) REFERENCES students(id)
     );
 
+    -- ========================================
+    -- ĐIỂM DANH
+    -- ========================================
+    CREATE TABLE IF NOT EXISTS attendance (
+      id TEXT PRIMARY KEY,
+      student_id TEXT NOT NULL,
+      class_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'present' CHECK(status IN ('present', 'absent', 'late', 'excused')),
+      note TEXT,
+      recorded_by TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (student_id) REFERENCES students(id),
+      FOREIGN KEY (class_id) REFERENCES classes(id),
+      FOREIGN KEY (recorded_by) REFERENCES users(id),
+      UNIQUE(student_id, date)
+    );
+
+    -- ========================================
+    -- THỜI KHOÁ BIỂU
+    -- ========================================
+    CREATE TABLE IF NOT EXISTS timetable (
+      id TEXT PRIMARY KEY,
+      class_id TEXT NOT NULL,
+      subject_id TEXT,
+      subject_name TEXT NOT NULL,
+      teacher_id TEXT,
+      day_of_week INTEGER NOT NULL CHECK(day_of_week BETWEEN 2 AND 7),
+      period INTEGER NOT NULL CHECK(period BETWEEN 1 AND 10),
+      room TEXT,
+      academic_year TEXT NOT NULL,
+      FOREIGN KEY (class_id) REFERENCES classes(id),
+      FOREIGN KEY (teacher_id) REFERENCES users(id),
+      UNIQUE(class_id, day_of_week, period, academic_year)
+    );
+
+    -- ========================================
+    -- TÀI CHÍNH: Học phí
+    -- ========================================
     CREATE TABLE IF NOT EXISTS tuition_invoices (
       id TEXT PRIMARY KEY,
       student_id TEXT NOT NULL,
       period TEXT NOT NULL,
       total_amount INTEGER NOT NULL,
       due_date TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'unpaid', -- 'unpaid', 'paid'
+      status TEXT NOT NULL DEFAULT 'unpaid' CHECK(status IN ('unpaid', 'paid', 'overdue')),
       paid_at DATETIME,
-      items TEXT NOT NULL, -- JSON array of [{label, amount}]
+      items TEXT NOT NULL,
       bank_name TEXT NOT NULL,
       account_number TEXT NOT NULL,
       account_name TEXT NOT NULL,
@@ -133,48 +217,79 @@ export function initSchema() {
       FOREIGN KEY (student_id) REFERENCES students(id)
     );
 
+    -- ========================================
+    -- THÔNG BÁO & GIAO TIẾP
+    -- ========================================
     CREATE TABLE IF NOT EXISTS school_notices (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       content TEXT NOT NULL,
-      category TEXT NOT NULL, -- 'teacher', 'school'
+      category TEXT NOT NULL CHECK(category IN ('teacher', 'school', 'system')),
       tag TEXT,
       tag_type TEXT DEFAULT 'info',
       sender TEXT NOT NULL,
       can_confirm INTEGER DEFAULT 0,
-      confirmed_by_users TEXT DEFAULT '[]', -- JSON array of user IDs
+      confirmed_by_users TEXT DEFAULT '[]',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE TABLE IF NOT EXISTS audit_logs (
+    CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
-      actor_name TEXT NOT NULL,
-      role TEXT NOT NULL,
-      action TEXT NOT NULL,
-      badge TEXT,
-      badge_type TEXT DEFAULT 'neutral',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      sender_id TEXT NOT NULL,
+      receiver_id TEXT NOT NULL,
+      student_id TEXT,
+      subject TEXT,
+      content TEXT NOT NULL,
+      is_read INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (sender_id) REFERENCES users(id),
+      FOREIGN KEY (receiver_id) REFERENCES users(id)
     );
 
+    -- ========================================
+    -- ĐƠN XIN PHÉP
+    -- ========================================
+    CREATE TABLE IF NOT EXISTS leave_requests (
+      id TEXT PRIMARY KEY,
+      student_id TEXT NOT NULL,
+      parent_id TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+      reviewed_by TEXT,
+      reviewed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (student_id) REFERENCES students(id),
+      FOREIGN KEY (parent_id) REFERENCES users(id),
+      FOREIGN KEY (reviewed_by) REFERENCES users(id)
+    );
+
+    -- ========================================
+    -- AI TUTOR
+    -- ========================================
     CREATE TABLE IF NOT EXISTS ai_tutor_messages (
       id TEXT PRIMARY KEY,
       student_id TEXT NOT NULL,
       topic TEXT NOT NULL,
-      sender TEXT NOT NULL, -- 'ai', 'user'
+      sender TEXT NOT NULL CHECK(sender IN ('ai', 'user')),
       text TEXT,
       has_image INTEGER DEFAULT 0,
       image_caption TEXT,
       ocr_status TEXT,
-      ai_content TEXT, -- JSON string of Socratic structure
+      ai_content TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (student_id) REFERENCES students(id)
     );
 
+    -- ========================================
+    -- HỌC LIỆU
+    -- ========================================
     CREATE TABLE IF NOT EXISTS study_resources (
       id TEXT PRIMARY KEY,
       subject TEXT NOT NULL,
       title TEXT NOT NULL,
-      type TEXT NOT NULL, -- 'pdf', 'video', 'exam'
+      type TEXT NOT NULL CHECK(type IN ('pdf', 'video', 'exam', 'slides')),
       file_size TEXT,
       grade_level INTEGER NOT NULL,
       download_url TEXT,
@@ -182,6 +297,40 @@ export function initSchema() {
       uploaded_by TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- ========================================
+    -- AUDIT LOG
+    -- ========================================
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      actor_id TEXT,
+      actor_name TEXT NOT NULL,
+      role TEXT NOT NULL,
+      action TEXT NOT NULL,
+      entity_type TEXT,
+      entity_id TEXT,
+      details TEXT,
+      badge TEXT,
+      badge_type TEXT DEFAULT 'neutral',
+      ip_address TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (actor_id) REFERENCES users(id)
+    );
+
+    -- ========================================
+    -- INDEXES for performance
+    -- ========================================
+    CREATE INDEX IF NOT EXISTS idx_students_class ON students(class_id);
+    CREATE INDEX IF NOT EXISTS idx_students_parent ON students(parent_id);
+    CREATE INDEX IF NOT EXISTS idx_grades_student ON grades(student_id);
+    CREATE INDEX IF NOT EXISTS idx_attendance_student_date ON attendance(student_id, date);
+    CREATE INDEX IF NOT EXISTS idx_assignments_created_by ON assignments(created_by);
+    CREATE INDEX IF NOT EXISTS idx_submissions_assignment ON assignment_submissions(assignment_id);
+    CREATE INDEX IF NOT EXISTS idx_submissions_student ON assignment_submissions(student_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id, is_read);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_date ON audit_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_leave_requests_student ON leave_requests(student_id);
+    CREATE INDEX IF NOT EXISTS idx_timetable_class ON timetable(class_id, academic_year);
   `);
-  console.log('SQLite Schema initialized successfully.');
+  console.log('✅ SQLite Schema initialized (production-ready, 18 tables + indexes)');
 }

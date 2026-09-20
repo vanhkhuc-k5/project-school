@@ -1,10 +1,3 @@
-import { STUDENT_DASHBOARD_DATA } from '../mock/studentData';
-import { TEACHER_ANALYTICS_DATA } from '../mock/teacherData';
-import { PARENT_DASHBOARD_DATA } from '../mock/parentData';
-import { ADMIN_DASHBOARD_DATA } from '../mock/adminData';
-import { AI_TUTOR_INITIAL_DATA } from '../mock/aiTutorData';
-import { MOCK_USERS } from '../mock/authData';
-
 const BASE_URL = '/api';
 
 function getHeaders() {
@@ -30,12 +23,14 @@ async function request(url, options = {}) {
     }
     return data;
   } catch (err) {
-    console.warn(`API request to ${url} failed:`, err.message);
-    return { success: false, message: 'Không thể kết nối đến máy chủ EduPortal' };
+    console.error(`[API] ${url}:`, err.message);
+    return { success: false, message: 'Không thể kết nối đến máy chủ EduPortal. Vui lòng kiểm tra backend.' };
   }
 }
 
+// =============================================
 // 1. Auth API
+// =============================================
 export const authApi = {
   async login(identifier, password, role) {
     const res = await request('/auth/login', {
@@ -56,17 +51,33 @@ export const authApi = {
     return res?.success ? res.user : null;
   },
 
+  async changePassword(currentPassword, newPassword) {
+    return request('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  },
+
+  async register(userData) {
+    return request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+  },
+
   logout() {
     localStorage.removeItem('edunordic_token');
     localStorage.removeItem('eduportal_user');
   },
 };
 
-// 2. Student API
+// =============================================
+// 2. Student API — Không fallback mock
+// =============================================
 export const studentApi = {
   async getDashboard() {
     const res = await request('/student/dashboard');
-    return res?.success ? res.data : STUDENT_DASHBOARD_DATA;
+    return res?.success ? res.data : null;
   },
 
   async getAssignments() {
@@ -80,11 +91,10 @@ export const studentApi = {
   },
 
   async submitAssignment(id, answers) {
-    const res = await request(`/student/assignments/${id}/submit`, {
+    return request(`/student/assignments/${id}/submit`, {
       method: 'POST',
       body: JSON.stringify({ studentAnswers: answers }),
     });
-    return res;
   },
 
   async getGrades() {
@@ -100,15 +110,17 @@ export const studentApi = {
 
   async downloadResource(id) {
     const res = await request(`/student/resources/${id}/download`, { method: 'POST' });
-    return res?.success ?? true;
+    return res?.success ?? false;
   },
 };
 
-// 3. Teacher API
+// =============================================
+// 3. Teacher API — Không fallback mock
+// =============================================
 export const teacherApi = {
   async getAnalytics() {
     const res = await request('/teacher/analytics');
-    return res?.success ? res.data : TEACHER_ANALYTICS_DATA;
+    return res?.success ? res.data : null;
   },
 
   async getClasses(classId) {
@@ -118,11 +130,10 @@ export const teacherApi = {
   },
 
   async updateGrade(data) {
-    const res = await request('/teacher/grades', {
+    return request('/teacher/grades', {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    return res?.success ?? true;
   },
 
   async getAssignments() {
@@ -131,11 +142,10 @@ export const teacherApi = {
   },
 
   async gradeSubmission(id, score, feedback) {
-    const res = await request(`/teacher/submissions/${id}/grade`, {
+    return request(`/teacher/submissions/${id}/grade`, {
       method: 'POST',
       body: JSON.stringify({ score, feedback }),
     });
-    return res?.success ?? true;
   },
 
   async getReports() {
@@ -144,26 +154,21 @@ export const teacherApi = {
   },
 
   async createAssignment(data) {
-    const res = await request('/teacher/assignments', {
+    return request('/teacher/assignments', {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    return res?.success ?? true;
   },
 
   async notifyParents() {
-    const res = await request('/teacher/intervene-notify', {
-      method: 'POST',
-    });
-    return res?.success ?? true;
+    return request('/teacher/intervene-notify', { method: 'POST' });
   },
 
   async recordAttendance(classId, records, date) {
-    const res = await request('/teacher/attendance', {
+    return request('/teacher/attendance', {
       method: 'POST',
       body: JSON.stringify({ classId, records, date }),
     });
-    return res;
   },
 
   async getAttendance(classId, date) {
@@ -173,25 +178,21 @@ export const teacherApi = {
   },
 };
 
-// 4. Parent API
+// =============================================
+// 4. Parent API — Không fallback mock
+// =============================================
 export const parentApi = {
   async getChildrenData() {
     const res = await request('/parent/children');
-    return res?.success ? res.data : PARENT_DASHBOARD_DATA;
+    return res?.success ? res.data : null;
   },
 
   async payTuition(invoiceId) {
-    const res = await request(`/parent/tuition/${invoiceId}/pay`, {
-      method: 'POST',
-    });
-    return res?.success ?? true;
+    return request(`/parent/tuition/${invoiceId}/pay`, { method: 'POST' });
   },
 
   async confirmNotice(noticeId) {
-    const res = await request(`/parent/notices/${noticeId}/confirm`, {
-      method: 'POST',
-    });
-    return res;
+    return request(`/parent/notices/${noticeId}/confirm`, { method: 'POST' });
   },
 
   async getLeaveRequests(studentId) {
@@ -201,11 +202,10 @@ export const parentApi = {
   },
 
   async submitLeaveRequest(data) {
-    const res = await request('/parent/leave-requests', {
+    return request('/parent/leave-requests', {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    return res;
   },
 
   async getTeacherMessages(studentId) {
@@ -215,11 +215,10 @@ export const parentApi = {
   },
 
   async sendTeacherMessage(data) {
-    const res = await request('/parent/messages', {
+    return request('/parent/messages', {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    return res;
   },
 
   async getDetailedGrades(studentId) {
@@ -235,34 +234,94 @@ export const parentApi = {
   },
 };
 
-// 5. Admin API
+// =============================================
+// 5. Admin API — Không fallback mock
+// =============================================
 export const adminApi = {
   async getOverview() {
     const res = await request('/admin/overview');
-    return res?.success ? res.data : ADMIN_DASHBOARD_DATA;
+    return res?.success ? res.data : null;
   },
 
   async broadcastNotice(title, content) {
-    const res = await request('/admin/broadcast', {
+    return request('/admin/broadcast', {
       method: 'POST',
       body: JSON.stringify({ title, content }),
     });
-    return res?.success ?? true;
   },
 
   async syncMoet() {
-    const res = await request('/admin/sync-moet', {
+    return request('/admin/sync-moet', { method: 'POST' });
+  },
+
+  async getUsers(filters = {}) {
+    const query = new URLSearchParams(filters).toString();
+    const res = await request(`/admin/users${query ? `?${query}` : ''}`);
+    return res?.success ? res.users : [];
+  },
+
+  async createUser(data) {
+    return request('/admin/users', {
       method: 'POST',
+      body: JSON.stringify(data),
     });
-    return res?.success ?? true;
+  },
+
+  async updateUser(id, data) {
+    return request(`/admin/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteUser(id) {
+    return request(`/admin/users/${id}`, { method: 'DELETE' });
+  },
+
+  async resetPassword(id) {
+    return request(`/admin/users/${id}/reset-password`, { method: 'POST' });
+  },
+
+  async getClasses() {
+    const res = await request('/admin/classes');
+    return res?.success ? res.classes : [];
+  },
+
+  async createClass(data) {
+    return request('/admin/classes', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getTeachers() {
+    const res = await request('/admin/teachers');
+    return res?.success ? res.teachers : [];
+  },
+
+  async getFinancials() {
+    const res = await request('/admin/financials');
+    return res?.success ? res.financials : null;
+  },
+
+  async getAuditLogs() {
+    const res = await request('/admin/audit-logs');
+    return res?.success ? res.logs : [];
+  },
+
+  async getSubjects() {
+    const res = await request('/admin/subjects');
+    return res?.success ? res.subjects : [];
   },
 };
 
+// =============================================
 // 6. AI Tutor API
+// =============================================
 export const aiTutorApi = {
   async getMessages() {
     const res = await request('/ai-tutor/messages');
-    return res?.success && res.messages.length > 0 ? res.messages : AI_TUTOR_INITIAL_DATA.messages;
+    return res?.success ? res.messages : [];
   },
 
   async sendMessage(text, topic) {
@@ -274,7 +333,9 @@ export const aiTutorApi = {
   },
 };
 
-// 7. Synchronization & Notification API
+// =============================================
+// 7. Sync & Notifications API
+// =============================================
 export const syncApi = {
   async getStatus(role) {
     const res = await request(`/sync/status${role ? `?role=${role}` : ''}`);
@@ -287,20 +348,17 @@ export const syncApi = {
   },
 
   async markAsRead(noticeId) {
-    const res = await request(`/sync/notifications/${noticeId}/read`, { method: 'POST' });
-    return res?.success ?? true;
+    return request(`/sync/notifications/${noticeId}/read`, { method: 'POST' });
   },
 
   async markAllAsRead() {
-    const res = await request('/sync/notifications/read-all', { method: 'POST' });
-    return res?.success ?? true;
+    return request('/sync/notifications/read-all', { method: 'POST' });
   },
 
   async triggerEvent(eventData) {
-    const res = await request('/sync/trigger', {
+    return request('/sync/trigger', {
       method: 'POST',
       body: JSON.stringify(eventData),
     });
-    return res?.success ?? true;
   },
 };

@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { MOCK_USERS } from '../mock/authData';
 import { authApi } from '../services/api';
 
 const AuthContext = createContext(null);
@@ -27,7 +26,6 @@ export function AuthProvider({ children }) {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
   useEffect(() => {
-    // Check if token exists to hydrate user from real backend
     const initAuth = async () => {
       try {
         const token = localStorage.getItem('edunordic_token');
@@ -38,7 +36,7 @@ export function AuthProvider({ children }) {
             setCurrentRole(user.role);
             localStorage.setItem('eduportal_user', JSON.stringify(user));
           } else {
-            // Token expired or invalid
+            // Token expired or invalid — clear session
             setCurrentUser(null);
             setCurrentRole('guest');
             localStorage.removeItem('eduportal_user');
@@ -57,14 +55,6 @@ export function AuthProvider({ children }) {
     };
     initAuth();
   }, []);
-
-  const switchRole = (role) => {
-    if (MOCK_USERS[role]) {
-      setCurrentRole(role);
-      setCurrentUser(MOCK_USERS[role]);
-      localStorage.setItem('eduportal_user', JSON.stringify(MOCK_USERS[role]));
-    }
-  };
 
   const login = async (role, identifier, password) => {
     setIsLoadingAuth(true);
@@ -93,7 +83,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ currentUser, currentRole, switchRole, login, logout, isLoadingAuth }}>
+    <AuthContext.Provider value={{ currentUser, currentRole, login, logout, isLoadingAuth }}>
       {children}
     </AuthContext.Provider>
   );

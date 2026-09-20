@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
-import { AI_TUTOR_INITIAL_DATA } from '../../mock/aiTutorData';
 import { aiTutorApi } from '../../services/api';
 import {
   Sparkles,
