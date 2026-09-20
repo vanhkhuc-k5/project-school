@@ -58,16 +58,16 @@ export function StudentGradesPage() {
 
       {/* KPI Overview Banner */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card padding="p-5" className="bg-primary text-white border-0">
-          <div className="text-[11px] text-white/70 uppercase tracking-wider font-medium">
+        <Card padding="p-5">
+          <div className="text-[11px] text-text-secondary uppercase tracking-wider font-medium">
             Điểm trung bình (GPA)
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-bold tracking-tight">{gradeData.overallGpa}</span>
-            <span className="text-xs text-white/70">/ 10</span>
+            <span className="text-3xl font-semibold text-primary tracking-tight">{gradeData.overallGpa}</span>
+            <span className="text-xs text-text-secondary">/ 10</span>
           </div>
-          <div className="mt-2 text-xs text-white/80 flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+          <div className="mt-2 text-xs text-success flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-success" />
             <span>Xếp loại: Xuất sắc</span>
           </div>
         </Card>
@@ -77,10 +77,10 @@ export function StudentGradesPage() {
             Thứ hạng trong lớp
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-primary tracking-tight">{gradeData.classRank}</span>
+            <span className="text-3xl font-semibold text-primary tracking-tight">{gradeData.classRank}</span>
           </div>
           <div className="mt-2 text-xs text-text-secondary flex items-center gap-1">
-            <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+            <TrendingUp className="w-3.5 h-3.5 text-success" />
             <span>Top 7% học sinh toàn khối 10</span>
           </div>
         </Card>
@@ -90,7 +90,7 @@ export function StudentGradesPage() {
             Hạnh kiểm & Rèn luyện
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-emerald-600 tracking-tight">{gradeData.conduct}</span>
+            <span className="text-2xl font-semibold text-success tracking-tight">{gradeData.conduct}</span>
           </div>
           <div className="mt-2 text-xs text-text-secondary">
             Chuyên cần: <strong className="text-text-primary">{gradeData.attendanceRate}</strong>
@@ -102,7 +102,7 @@ export function StudentGradesPage() {
             Tổng số tín chỉ học phần
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-primary tracking-tight">{gradeData.totalCredits}</span>
+            <span className="text-3xl font-semibold text-primary tracking-tight">{gradeData.totalCredits}</span>
             <span className="text-xs text-text-secondary">tín chỉ</span>
           </div>
           <div className="mt-2 text-xs text-text-secondary">
@@ -115,7 +115,7 @@ export function StudentGradesPage() {
       <Card padding="p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-base font-semibold text-text-primary">Chi tiết điểm các môn học</h2>
+            <h2 className="text-base font-medium text-text-primary">Chi tiết điểm các môn học</h2>
             <p className="text-xs text-text-secondary">Đầy đủ các đầu điểm kiểm tra thường xuyên và kiểm tra định kỳ</p>
           </div>
           <Badge variant="info">Học kỳ I</Badge>

@@ -377,7 +377,7 @@ export function CreateAssignment({ onBackToDashboard }) {
             <div className="flex items-center justify-between hairline-b pb-3">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wider">
+                <h3 className="text-xs font-medium text-text-primary tracking-wider">
                   Xem trước học sinh (Live Preview)
                 </h3>
               </div>
@@ -394,13 +394,13 @@ export function CreateAssignment({ onBackToDashboard }) {
             {/* Test Header */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-ocean uppercase">Bài kiểm tra định kỳ</span>
-                <span className="px-2.5 py-0.5 rounded bg-warning-light text-warning-dark font-mono text-xs font-semibold flex items-center gap-1">
+                <span className="text-[11px] font-medium text-ocean">Bài kiểm tra định kỳ</span>
+                <span className="px-2.5 py-0.5 rounded bg-warning-light text-warning-dark font-mono text-xs font-medium flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   <span>44:59</span>
                 </span>
               </div>
-              <h4 className="text-sm font-semibold text-text-primary">{formData.title}</h4>
+              <h4 className="text-sm font-medium text-text-primary">{formData.title}</h4>
               <p className="text-xs text-text-secondary">
                 GV: Cô Mai Lan • Môn Toán 10
               </p>

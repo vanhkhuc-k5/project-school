@@ -354,7 +354,7 @@ export function AiTutorPage() {
                           <div>2. Bài tập:</div>
                           <div>Cho pt: x² - 2(m-1)x + 2m - 5 = 0</div>
                           <div>Tìm m để pt có 2 nghiệm x₁, x₂ trái dấu...</div>
-                          <div className="text-blue-700 font-mono not-italic text-[11px]">
+                          <div className="text-ocean font-mono not-italic text-[11px]">
                             👉 Xét: P = c/a &lt; 0 &hArr; (2m - 5) / 1 &lt; 0 ???
                           </div>
                         </div>
@@ -362,7 +362,7 @@ export function AiTutorPage() {
                     )}
 
                     {msg.ocrStatus && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-sky-200">
+                      <div className="flex items-center gap-1.5 text-[11px] text-sky">
                         <FileCheck className="w-3.5 h-3.5 text-sky" />
                         <span>{msg.ocrStatus}</span>
                       </div>

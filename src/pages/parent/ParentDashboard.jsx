@@ -90,7 +90,7 @@ export function ParentDashboard({ activeTab = 'home', onTabChange }) {
             <span>•</span>
             <span className="text-text-primary font-medium">Trường THCS & THPT Khởi Hoàn</span>
           </div>
-          <h1 className="text-xl font-medium text-text-primary mt-1">
+          <h1 className="text-2xl font-medium text-text-primary mt-1">
             Theo dõi học tập của con
           </h1>
         </div>

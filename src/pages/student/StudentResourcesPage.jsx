@@ -112,10 +112,10 @@ export function StudentResourcesPage() {
                   <span
                     className={`w-9 h-9 rounded flex items-center justify-center ${
                       isVideo
-                        ? 'bg-purple-50 text-purple-600'
+                        ? 'bg-sky text-ocean'
                         : isExam
-                        ? 'bg-amber-50 text-amber-600'
-                        : 'bg-sky text-primary'
+                        ? 'bg-warning-light text-warning-dark'
+                        : 'bg-surface-neutral text-primary'
                     }`}
                   >
                     <Icon className="w-5 h-5 stroke-[1.75]" />
@@ -126,7 +126,7 @@ export function StudentResourcesPage() {
                 </div>
 
                 <div>
-                  <h3 className="text-xs font-semibold text-text-primary group-hover:text-ocean line-clamp-2 leading-relaxed">
+                  <h3 className="text-xs font-medium text-text-primary group-hover:text-ocean line-clamp-2 leading-relaxed">
                     {item.title}
                   </h3>
                   <div className="flex items-center gap-2 text-[11px] text-text-secondary mt-2">
@@ -183,7 +183,7 @@ export function StudentResourcesPage() {
             </div>
 
             <div className="p-6 bg-white border border-hairline rounded space-y-3 font-mono leading-relaxed text-[11px]">
-              <div className="font-bold text-primary">NỘI DUNG TÓM TẮT & HƯỚNG DẪN ÔN TẬP:</div>
+              <div className="font-medium text-primary">Nội dung tóm tắt & hướng dẫn ôn tập:</div>
               <p>1. Định nghĩa chuẩn và các công thức biến đổi cơ bản theo chương trình SGK mới.</p>
               <p>2. Phương pháp phân tích đồ thị và các bài toán thực tế có gắn tham số.</p>
               <p>3. 20 bài tập mẫu có lời giải chi tiết và phân tích các lỗi sai học sinh thường gặp.</p>

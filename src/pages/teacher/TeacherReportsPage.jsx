@@ -52,16 +52,16 @@ export function TeacherReportsPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card padding="p-5" className="bg-primary text-white border-0">
-          <div className="text-[11px] text-white/70 uppercase tracking-wider font-medium">
+        <Card padding="p-5">
+          <div className="text-[11px] text-text-secondary uppercase tracking-wider font-medium">
             Học sinh Xuất sắc & Giỏi
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-bold tracking-tight">34</span>
-            <span className="text-xs text-white/70">/ 42 học sinh</span>
+            <span className="text-3xl font-semibold text-primary tracking-tight">34</span>
+            <span className="text-xs text-text-secondary">/ 42 học sinh</span>
           </div>
-          <div className="mt-2 text-xs text-white/80">
-            Tỷ lệ đạt chuẩn giỏi: <strong>81.0%</strong>
+          <div className="mt-2 text-xs text-text-secondary">
+            Tỷ lệ đạt chuẩn giỏi: <strong className="text-text-primary">81.0%</strong>
           </div>
         </Card>
 
@@ -70,7 +70,7 @@ export function TeacherReportsPage() {
             Học sinh Khá & Đạt
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-ocean tracking-tight">06</span>
+            <span className="text-3xl font-semibold text-ocean tracking-tight">06</span>
             <span className="text-xs text-text-secondary">học sinh</span>
           </div>
           <div className="mt-2 text-xs text-text-secondary">
@@ -83,7 +83,7 @@ export function TeacherReportsPage() {
             Cần phụ đạo tăng cường
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-danger tracking-tight">02</span>
+            <span className="text-3xl font-semibold text-danger tracking-tight">02</span>
             <span className="text-xs text-text-secondary">học sinh</span>
           </div>
           <div className="mt-2 text-xs text-danger font-medium">
@@ -96,10 +96,10 @@ export function TeacherReportsPage() {
             Điểm trung bình toàn khối
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-primary tracking-tight">8.12</span>
+            <span className="text-3xl font-semibold text-primary tracking-tight">8.12</span>
             <span className="text-xs text-text-secondary">/ 10</span>
           </div>
-          <div className="mt-2 text-xs text-emerald-600 font-medium">
+          <div className="mt-2 text-xs text-success font-medium">
             +0.35 so với cùng kỳ năm trước
           </div>
         </Card>

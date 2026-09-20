@@ -60,29 +60,31 @@ export function StudentLayout({ children, currentTab = 'home', onTabChange }) {
         </div>
 
         {/* Bottom profile info */}
-        <div className="p-4 hairline-t bg-white m-3 rounded-card border border-hairline flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img
-              src="/assets/student_avatar.png"
-              alt="Avatar"
-              className="w-9 h-9 rounded-full object-cover border border-hairline"
-            />
-            <div>
-              <div className="text-xs font-medium text-text-primary leading-tight">
-                {currentUser?.name || 'Nguyễn Minh Khang'}
-              </div>
-              <div className="text-[11px] text-text-secondary mt-0.5">
-                {currentUser?.class || 'Lớp 11A1 • K52'}
+        <div className="p-3">
+          <div className="p-3 bg-white rounded-card border border-hairline flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <img
+                src={currentUser?.avatar || '/assets/student_avatar.png'}
+                alt="Avatar"
+                className="w-9 h-9 rounded-full object-cover border border-hairline"
+              />
+              <div>
+                <div className="text-xs font-medium text-text-primary leading-tight">
+                  {currentUser?.name || 'Nguyễn Minh Khang'}
+                </div>
+                <div className="text-[11px] text-text-secondary mt-0.5">
+                  {currentUser?.class || 'Lớp 11A1 • K52'}
+                </div>
               </div>
             </div>
+            <button
+              onClick={logout}
+              title="Đăng xuất"
+              className="p-1.5 text-text-secondary hover:text-danger rounded hover:bg-danger-light transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            onClick={logout}
-            title="Đăng xuất"
-            className="p-1 text-text-secondary hover:text-danger rounded hover:bg-danger-light transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
         </div>
       </aside>
 
