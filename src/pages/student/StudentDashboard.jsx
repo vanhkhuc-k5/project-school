@@ -19,7 +19,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
-export function StudentDashboard({ onNavigateToAiTutor }) {
+export function StudentDashboard({ onNavigateToAiTutor, onNavigateToTimetable }) {
   const { lastSync } = useSync();
   const [data, setData] = useState(STUDENT_DASHBOARD_DATA);
 
@@ -49,7 +49,7 @@ export function StudentDashboard({ onNavigateToAiTutor }) {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="secondary" size="md" icon={Calendar}>
+          <Button variant="secondary" size="md" icon={Calendar} onClick={onNavigateToTimetable}>
             Lịch biểu hôm nay
           </Button>
           <button

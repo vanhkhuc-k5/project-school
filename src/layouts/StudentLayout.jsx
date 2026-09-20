@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, BookOpen, Layers, Award, Sparkles, LogOut } from 'lucide-react';
+import { Home, BookOpen, Layers, Award, Sparkles, LogOut, Calendar, UserCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
 import { GlobalBroadcastBanner } from '../components/GlobalBroadcastBanner';
@@ -9,7 +9,9 @@ export function StudentLayout({ children, currentTab = 'home', onTabChange }) {
 
   const menuItems = [
     { id: 'home', label: 'Trang chủ', icon: Home },
+    { id: 'timetable', label: 'Thời khóa biểu', icon: Calendar },
     { id: 'assignments', label: 'Bài tập', icon: BookOpen },
+    { id: 'attendance', label: 'Chuyên cần', icon: UserCheck },
     { id: 'resources', label: 'Kho học liệu', icon: Layers },
     { id: 'grades', label: 'Điểm số', icon: Award },
     { id: 'ai-tutor', label: 'Gia sư AI', icon: Sparkles, badge: 'AI Mới' },

@@ -112,6 +112,16 @@ export const studentApi = {
     const res = await request(`/student/resources/${id}/download`, { method: 'POST' });
     return res?.success ?? false;
   },
+
+  async getTimetable() {
+    const res = await request('/student/timetable');
+    return res?.success ? res.schedule : [];
+  },
+
+  async getAttendance() {
+    const res = await request('/student/attendance');
+    return res?.success ? res.attendance : null;
+  },
 };
 
 // =============================================

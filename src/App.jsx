@@ -14,6 +14,8 @@ import { StudentDashboard } from './pages/student/StudentDashboard';
 import { StudentAssignmentsPage } from './pages/student/StudentAssignmentsPage';
 import { StudentResourcesPage } from './pages/student/StudentResourcesPage';
 import { StudentGradesPage } from './pages/student/StudentGradesPage';
+import { StudentTimetablePage } from './pages/student/StudentTimetablePage';
+import { StudentAttendancePage } from './pages/student/StudentAttendancePage';
 import { AiTutorPage } from './pages/student/AiTutorPage';
 
 import { TeacherDashboard } from './pages/teacher/TeacherDashboard';
@@ -85,7 +87,9 @@ function AppContent() {
     // Student views
     if (currentRole === 'student') {
       let studentTab = 'home';
-      if (currentView === 'student-assignments') studentTab = 'assignments';
+      if (currentView === 'student-timetable') studentTab = 'timetable';
+      else if (currentView === 'student-assignments') studentTab = 'assignments';
+      else if (currentView === 'student-attendance') studentTab = 'attendance';
       else if (currentView === 'student-resources') studentTab = 'resources';
       else if (currentView === 'student-grades') studentTab = 'grades';
       else if (currentView === 'student-ai-tutor') studentTab = 'ai-tutor';
@@ -95,7 +99,9 @@ function AppContent() {
           currentTab={studentTab}
           onTabChange={(tabId) => {
             if (tabId === 'ai-tutor') setCurrentView('student-ai-tutor');
+            else if (tabId === 'timetable') setCurrentView('student-timetable');
             else if (tabId === 'assignments') setCurrentView('student-assignments');
+            else if (tabId === 'attendance') setCurrentView('student-attendance');
             else if (tabId === 'resources') setCurrentView('student-resources');
             else if (tabId === 'grades') setCurrentView('student-grades');
             else setCurrentView('student-dashboard');
@@ -103,8 +109,12 @@ function AppContent() {
         >
           {studentTab === 'ai-tutor' ? (
             <AiTutorPage />
+          ) : studentTab === 'timetable' ? (
+            <StudentTimetablePage />
           ) : studentTab === 'assignments' ? (
             <StudentAssignmentsPage />
+          ) : studentTab === 'attendance' ? (
+            <StudentAttendancePage />
           ) : studentTab === 'resources' ? (
             <StudentResourcesPage />
           ) : studentTab === 'grades' ? (
@@ -112,6 +122,7 @@ function AppContent() {
           ) : (
             <StudentDashboard
               onNavigateToAiTutor={() => setCurrentView('student-ai-tutor')}
+              onNavigateToTimetable={() => setCurrentView('student-timetable')}
             />
           )}
         </StudentLayout>
