@@ -1,18 +1,26 @@
 import React from 'react';
-import { Home, Award, Calendar, Bell, CreditCard, MessageSquare, Phone, LogOut } from 'lucide-react';
+import { Home, Award, Calendar, Bell, CreditCard, MessageSquare, Phone, LogOut, FileCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
 import { GlobalBroadcastBanner } from '../components/GlobalBroadcastBanner';
 
-export function ParentLayout({ children, currentTab = 'home', onTabChange }) {
+export function ParentLayout({
+  children,
+  currentTab = 'home',
+  onTabChange,
+  activeChild,
+  onSelectChild,
+  childrenList = [],
+}) {
   const { currentUser, logout } = useAuth();
 
   const menuItems = [
     { id: 'home', label: 'Trang chủ', icon: Home },
     { id: 'grades', label: 'Kết quả học tập', icon: Award },
     { id: 'schedule', label: 'Lịch học & Thi', icon: Calendar },
-    { id: 'notices', label: 'Thông báo trường', icon: Bell },
+    { id: 'leave', label: 'Đơn xin nghỉ học', icon: FileCheck },
     { id: 'tuition', label: 'Học phí & Dịch vụ', icon: CreditCard },
+    { id: 'notices', label: 'Thông báo trường', icon: Bell },
     { id: 'messages', label: 'Tin nhắn giáo viên', icon: MessageSquare },
   ];
 
@@ -30,16 +38,48 @@ export function ParentLayout({ children, currentTab = 'home', onTabChange }) {
             </div>
           </div>
 
-          {/* Child active chip */}
+          {/* Child active chip / switcher */}
           <div className="p-3">
-            <div className="p-3 bg-white rounded-card border border-hairline flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-sky text-primary flex items-center justify-center font-medium text-xs">
-                🎓
+            <div className="p-3 bg-white rounded-card border border-hairline space-y-2">
+              <div className="flex items-center justify-between text-[11px] text-text-secondary">
+                <span>Đang xem hồ sơ của:</span>
+                {childrenList.length > 1 && (
+                  <span className="text-[10px] text-ocean font-medium">Đổi con ({childrenList.length})</span>
+                )}
               </div>
-              <div>
-                <div className="text-xs font-medium text-text-primary">Nguyễn Minh Khôi</div>
-                <div className="text-[11px] text-text-secondary">Lớp 10A1 • 2024-2025</div>
+              <div className="flex items-center gap-3">
+                <img
+                  src={activeChild?.avatar || 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=120&h=120'}
+                  alt={activeChild?.name || 'Học sinh'}
+                  className="w-9 h-9 rounded-full object-cover border border-hairline"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-semibold text-text-primary truncate">
+                    {activeChild?.name || 'Nguyễn Minh Khôi'}
+                  </div>
+                  <div className="text-[11px] text-text-secondary truncate">
+                    {activeChild?.class?.split('•')[0] || 'Lớp 10A1'} • {activeChild?.code || 'HS-10A1'}
+                  </div>
+                </div>
               </div>
+
+              {childrenList.length > 1 && (
+                <div className="flex gap-1 pt-1 hairline-t">
+                  {childrenList.map((ch) => (
+                    <button
+                      key={ch.id}
+                      onClick={() => onSelectChild?.(ch.id)}
+                      className={`flex-1 py-1 px-1.5 text-[11px] rounded font-medium truncate transition-colors ${
+                        activeChild?.id === ch.id
+                          ? 'bg-sky text-primary border border-ocean/30'
+                          : 'bg-surface-neutral text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      {ch.name.split(' ').slice(-2).join(' ')}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

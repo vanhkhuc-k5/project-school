@@ -36,6 +36,8 @@ function AppContent() {
     return 'login';
   });
   const [parentTab, setParentTab] = useState('home');
+  const [parentSelectedChildId, setParentSelectedChildId] = useState('std_khoi');
+  const [parentChildrenList, setParentChildrenList] = useState([]);
   const [adminTab, setAdminTab] = useState('overview');
 
   // Sync view when authentication role changes
@@ -165,9 +167,27 @@ function AppContent() {
 
     // Parent views
     if (currentRole === 'parent') {
+      const activeChild = parentChildrenList.find((c) => c.id === parentSelectedChildId) || parentChildrenList[0];
       return (
-        <ParentLayout currentTab={parentTab} onTabChange={setParentTab}>
-          <ParentDashboard activeTab={parentTab} onTabChange={setParentTab} />
+        <ParentLayout
+          currentTab={parentTab}
+          onTabChange={setParentTab}
+          activeChild={activeChild}
+          onSelectChild={setParentSelectedChildId}
+          childrenList={parentChildrenList}
+        >
+          <ParentDashboard
+            activeTab={parentTab}
+            onTabChange={setParentTab}
+            selectedChildId={parentSelectedChildId}
+            onSelectChild={setParentSelectedChildId}
+            onChildrenLoaded={(children) => {
+              setParentChildrenList(children);
+              if (children?.length && !children.find((c) => c.id === parentSelectedChildId)) {
+                setParentSelectedChildId(children[0].id);
+              }
+            }}
+          />
         </ParentLayout>
       );
     }

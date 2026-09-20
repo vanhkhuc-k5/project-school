@@ -193,6 +193,46 @@ export const parentApi = {
     });
     return res;
   },
+
+  async getLeaveRequests(studentId) {
+    const query = studentId ? `?studentId=${studentId}` : '';
+    const res = await request(`/parent/leave-requests${query}`);
+    return res?.success ? res.requests : [];
+  },
+
+  async submitLeaveRequest(data) {
+    const res = await request('/parent/leave-requests', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return res;
+  },
+
+  async getTeacherMessages(studentId) {
+    const query = studentId ? `?studentId=${studentId}` : '';
+    const res = await request(`/parent/messages${query}`);
+    return res?.success ? res.messages : [];
+  },
+
+  async sendTeacherMessage(data) {
+    const res = await request('/parent/messages', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return res;
+  },
+
+  async getDetailedGrades(studentId) {
+    const query = studentId ? `?studentId=${studentId}` : '';
+    const res = await request(`/parent/grades-detail${query}`);
+    return res?.success ? res.data : null;
+  },
+
+  async getInvoices(studentId) {
+    const query = studentId ? `?studentId=${studentId}` : '';
+    const res = await request(`/parent/invoices${query}`);
+    return res?.success ? res : null;
+  },
 };
 
 // 5. Admin API
