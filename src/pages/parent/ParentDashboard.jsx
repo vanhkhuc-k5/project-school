@@ -26,7 +26,7 @@ import {
   Bell,
 } from 'lucide-react';
 
-export function ParentDashboard() {
+export function ParentDashboard({ activeTab = 'home', onTabChange }) {
   const { lastSync, triggerSync } = useSync();
   const [data, setData] = useState(PARENT_DASHBOARD_DATA);
   const [selectedChildId, setSelectedChildId] = useState(data.currentChildId);

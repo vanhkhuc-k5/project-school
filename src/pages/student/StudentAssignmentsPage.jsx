@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export function StudentAssignmentsPage() {
-  const { triggerSync } = useSync();
+  const { lastSync, triggerSync } = useSync();
   const [assignments, setAssignments] = useState([]);
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedAssignment, setSelectedAssignment] = useState(null);
@@ -43,7 +43,7 @@ export function StudentAssignmentsPage() {
 
   useEffect(() => {
     fetchAssignments();
-  }, []);
+  }, [lastSync]);
 
   // Timer countdown
   useEffect(() => {

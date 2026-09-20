@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 export function TeacherAssignmentsPage({ onNavigateCreateAssignment }) {
-  const { triggerSync } = useSync();
+  const { lastSync, triggerSync } = useSync();
   const [data, setData] = useState(null);
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [gradingScore, setGradingScore] = useState('9.0');
@@ -34,7 +34,7 @@ export function TeacherAssignmentsPage({ onNavigateCreateAssignment }) {
 
   useEffect(() => {
     fetchAssignments();
-  }, []);
+  }, [lastSync]);
 
   const handleOpenGradingModal = (sub) => {
     setSelectedSubmission(sub);

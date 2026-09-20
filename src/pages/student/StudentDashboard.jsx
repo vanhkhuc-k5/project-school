@@ -4,6 +4,7 @@ import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { STUDENT_DASHBOARD_DATA } from '../../mock/studentData';
 import { studentApi } from '../../services/api';
+import { useSync } from '../../context/SyncContext';
 import {
   Calendar,
   Video,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react';
 
 export function StudentDashboard({ onNavigateToAiTutor }) {
+  const { lastSync } = useSync();
   const [data, setData] = useState(STUDENT_DASHBOARD_DATA);
 
   useEffect(() => {
@@ -31,7 +33,7 @@ export function StudentDashboard({ onNavigateToAiTutor }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [lastSync]);
 
   return (
     <div className="space-y-6">

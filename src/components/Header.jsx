@@ -3,6 +3,14 @@ import { Search, Bell, Calendar, LogOut, ChevronDown, User, RefreshCw } from 'lu
 import { useAuth } from '../context/AuthContext';
 import { useSync } from '../context/SyncContext';
 import { NotificationCenter } from './NotificationCenter';
+import { Badge } from './Badge';
+
+const roleBadgeConfig = {
+  student: { label: 'Học sinh', variant: 'info' },
+  teacher: { label: 'Giáo viên', variant: 'success' },
+  parent: { label: 'Phụ huynh', variant: 'warning' },
+  admin: { label: 'Ban Giám Hiệu', variant: 'neutral' },
+};
 
 export function Header({
   searchPlaceholder = 'Tìm kiếm bài học, tài liệu, bài tập...',
@@ -86,8 +94,15 @@ export function Header({
             </div>
           )}
           <div className="hidden md:block text-left">
-            <div className="text-sm font-medium text-text-primary leading-none">
-              {currentUser?.name || 'Người dùng'}
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-text-primary leading-none">
+                {currentUser?.name || 'Người dùng'}
+              </span>
+              {roleBadgeConfig[currentRole] && (
+                <Badge variant={roleBadgeConfig[currentRole].variant} size="sm">
+                  {roleBadgeConfig[currentRole].label}
+                </Badge>
+              )}
             </div>
             <div className="text-[11px] text-text-secondary mt-1 leading-none">
               {currentUser?.class || currentUser?.department || currentUser?.title || 'Thành viên'}

@@ -24,7 +24,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 
-export function AdminDashboard() {
+export function AdminDashboard({ activeTab = 'overview', onTabChange }) {
   const { lastSync, triggerSync } = useSync();
   const [data, setData] = useState(ADMIN_DASHBOARD_DATA);
   const [selectedYear, setSelectedYear] = useState('Năm học 2024 - 2025');

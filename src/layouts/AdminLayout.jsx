@@ -27,10 +27,10 @@ export function AdminLayout({ children, currentTab = 'overview', onTabChange }) 
         <div>
           {/* Brand */}
           <div className="h-16 px-6 flex items-center gap-3 hairline-b bg-white">
-            <img src="/assets/logo.png" alt="NordicEdu Logo" className="w-8 h-8 object-contain" />
+            <img src="/assets/logo.png" alt="EduPortal Logo" className="w-8 h-8 object-contain" />
             <div>
-              <div className="text-base font-medium text-primary tracking-tight leading-none">NordicEdu</div>
-              <div className="text-[11px] text-text-secondary mt-1 leading-none">Hệ thống Quản lý</div>
+              <div className="text-base font-medium text-primary tracking-tight leading-none">EduPortal</div>
+              <div className="text-[11px] text-text-secondary mt-1 leading-none">Ban Giám Hiệu & Quản trị</div>
             </div>
           </div>
 
@@ -48,11 +48,11 @@ export function AdminLayout({ children, currentTab = 'overview', onTabChange }) 
                   onClick={() => onTabChange?.(item.id)}
                   className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded text-sm transition-colors ${
                     isActive
-                      ? 'bg-primary text-white font-medium'
+                      ? 'bg-sky text-primary font-medium'
                       : 'text-text-secondary hover:text-text-primary hover:bg-hairline/40'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 stroke-[1.75] ${isActive ? 'text-white' : 'text-text-secondary'}`} />
+                  <Icon className={`w-4 h-4 stroke-[1.75] ${isActive ? 'text-primary' : 'text-text-secondary'}`} />
                   <span>{item.label}</span>
                 </button>
               );
@@ -71,13 +71,13 @@ export function AdminLayout({ children, currentTab = 'overview', onTabChange }) 
                 <button
                   key={item.id}
                   onClick={() => onTabChange?.(item.id)}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2 rounded text-sm transition-colors ${
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded text-sm transition-colors ${
                     isActive
-                      ? 'bg-primary text-white font-medium'
+                      ? 'bg-sky text-primary font-medium'
                       : 'text-text-secondary hover:text-text-primary hover:bg-hairline/40'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 stroke-[1.75] ${isActive ? 'text-white' : 'text-text-secondary'}`} />
+                  <Icon className={`w-4 h-4 stroke-[1.75] ${isActive ? 'text-primary' : 'text-text-secondary'}`} />
                   <span>{item.label}</span>
                 </button>
               );

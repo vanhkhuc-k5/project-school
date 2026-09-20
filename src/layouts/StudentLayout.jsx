@@ -22,10 +22,10 @@ export function StudentLayout({ children, currentTab = 'home', onTabChange }) {
         <div>
           {/* Brand Header */}
           <div className="h-16 px-6 flex items-center gap-3 hairline-b bg-white">
-            <img src="/assets/logo.png" alt="EduNordic Logo" className="w-8 h-8 object-contain" />
+            <img src="/assets/logo.png" alt="EduPortal Logo" className="w-8 h-8 object-contain" />
             <div>
-              <div className="text-base font-medium text-primary tracking-tight leading-none">EduNordic</div>
-              <div className="text-[11px] text-text-secondary mt-1 leading-none">Học sinh THPT</div>
+              <div className="text-base font-medium text-primary tracking-tight leading-none">EduPortal</div>
+              <div className="text-[11px] text-text-secondary mt-1 leading-none">Cổng Học sinh</div>
             </div>
           </div>
 

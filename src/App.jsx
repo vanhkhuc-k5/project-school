@@ -30,6 +30,8 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 function AppContent() {
   const { currentRole, switchRole } = useAuth();
   const [currentView, setCurrentView] = useState('student-dashboard');
+  const [parentTab, setParentTab] = useState('home');
+  const [adminTab, setAdminTab] = useState('overview');
 
   const handleLoginSuccess = (role) => {
     switch (role) {
@@ -41,9 +43,11 @@ function AppContent() {
         break;
       case 'parent':
         setCurrentView('parent-dashboard');
+        setParentTab('home');
         break;
       case 'admin':
         setCurrentView('admin-dashboard');
+        setAdminTab('overview');
         break;
       default:
         setCurrentView('student-dashboard');
@@ -140,8 +144,8 @@ function AppContent() {
     // Parent views
     if (currentRole === 'parent') {
       return (
-        <ParentLayout currentTab="home">
-          <ParentDashboard />
+        <ParentLayout currentTab={parentTab} onTabChange={setParentTab}>
+          <ParentDashboard activeTab={parentTab} onTabChange={setParentTab} />
         </ParentLayout>
       );
     }
@@ -149,8 +153,8 @@ function AppContent() {
     // Admin views
     if (currentRole === 'admin') {
       return (
-        <AdminLayout currentTab="overview">
-          <AdminDashboard />
+        <AdminLayout currentTab={adminTab} onTabChange={setAdminTab}>
+          <AdminDashboard activeTab={adminTab} onTabChange={setAdminTab} />
         </AdminLayout>
       );
     }

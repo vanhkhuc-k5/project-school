@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 export function TeacherClassesPage() {
-  const { triggerSync } = useSync();
+  const { lastSync, triggerSync } = useSync();
   const [classData, setClassData] = useState(null);
   const [selectedClassId, setSelectedClassId] = useState('cls_10A1');
   const [searchQuery, setSearchQuery] = useState('');
@@ -40,7 +40,7 @@ export function TeacherClassesPage() {
 
   useEffect(() => {
     fetchClass(selectedClassId);
-  }, [selectedClassId]);
+  }, [selectedClassId, lastSync]);
 
   const handleOpenGradeModal = (student) => {
     setSelectedStudentForGrade(student);
