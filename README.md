@@ -1,25 +1,26 @@
 # EduPortal — Cổng Quản Lý & Học Tập Số Chuẩn Bắc Âu (Fullstack)
 
 [![Repository](https://img.shields.io/badge/GitHub-vanhkhuc--k5%2Fproject--school-0F3D5C?logo=github)](https://github.com/vanhkhuc-k5/project-school)
-[![Tech Stack](https://img.shields.io/badge/Stack-React%20%7C%20Tailwind%20%7C%20Express%20%7C%20SQLite-1C6FA8)](https://github.com/vanhkhuc-k5/project-school)
+[![Tech Stack](https://img.shields.io/badge/Stack-React%20%7C%20Tailwind%20%7C%20Express%20%7C%20Neon%20PostgreSQL-1C6FA8)](https://github.com/vanhkhuc-k5/project-school)
+[![Tests](https://img.shields.io/badge/Tests-57%2F57%20PASS%20(100%25)-success)](https://github.com/vanhkhuc-k5/project-school)
 [![License](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 
-Hệ thống quản lý trường học và học tập thông minh đa phân hệ (Admin, Giáo viên, Học sinh, Phụ huynh) tích hợp Trợ lý Gia sư AI Socratic, ngân hàng dữ liệu thực tế SQLite WAL mode, và đồng bộ cơ sở dữ liệu ngành giáo dục.
+Hệ thống quản lý trường học và học tập thông minh đa phân hệ (Admin, Giáo viên, Học sinh, Phụ huynh) tích hợp Trợ lý Gia sư AI Socratic, ngân hàng dữ liệu thực tế **Neon Cloud PostgreSQL** (19 bảng dữ liệu chuẩn hóa 3NF) cùng chế độ dự phòng SQLite WAL mode, và hệ thống kiểm thử tự động toàn diện.
 
 ---
 
 ## 🌟 Tính Năng Nổi Bật
 
 1. **Phân quyền đa vai trò (Multi-Role Authentication & RBAC)**
-   - **Học sinh (Student):** Dashboard KPI cá nhân hóa, bài tập hạn chót khẩn cấp, bảng điểm, thời khóa biểu và Gia sư AI Socratic 24/7.
-   - **Giáo viên (Teacher):** Phân tích năng lực chuyên sâu (radar & ma trận), cảnh báo học sinh cần can thiệp sư phạm, tạo bài tập trắc nghiệm/tự luận đa định dạng.
-   - **Phụ huynh (Parent):** Theo dõi nhiều con (multi-child switcher), thời khóa biểu, điểm kiểm tra, thông báo trường học và cổng thanh toán học phí VietQR Napas trực tuyến.
-   - **Ban Giám Hiệu & Admin:** Thống kê vĩ mô toàn trường, phân bổ học lực, phát thông báo khẩn toàn trường và nút đồng bộ dữ liệu học bạ số quốc gia (MOET Cloud Sync).
+   - **Học sinh (Student):** Dashboard KPI cá nhân hóa, thời khóa biểu điện tử tương tác (Weekly Grid / Day Focus), sổ theo dõi chuyên cần & điểm danh quẹt thẻ RFID, bài tập hạn chót khẩn cấp, bảng điểm và Gia sư AI Socratic 24/7.
+   - **Giáo viên (Teacher):** Phân tích năng lực chuyên sâu (radar & ma trận), cảnh báo học sinh cần can thiệp sư phạm, tạo bài tập trắc nghiệm/tự luận đa định dạng, quản lý lớp học và xuất bảng điểm.
+   - **Phụ huynh (Parent):** Theo dõi nhiều con (multi-child switcher), thời khóa biểu, điểm kiểm tra, nộp đơn xin nghỉ học trực tuyến, thông báo trường học và cổng thanh toán học phí VietQR Napas trực tuyến.
+   - **Ban Giám Hiệu & Admin:** Thống kê vĩ mô toàn trường, phân bổ học lực, quản lý tài khoản người dùng, phát thông báo khẩn toàn trường và đồng bộ dữ liệu học bạ số quốc gia (MOET Cloud Sync).
 
-2. **Cơ Sở Dữ Liệu Thực Tế (Real SQLite WAL Database)**
-   - Schema chuẩn hóa 3NF: `users`, `classes`, `students`, `assignments`, `assignment_questions`, `assignment_submissions`, `grades`, `student_competencies`, `tuition_invoices`, `school_notices`, `audit_logs`, `ai_tutor_messages`.
+2. **Cơ Sở Dữ Liệu Thực Tế (Neon Cloud PostgreSQL & SQLite Fallback)**
+   - 19 bảng chuẩn hóa: `users`, `classes`, `students`, `teachers`, `subjects`, `assignments`, `assignment_questions`, `assignment_submissions`, `grades`, `student_competencies`, `tuition_invoices`, `school_notices`, `audit_logs`, `ai_tutor_messages`, `leave_requests`, `parent_teacher_messages`, `study_resources`...
    - Seeder dữ liệu thực tế chuẩn chương trình THCS & THPT Việt Nam (Toán 10, Vật lý, Anh văn 11, Hóa học...).
-   - Hỗ trợ lưu trữ Audit Trail theo thời gian thực cho mọi thao tác.
+   - Lưu trữ nhật ký bảo mật (Security Audit Trail) theo thời gian thực cho mọi thao tác.
 
 3. **Giao Diện Thiết Kế Chuẩn Scandinavian Banking App**
    - Tuân thủ thiết kế tối giản, thanh lịch từ dự án Stitch **TruongHoc-Portal** và `DESIGN.md`.
@@ -100,22 +101,27 @@ npm run dev
 
 ---
 
-## 🧪 Kiểm Thử Hệ Thống (End-to-End Suite)
+## 🧪 Hệ Thống Kiểm Thử Tự Động (Automated Testing Suite)
 
-Dự án cung cấp script kiểm thử tự động toàn diện:
+Dự án tích hợp sẵn bộ kiểm thử tự động toàn diện với **57 bài test (100% PASS)**:
 ```bash
-node verify_fullstack.cjs
+npm test
 ```
-Script tự động kiểm tra:
-1. Xác thực đăng nhập và cấp JWT cho cả 4 vai trò.
-2. Lấy dữ liệu học sinh thực tế & kích hoạt hội thoại AI Tutor Socratic.
-3. Giáo viên tạo bài tập mới ghi vào SQLite & gửi can thiệp sư phạm.
-4. Phụ huynh thanh toán học phí qua cổng VietQR Napas và cập nhật biên lai.
-5. Admin phát thông báo khẩn toàn trường & đồng bộ hồ sơ Bộ GD&ĐT.
+
+Bộ kiểm thử bao gồm 9 test suites:
+1. **Unit Test: Mật mã & Xác thực JWT** (Bcrypt hash/compare, Unicode/Tiếng Việt, token expiry).
+2. **Unit Test: Kết nối & Toàn vẹn Dữ liệu Neon PostgreSQL** (Kiểm tra kết nối, 19 bảng, khóa ngoại).
+3. **Integration Test: Xác thực & Phân quyền (/api/auth)** (Đăng nhập 4 vai trò, /auth/me, 401, 403).
+4. **Integration Test: Phân hệ Học sinh (/api/student)** (Dashboard, bài tập, bảng điểm, thời khóa biểu, chuyên cần).
+5. **Integration Test: Phân hệ Giáo viên (/api/teacher)** (Dashboard, roster, analytics, tạo đề trắc nghiệm).
+6. **Integration Test: Phân hệ Phụ huynh (/api/parent)** (Danh sách con, học phí, nhắn tin, đơn nghỉ phép).
+7. **Integration Test: Phân hệ Quản trị & BGH (/api/admin)** (Overview, CRUD users, classes, subjects, audit log).
+8. **Integration Test: Trợ lý AI Gia sư Socratic (/api/ai-tutor)** (Chat Socratic, lịch sử tin nhắn, validation).
+9. **End-to-End Test: Vòng đời học vụ liên vai trò** (Teacher giao bài -> Student làm & nộp bài -> Parent xem điểm).
 
 ---
 
 ## 📄 Báo Cáo Dự Án
 
 Báo cáo dự án bản đầy đủ dành cho bên đặt hàng đã được kết xuất sẵn tại:
-- [`BAO_CAO_DU_AN_EDUPORTAL.pdf`](./BAO_CAO_DU_AN_EDUPORTAL.pdf) (9 trang, phân tích chi tiết Ưu điểm / Nhược điểm / Đề xuất nâng cấp).
+- [`BAO_CAO_DU_AN_EDUPORTAL.pdf`](./BAO_CAO_DU_AN_EDUPORTAL.pdf) (9 trang, phân tích chi tiết Kiến trúc hệ thống, Báo cáo kiểm thử và Lộ trình nâng cấp).
