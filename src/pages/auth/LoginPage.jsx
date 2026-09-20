@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/Button';
-import { Input } from '../../components/Input';
-import { MOCK_USERS } from '../../mock/authData';
 import {
   GraduationCap,
   Briefcase,
@@ -14,35 +12,98 @@ import {
   ArrowRight,
   HelpCircle,
   Lock,
+  AlertCircle,
+  Key,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 export function LoginPage({ onLoginSuccess }) {
   const { login } = useAuth();
   const [selectedRole, setSelectedRole] = useState('student');
-  const [identifier, setIdentifier] = useState('HS-2024-889');
-  const [password, setPassword] = useState('••••••••••••');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [showTestAccounts, setShowTestAccounts] = useState(false);
 
   const roleTabs = [
-    { id: 'student', label: 'Học sinh', icon: GraduationCap, codeExample: 'HS-2024-889', tip: 'Dành cho học sinh: Dùng mã học sinh (VD: HS-2024-889) hoặc Email trường cấp.' },
-    { id: 'teacher', label: 'Giáo viên', icon: Briefcase, codeExample: 'mailan@school.edu.vn', tip: 'Dành cho giáo viên: Sử dụng email nội bộ do phòng CNTT nhà trường cấp.' },
-    { id: 'parent', label: 'Phụ huynh', icon: Users, codeExample: 'PH-10A1-042', tip: 'Dành cho phụ huynh: Sử dụng số điện thoại đăng ký sổ liên lạc hoặc mã định danh.' },
-    { id: 'admin', label: 'Quản trị', icon: Shield, codeExample: 'bgh.hoainam@school.edu.vn', tip: 'Dành cho Ban Giám Hiệu & Quản trị viên hệ thống có xác thực 2 lớp.' },
+    {
+      id: 'student',
+      label: 'Học sinh',
+      icon: GraduationCap,
+      placeholder: 'VD: HS-2024-889 hoặc email học sinh',
+      tip: 'Dành cho học sinh: Sử dụng mã định danh học sinh (VD: HS-2024-889) hoặc email trường cấp.',
+      testAccount: { code: 'HS-2024-889', pass: '123456', name: 'Nguyễn Minh Khang (Lớp 10A1)' },
+    },
+    {
+      id: 'teacher',
+      label: 'Giáo viên',
+      icon: Briefcase,
+      placeholder: 'VD: mailan@school.edu.vn hoặc mã giáo viên',
+      tip: 'Dành cho giáo viên: Sử dụng email nội bộ do phòng CNTT nhà trường cấp (VD: mailan@school.edu.vn).',
+      testAccount: { code: 'mailan@school.edu.vn', pass: '123456', name: 'Cô Mai Lan (Tổ Toán học)' },
+    },
+    {
+      id: 'parent',
+      label: 'Phụ huynh',
+      icon: Users,
+      placeholder: 'VD: PH-10A1-042 hoặc số điện thoại',
+      tip: 'Dành cho phụ huynh: Sử dụng mã định danh liên lạc học sinh (VD: PH-10A1-042) hoặc số điện thoại đã đăng ký.',
+      testAccount: { code: 'PH-10A1-042', pass: '123456', name: 'Nguyễn Văn Hồi (PH em Khang)' },
+    },
+    {
+      id: 'admin',
+      label: 'Quản trị',
+      icon: Shield,
+      placeholder: 'VD: bgh.hoainam@school.edu.vn',
+      tip: 'Dành cho Ban Giám Hiệu & Quản trị viên hệ thống có chữ ký số và phân quyền quản lý cấp cao.',
+      testAccount: { code: 'bgh.hoainam@school.edu.vn', pass: '123456', name: 'GS.TS Vũ Hoài Nam (Hiệu trưởng)' },
+    },
   ];
 
   const handleRoleSelect = (roleId) => {
     setSelectedRole(roleId);
-    const user = MOCK_USERS[roleId];
-    if (user) {
-      setIdentifier(user.code || user.email);
+    setErrorMessage('');
+  };
+
+  const fillTestAccount = (roleId) => {
+    const tab = roleTabs.find((r) => r.id === roleId);
+    if (tab) {
+      setSelectedRole(roleId);
+      setIdentifier(tab.testAccount.code);
+      setPassword(tab.testAccount.pass);
+      setErrorMessage('');
     }
   };
 
   const handleLogin = async (e) => {
     e?.preventDefault();
-    await login(selectedRole, identifier, password);
-    onLoginSuccess?.(selectedRole);
+    if (!identifier.trim()) {
+      setErrorMessage('Vui lòng nhập Email hoặc Mã định danh');
+      return;
+    }
+    if (!password.trim()) {
+      setErrorMessage('Vui lòng nhập mật khẩu');
+      return;
+    }
+
+    setErrorMessage('');
+    setIsLoggingIn(true);
+    try {
+      const result = await login(selectedRole, identifier.trim(), password.trim());
+      if (result?.success) {
+        onLoginSuccess?.(selectedRole);
+      } else {
+        setErrorMessage(result?.message || 'Tài khoản hoặc mật khẩu không chính xác');
+      }
+    } catch {
+      setErrorMessage('Lỗi kết nối đến hệ thống xác thực');
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   const currentTabInfo = roleTabs.find((r) => r.id === selectedRole);
@@ -55,12 +116,12 @@ export function LoginPage({ onLoginSuccess }) {
           <img src="/assets/logo.png" alt="EduPortal Logo" className="w-7 h-7 object-contain" />
           <span className="font-medium text-primary text-base">EduPortal</span>
           <span className="text-hairline-darker hidden sm:inline">|</span>
-          <span className="text-text-secondary text-xs hidden sm:inline">Academic Identity Service</span>
+          <span className="text-text-secondary text-xs hidden sm:inline">Academic Identity & Access Management</span>
         </div>
         <div className="flex items-center gap-6 text-sm">
-          <span className="text-primary font-medium hover:underline cursor-pointer">Login</span>
-          <span className="text-text-secondary hover:text-text-primary cursor-pointer hidden sm:inline">Assistance</span>
-          <span className="text-text-secondary hover:text-text-primary cursor-pointer hidden sm:inline">Status</span>
+          <span className="text-primary font-medium">Cổng Đăng Nhập Chính Thức</span>
+          <span className="text-text-secondary hover:text-text-primary cursor-pointer hidden sm:inline">Hướng dẫn</span>
+          <span className="text-text-secondary hover:text-text-primary cursor-pointer hidden sm:inline">Hỗ trợ kỹ thuật</span>
           <div className="w-7 h-7 rounded-full bg-surface-neutral border border-hairline flex items-center justify-center text-text-secondary">
             <Lock className="w-3.5 h-3.5 stroke-[1.75]" />
           </div>
@@ -76,16 +137,24 @@ export function LoginPage({ onLoginSuccess }) {
               <img src="/assets/logo.png" alt="EduPortal" className="w-9 h-9 object-contain" />
               <div>
                 <h2 className="text-base font-medium text-primary leading-tight">EduPortal</h2>
-                <p className="text-xs text-text-secondary">Cổng thông tin giáo dục số</p>
+                <p className="text-xs text-text-secondary">Cổng thông tin & dịch vụ giáo dục số</p>
               </div>
             </div>
 
             <div className="mb-6">
-              <h1 className="text-xl font-medium text-text-primary">Đăng nhập hệ thống</h1>
+              <h1 className="text-xl font-medium text-text-primary">Đăng nhập tài khoản</h1>
               <p className="text-xs text-text-secondary mt-1">
-                Chọn vai trò để truy cập đúng phân hệ của bạn
+                Chọn phân hệ đào tạo để truy cập không gian làm việc của bạn
               </p>
             </div>
+
+            {/* Error Message Alert */}
+            {errorMessage && (
+              <div className="p-3 mb-4 bg-danger-light border border-danger/20 rounded text-xs text-danger flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
 
             {/* Role Tabs */}
             <div className="grid grid-cols-4 gap-1.5 p-1 bg-surface-neutral rounded border border-hairline mb-4">
@@ -125,8 +194,11 @@ export function LoginPage({ onLoginSuccess }) {
                 <input
                   type="text"
                   value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="nhap_ma_hoac_email@school.edu.vn"
+                  onChange={(e) => {
+                    setIdentifier(e.target.value);
+                    if (errorMessage) setErrorMessage('');
+                  }}
+                  placeholder={currentTabInfo?.placeholder || 'Nhập mã hoặc email'}
                   className="w-full h-11 px-3.5 bg-white border border-hairline rounded text-sm text-text-primary placeholder:text-text-secondary focus:border-ocean focus:ring-2 focus:ring-ocean/15 outline-none transition-all"
                   required
                 />
@@ -143,7 +215,11 @@ export function LoginPage({ onLoginSuccess }) {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (errorMessage) setErrorMessage('');
+                    }}
+                    placeholder="Nhập mật khẩu"
                     className="w-full h-11 pl-3.5 pr-10 bg-white border border-hairline rounded text-sm text-text-primary focus:border-ocean focus:ring-2 focus:ring-ocean/15 outline-none transition-all"
                     required
                   />
@@ -176,8 +252,9 @@ export function LoginPage({ onLoginSuccess }) {
                 className="w-full justify-center mt-2"
                 icon={ArrowRight}
                 iconPosition="right"
+                disabled={isLoggingIn}
               >
-                Đăng nhập
+                {isLoggingIn ? 'Đang xác thực hệ thống...' : 'Đăng nhập'}
               </Button>
 
               <div className="relative my-4 text-center">
@@ -185,13 +262,13 @@ export function LoginPage({ onLoginSuccess }) {
                   <div className="w-full border-t border-hairline"></div>
                 </div>
                 <span className="relative px-3 bg-white text-xs text-text-secondary">
-                  hoặc tiếp tục với
+                  hoặc đăng nhập bằng SSO
                 </span>
               </div>
 
               <button
                 type="button"
-                onClick={handleLogin}
+                onClick={() => fillTestAccount(selectedRole)}
                 className="w-full h-11 bg-surface-neutral hover:bg-hairline/50 border border-hairline rounded text-xs font-medium text-text-primary flex items-center justify-center gap-2.5 transition-colors"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -200,11 +277,45 @@ export function LoginPage({ onLoginSuccess }) {
                   <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
                   <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
                 </svg>
-                <span>Đăng nhập bằng Google Workspace for Education</span>
+                <span>Google Workspace for Education</span>
               </button>
             </form>
 
-            <div className="mt-6 pt-4 hairline-t text-center text-[11px] text-text-secondary leading-relaxed">
+            {/* Quick Test Accounts Accordion for Evaluation */}
+            <div className="mt-5 pt-3 hairline-t">
+              <button
+                type="button"
+                onClick={() => setShowTestAccounts(!showTestAccounts)}
+                className="w-full flex items-center justify-between text-xs text-text-secondary hover:text-text-primary py-1"
+              >
+                <span className="flex items-center gap-1.5 font-medium">
+                  <Key className="w-3.5 h-3.5 text-ocean" />
+                  <span>Tài khoản kiểm thử hệ thống (Dành cho ban thẩm định)</span>
+                </span>
+                {showTestAccounts ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+
+              {showTestAccounts && (
+                <div className="mt-2.5 grid grid-cols-2 gap-2 p-2.5 bg-surface-neutral rounded border border-hairline text-xs">
+                  {roleTabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => fillTestAccount(tab.id)}
+                      className="p-2 text-left bg-white hover:bg-sky/50 border border-hairline rounded transition-colors group"
+                    >
+                      <div className="font-medium text-primary flex items-center justify-between">
+                        <span>{tab.label}</span>
+                        <span className="text-[10px] text-ocean opacity-0 group-hover:opacity-100 transition-opacity">Chọn &rarr;</span>
+                      </div>
+                      <div className="text-[11px] text-text-secondary mt-0.5 truncate">{tab.testAccount.code}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 pt-3 hairline-t text-center text-[11px] text-text-secondary leading-relaxed">
               Cần trợ giúp đăng nhập? Liên hệ Phòng Đào tạo: <a href="mailto:hotro@eduportal.vn" className="text-ocean hover:underline">hotro@eduportal.vn</a> | Hotline: <strong>1900 6868</strong>
             </div>
           </div>
@@ -268,11 +379,11 @@ export function LoginPage({ onLoginSuccess }) {
       <footer className="h-14 hairline-t bg-white px-6 flex flex-col sm:flex-row items-center justify-between text-xs text-text-secondary gap-2">
         <div>Secure Scandinavian Academic Network © 2024 EduPortal</div>
         <div className="flex items-center gap-4">
-          <a href="#privacy" onClick={(e) => e.preventDefault()} className="hover:text-text-primary">Privacy Policy</a>
-          <a href="#terms" onClick={(e) => e.preventDefault()} className="hover:text-text-primary">Terms of Service</a>
-          <a href="#contact" onClick={(e) => e.preventDefault()} className="hover:text-text-primary">School Contact & Support</a>
+          <a href="#privacy" onClick={(e) => e.preventDefault()} className="hover:text-text-primary">Chính sách bảo mật</a>
+          <a href="#terms" onClick={(e) => e.preventDefault()} className="hover:text-text-primary">Điều khoản dịch vụ</a>
+          <a href="#contact" onClick={(e) => e.preventDefault()} className="hover:text-text-primary">Hỗ trợ kỹ thuật</a>
           <span className="text-hairline-darker">|</span>
-          <span>Norsk / English / Tiếng Việt</span>
+          <span>Tiếng Việt / English</span>
         </div>
       </footer>
     </div>

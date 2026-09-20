@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SyncProvider } from './context/SyncContext';
-import { RoleSwitcher } from './components/RoleSwitcher';
 
 // Layouts
 import { StudentLayout } from './layouts/StudentLayout';
@@ -28,10 +27,31 @@ import { ParentDashboard } from './pages/parent/ParentDashboard';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 
 function AppContent() {
-  const { currentRole, switchRole } = useAuth();
-  const [currentView, setCurrentView] = useState('student-dashboard');
+  const { currentRole } = useAuth();
+  const [currentView, setCurrentView] = useState(() => {
+    if (currentRole === 'teacher') return 'teacher-dashboard';
+    if (currentRole === 'parent') return 'parent-dashboard';
+    if (currentRole === 'admin') return 'admin-dashboard';
+    if (currentRole === 'student') return 'student-dashboard';
+    return 'login';
+  });
   const [parentTab, setParentTab] = useState('home');
   const [adminTab, setAdminTab] = useState('overview');
+
+  // Sync view when authentication role changes
+  useEffect(() => {
+    if (currentRole === 'guest') {
+      setCurrentView('login');
+    } else if (currentRole === 'teacher' && !currentView.startsWith('teacher-')) {
+      setCurrentView('teacher-dashboard');
+    } else if (currentRole === 'student' && !currentView.startsWith('student-')) {
+      setCurrentView('student-dashboard');
+    } else if (currentRole === 'parent') {
+      setCurrentView('parent-dashboard');
+    } else if (currentRole === 'admin') {
+      setCurrentView('admin-dashboard');
+    }
+  }, [currentRole]);
 
   const handleLoginSuccess = (role) => {
     switch (role) {
@@ -54,7 +74,7 @@ function AppContent() {
     }
   };
 
-  // Render view
+  // Render official views
   const renderCurrentView = () => {
     if (currentRole === 'guest' || currentView === 'login') {
       return <LoginPage onLoginSuccess={handleLoginSuccess} />;
@@ -165,8 +185,6 @@ function AppContent() {
   return (
     <div className="min-h-screen relative font-sans">
       {renderCurrentView()}
-      {/* Floating Demo Role Switcher for evaluation */}
-      <RoleSwitcher currentView={currentView} setCurrentView={setCurrentView} />
     </div>
   );
 }

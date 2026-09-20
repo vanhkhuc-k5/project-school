@@ -5,22 +5,54 @@ import { authApi } from '../services/api';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  // Default to student, but can easily switch
-  const [currentUser, setCurrentUser] = useState(MOCK_USERS.student);
-  const [currentRole, setCurrentRole] = useState('student');
-  const [isLoadingAuth, setIsLoadingAuth] = useState(false);
+  // Session hydration from localStorage
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('eduportal_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [currentRole, setCurrentRole] = useState(() => {
+    try {
+      const saved = localStorage.getItem('eduportal_user');
+      return saved ? (JSON.parse(saved)?.role || 'guest') : 'guest';
+    } catch {
+      return 'guest';
+    }
+  });
+
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
   useEffect(() => {
-    // Check if token exists to hydrate user
+    // Check if token exists to hydrate user from real backend
     const initAuth = async () => {
       try {
-        const user = await authApi.getMe();
-        if (user) {
-          setCurrentUser(user);
-          setCurrentRole(user.role);
+        const token = localStorage.getItem('edunordic_token');
+        if (token) {
+          const user = await authApi.getMe();
+          if (user) {
+            setCurrentUser(user);
+            setCurrentRole(user.role);
+            localStorage.setItem('eduportal_user', JSON.stringify(user));
+          } else {
+            // Token expired or invalid
+            setCurrentUser(null);
+            setCurrentRole('guest');
+            localStorage.removeItem('eduportal_user');
+            localStorage.removeItem('edunordic_token');
+          }
+        } else {
+          setCurrentUser(null);
+          setCurrentRole('guest');
         }
       } catch {
-        // Fallback to default mock user
+        setCurrentUser(null);
+        setCurrentRole('guest');
+      } finally {
+        setIsLoadingAuth(false);
       }
     };
     initAuth();
@@ -30,17 +62,23 @@ export function AuthProvider({ children }) {
     if (MOCK_USERS[role]) {
       setCurrentRole(role);
       setCurrentUser(MOCK_USERS[role]);
+      localStorage.setItem('eduportal_user', JSON.stringify(MOCK_USERS[role]));
     }
   };
 
   const login = async (role, identifier, password) => {
     setIsLoadingAuth(true);
     try {
-      const user = await authApi.login(identifier, password, role);
-      if (user) {
-        setCurrentUser(user);
-        setCurrentRole(user.role || role);
+      const res = await authApi.login(identifier, password, role);
+      if (res.success && res.user) {
+        setCurrentUser(res.user);
+        setCurrentRole(res.user.role || role);
+        localStorage.setItem('eduportal_user', JSON.stringify(res.user));
+        return { success: true, user: res.user };
       }
+      return { success: false, message: res.message || 'Đăng nhập không thành công' };
+    } catch (err) {
+      return { success: false, message: 'Lỗi kết nối đến hệ thống xác thực' };
     } finally {
       setIsLoadingAuth(false);
     }
@@ -50,6 +88,8 @@ export function AuthProvider({ children }) {
     authApi.logout();
     setCurrentRole('guest');
     setCurrentUser(null);
+    localStorage.removeItem('eduportal_user');
+    localStorage.removeItem('edunordic_token');
   };
 
   return (

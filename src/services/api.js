@@ -24,13 +24,14 @@ async function request(url, options = {}) {
         ...options.headers,
       },
     });
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(`HTTP error! status: ${res.status}`);
+      return { success: false, status: res.status, message: data.message || `Lỗi hệ thống (${res.status})` };
     }
-    return await res.json();
+    return data;
   } catch (err) {
-    console.warn(`API request to ${url} failed, falling back to local state:`, err.message);
-    return null;
+    console.warn(`API request to ${url} failed:`, err.message);
+    return { success: false, message: 'Không thể kết nối đến máy chủ EduPortal' };
   }
 }
 
@@ -41,20 +42,23 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ identifier, password, role }),
     });
-    if (res?.success) {
+    if (res?.success && res?.token) {
       localStorage.setItem('edunordic_token', res.token);
-      return res.user;
+      return { success: true, user: res.user, token: res.token };
     }
-    return MOCK_USERS[role || 'student'];
+    return { success: false, message: res?.message || 'Tài khoản hoặc mật khẩu không chính xác' };
   },
 
   async getMe() {
+    const token = localStorage.getItem('edunordic_token');
+    if (!token) return null;
     const res = await request('/auth/me');
     return res?.success ? res.user : null;
   },
 
   logout() {
     localStorage.removeItem('edunordic_token');
+    localStorage.removeItem('eduportal_user');
   },
 };
 
