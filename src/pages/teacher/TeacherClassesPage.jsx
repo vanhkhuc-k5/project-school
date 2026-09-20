@@ -4,6 +4,7 @@ import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
 import { teacherApi } from '../../services/api';
+import { useSync } from '../../context/SyncContext';
 import {
   Users,
   Search,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 
 export function TeacherClassesPage() {
+  const { triggerSync } = useSync();
   const [classData, setClassData] = useState(null);
   const [selectedClassId, setSelectedClassId] = useState('cls_10A1');
   const [searchQuery, setSearchQuery] = useState('');
@@ -62,6 +64,7 @@ export function TeacherClassesPage() {
         score: parseFloat(gradeInput.score),
         comment: gradeInput.comment,
       });
+      await triggerSync();
       setGradeSuccessMsg(true);
       fetchClass(selectedClassId);
       setTimeout(() => {

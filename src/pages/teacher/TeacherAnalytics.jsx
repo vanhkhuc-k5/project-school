@@ -5,6 +5,7 @@ import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
 import { TEACHER_ANALYTICS_DATA } from '../../mock/teacherData';
 import { teacherApi } from '../../services/api';
+import { useSync } from '../../context/SyncContext';
 import {
   Filter,
   Download,
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react';
 
 export function TeacherAnalytics({ onNavigateCreateAssignment }) {
+  const { triggerSync } = useSync();
   const [data, setData] = useState(TEACHER_ANALYTICS_DATA);
   const [selectedClass, setSelectedClass] = useState(data.currentClass);
   const [selectedTopicFilter, setSelectedTopicFilter] = useState('Tất cả chuyên đề');
@@ -58,6 +60,7 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
     setIsSubmittingNotify(true);
     try {
       await teacherApi.notifyParents();
+      await triggerSync();
       setNotifySuccess(true);
       setTimeout(() => {
         setNotifySuccess(false);

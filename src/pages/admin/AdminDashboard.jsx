@@ -5,6 +5,7 @@ import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
 import { ADMIN_DASHBOARD_DATA } from '../../mock/adminData';
 import { adminApi } from '../../services/api';
+import { useSync } from '../../context/SyncContext';
 import {
   Users,
   Briefcase,
@@ -24,6 +25,7 @@ import {
 } from 'lucide-react';
 
 export function AdminDashboard() {
+  const { lastSync, triggerSync } = useSync();
   const [data, setData] = useState(ADMIN_DASHBOARD_DATA);
   const [selectedYear, setSelectedYear] = useState('Năm học 2024 - 2025');
   const [selectedTerm, setSelectedTerm] = useState('Học kỳ II (Hiện tại)');
@@ -44,12 +46,13 @@ export function AdminDashboard() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [lastSync]);
 
   const handleSyncMoet = async () => {
     setIsSyncing(true);
     try {
       await adminApi.syncMoet();
+      await triggerSync();
       setSyncSuccess(true);
       const res = await adminApi.getOverview();
       if (res) setData(res);
@@ -64,6 +67,7 @@ export function AdminDashboard() {
     setBroadcastSent(true);
     try {
       await adminApi.broadcastNotice(broadcastTitle || 'Thông báo từ Ban Giám Hiệu', broadcastContent);
+      await triggerSync();
       const res = await adminApi.getOverview();
       if (res) setData(res);
       setTimeout(() => {

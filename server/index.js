@@ -9,6 +9,7 @@ import teacherRoutes from './routes/teacher.js';
 import parentRoutes from './routes/parent.js';
 import adminRoutes from './routes/admin.js';
 import aiTutorRoutes from './routes/aiTutor.js';
+import syncRoutes from './routes/sync.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -31,6 +32,7 @@ app.use('/api/teacher', teacherRoutes);
 app.use('/api/parent', parentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai-tutor', aiTutorRoutes);
+app.use('/api/sync', syncRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

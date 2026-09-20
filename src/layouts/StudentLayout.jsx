@@ -2,6 +2,7 @@ import React from 'react';
 import { Home, BookOpen, Layers, Award, Sparkles, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
+import { GlobalBroadcastBanner } from '../components/GlobalBroadcastBanner';
 
 export function StudentLayout({ children, currentTab = 'home', onTabChange }) {
   const { currentUser, logout } = useAuth();
@@ -87,6 +88,7 @@ export function StudentLayout({ children, currentTab = 'home', onTabChange }) {
 
       {/* Main Container */}
       <div className="flex-1 flex flex-col min-w-0">
+        <GlobalBroadcastBanner />
         <Header />
         <main className="flex-1 p-6 sm:p-8 max-w-[1400px] w-full mx-auto">
           {children}

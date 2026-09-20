@@ -358,4 +358,28 @@ router.get('/reports', optionalAuth, (req, res) => {
   });
 });
 
+// Teacher sends risk intervention notification to parents
+router.post(['/intervene-notify', '/analytics/notify'], optionalAuth, (req, res) => {
+  const notifId = `notif_${Date.now()}`;
+  db.prepare(`
+    INSERT INTO school_notices (id, title, content, category, tag, tag_type, sender, can_confirm, confirmed_by_users)
+    VALUES (?, ?, ?, 'parent', 'Can thiệp sớm', 'warning', 'Cô Mai Lan (Tổ Toán)', 1, '[]')
+  `).run(
+    notifId,
+    'Cảnh báo can thiệp sư phạm học tập',
+    'Giáo viên bộ môn Toán gửi thông báo tới phụ huynh các em học sinh cần bổ trợ kiến thức Hình học không gian.'
+  );
+
+  db.prepare(`
+    INSERT INTO audit_logs (id, actor_name, role, action, badge, badge_type)
+    VALUES (?, 'Cô Mai Lan', 'teacher', ?, 'Đã gửi', 'warning')
+  `).run(`log_${Date.now()}`, 'Đã gửi thông báo can thiệp sư phạm tới phụ huynh học sinh cần kèm cặp.');
+
+  res.json({
+    success: true,
+    message: 'Đã gửi thông báo can thiệp tới phụ huynh thành công!',
+    noticeId: notifId,
+  });
+});
+
 export default router;

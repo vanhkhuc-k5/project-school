@@ -2,6 +2,7 @@ import React from 'react';
 import { Home, Award, Calendar, Bell, CreditCard, MessageSquare, Phone, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
+import { GlobalBroadcastBanner } from '../components/GlobalBroadcastBanner';
 
 export function ParentLayout({ children, currentTab = 'home', onTabChange }) {
   const { currentUser, logout } = useAuth();
@@ -87,6 +88,7 @@ export function ParentLayout({ children, currentTab = 'home', onTabChange }) {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
+        <GlobalBroadcastBanner />
         <Header searchPlaceholder="Tìm kiếm kết quả học tập, biên lai, thông báo..." />
         <main className="flex-1 p-6 sm:p-8 max-w-[1400px] w-full mx-auto">
           {children}

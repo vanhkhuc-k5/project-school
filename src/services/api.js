@@ -215,3 +215,34 @@ export const aiTutorApi = {
     return res?.success ? res.reply : null;
   },
 };
+
+// 7. Synchronization & Notification API
+export const syncApi = {
+  async getStatus(role) {
+    const res = await request(`/sync/status${role ? `?role=${role}` : ''}`);
+    return res?.success ? res.data : null;
+  },
+
+  async getNotifications() {
+    const res = await request('/sync/notifications');
+    return res?.success ? res.notifications : [];
+  },
+
+  async markAsRead(noticeId) {
+    const res = await request(`/sync/notifications/${noticeId}/read`, { method: 'POST' });
+    return res?.success ?? true;
+  },
+
+  async markAllAsRead() {
+    const res = await request('/sync/notifications/read-all', { method: 'POST' });
+    return res?.success ?? true;
+  },
+
+  async triggerEvent(eventData) {
+    const res = await request('/sync/trigger', {
+      method: 'POST',
+      body: JSON.stringify(eventData),
+    });
+    return res?.success ?? true;
+  },
+};

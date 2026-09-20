@@ -2,6 +2,7 @@ import React from 'react';
 import { BarChart2, BookOpen, Users, Award, FileText, Shield, Settings, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
+import { GlobalBroadcastBanner } from '../components/GlobalBroadcastBanner';
 
 export function AdminLayout({ children, currentTab = 'overview', onTabChange }) {
   const { currentUser, logout } = useAuth();
@@ -115,6 +116,7 @@ export function AdminLayout({ children, currentTab = 'overview', onTabChange }) 
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
+        <GlobalBroadcastBanner />
         <Header searchPlaceholder="Tìm hồ sơ, giáo viên, lớp học..." />
         <main className="flex-1 p-6 sm:p-8 max-w-[1400px] w-full mx-auto">
           {children}

@@ -5,23 +5,29 @@ import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
 import { PARENT_DASHBOARD_DATA } from '../../mock/parentData';
 import { parentApi } from '../../services/api';
+import { useSync } from '../../context/SyncContext';
 import {
-  TrendingUp,
+  Users,
   Award,
-  Calendar,
   CreditCard,
-  Bell,
+  Calendar,
+  AlertCircle,
+  FileCheck,
   CheckCircle2,
+  TrendingUp,
   Clock,
-  QrCode,
-  Copy,
+  Download,
   ExternalLink,
   ChevronRight,
   ShieldCheck,
   Check,
+  QrCode,
+  Copy,
+  Bell,
 } from 'lucide-react';
 
 export function ParentDashboard() {
+  const { lastSync, triggerSync } = useSync();
   const [data, setData] = useState(PARENT_DASHBOARD_DATA);
   const [selectedChildId, setSelectedChildId] = useState(data.currentChildId);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -39,7 +45,7 @@ export function ParentDashboard() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [lastSync]);
 
   const currentChild = data.children.find((c) => c.id === selectedChildId) || data.children[0];
 
@@ -52,6 +58,7 @@ export function ParentDashboard() {
   const handleConfirmPayment = async () => {
     try {
       await parentApi.payTuition(1);
+      await triggerSync();
       setPaymentSuccess(true);
       // Reload fresh children data
       const updated = await parentApi.getChildrenData();
@@ -61,6 +68,15 @@ export function ParentDashboard() {
         setIsQrModalOpen(false);
         setPaymentSuccess(false);
       }, 1000);
+    }
+  };
+
+  const handleToggleMeetingConfirm = async () => {
+    const nextState = !hasConfirmedMeeting;
+    setHasConfirmedMeeting(nextState);
+    if (nextState) {
+      await parentApi.confirmNotice(1);
+      await triggerSync();
     }
   };
 
@@ -382,7 +398,7 @@ export function ParentDashboard() {
                     <span className="text-text-secondary font-medium">{notif.sender}</span>
                     {notif.canConfirm ? (
                       <button
-                        onClick={() => setHasConfirmedMeeting(!hasConfirmedMeeting)}
+                        onClick={handleToggleMeetingConfirm}
                         className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                           hasConfirmedMeeting
                             ? 'bg-success text-white'

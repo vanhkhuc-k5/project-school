@@ -4,6 +4,7 @@ import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
 import { teacherApi } from '../../services/api';
+import { useSync } from '../../context/SyncContext';
 import {
   ClipboardCheck,
   Plus,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 
 export function TeacherAssignmentsPage({ onNavigateCreateAssignment }) {
+  const { triggerSync } = useSync();
   const [data, setData] = useState(null);
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [gradingScore, setGradingScore] = useState('9.0');
@@ -46,6 +48,7 @@ export function TeacherAssignmentsPage({ onNavigateCreateAssignment }) {
     setIsGrading(true);
     try {
       await teacherApi.gradeSubmission(selectedSubmission.id, gradingScore, gradingFeedback);
+      await triggerSync();
       setGradeSuccess(true);
       fetchAssignments();
       setTimeout(() => {

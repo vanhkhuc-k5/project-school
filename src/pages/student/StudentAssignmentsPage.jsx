@@ -4,6 +4,7 @@ import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
 import { studentApi } from '../../services/api';
+import { useSync } from '../../context/SyncContext';
 import {
   BookOpen,
   Clock,
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react';
 
 export function StudentAssignmentsPage() {
+  const { triggerSync } = useSync();
   const [assignments, setAssignments] = useState([]);
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedAssignment, setSelectedAssignment] = useState(null);

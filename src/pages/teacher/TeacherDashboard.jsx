@@ -2,6 +2,7 @@ import React from 'react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
+import { useSync } from '../../context/SyncContext';
 import {
   Users,
   BookOpen,
@@ -16,6 +17,9 @@ import {
 } from 'lucide-react';
 
 export function TeacherDashboard({ onNavigateAnalytics, onNavigateCreateAssignment }) {
+  const { syncStatus } = useSync();
+  const pendingGrading = syncStatus?.pendingGradingCount ?? 15;
+
   return (
     <div className="space-y-6">
       {/* Welcome Banner */}
@@ -25,7 +29,7 @@ export function TeacherDashboard({ onNavigateAnalytics, onNavigateCreateAssignme
             Chào mừng trở lại, Cô Mai Lan 👋
           </h1>
           <p className="text-xs text-text-secondary mt-1">
-            Tổ Toán học • Bạn có <strong className="text-primary">2 lớp giảng dạy hôm nay</strong> và <strong className="text-danger">15 bài kiểm tra chờ chấm điểm</strong>.
+            Tổ Toán học • Bạn có <strong className="text-primary">2 lớp giảng dạy hôm nay</strong> và <strong className="text-danger">{pendingGrading} bài kiểm tra chờ chấm điểm</strong>.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -61,7 +65,7 @@ export function TeacherDashboard({ onNavigateAnalytics, onNavigateCreateAssignme
             <span className="text-xs text-text-secondary">Bài cần chấm điểm</span>
             <Badge variant="danger">Gấp</Badge>
           </div>
-          <div className="text-3xl font-semibold text-danger mt-2">15 bài</div>
+          <div className="text-3xl font-semibold text-danger mt-2">{pendingGrading} bài</div>
           <div className="text-xs text-text-secondary mt-2">Hạn chót chấm: Hôm nay 18:00</div>
         </Card>
 

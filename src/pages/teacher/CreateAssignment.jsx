@@ -4,6 +4,7 @@ import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { CREATE_ASSIGNMENT_INITIAL } from '../../mock/teacherData';
 import { teacherApi } from '../../services/api';
+import { useSync } from '../../context/SyncContext';
 import {
   Save,
   Send,
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react';
 
 export function CreateAssignment({ onBackToDashboard }) {
+  const { triggerSync } = useSync();
   const [formData, setFormData] = useState(CREATE_ASSIGNMENT_INITIAL);
   const [submissionType, setSubmissionType] = useState('quiz');
   const [selectedStudentPreviewTab, setSelectedStudentPreviewTab] = useState(1);
@@ -40,6 +42,7 @@ export function CreateAssignment({ onBackToDashboard }) {
         questions: formData.questions,
       });
       setIsPublished(true);
+      triggerSync?.();
       setTimeout(() => {
         setIsPublished(false);
         onBackToDashboard?.();
