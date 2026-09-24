@@ -13,6 +13,9 @@ export const colors = {
   gray: '\x1b[90m',
 };
 
+// Maximum time for a single test before it's considered hung
+const TEST_TIMEOUT_MS = 20000; // 20 seconds per test
+
 // Global Test Registry
 export const testState = {
   total: 0,
@@ -27,7 +30,7 @@ export async function describe(suiteName, fn) {
   testState.suites.push(suite);
   testState.currentSuite = suite;
   console.log(`\n${colors.cyan}${colors.bright}▶ [SUITE] ${suiteName}${colors.reset}`);
-
+  
   // 1. Thu thập danh sách test cases
   try {
     await fn();
@@ -41,8 +44,15 @@ export async function describe(suiteName, fn) {
   for (const t of suite.tests) {
     testState.total++;
     const testStart = Date.now();
+    let timedOut = false;
     try {
-      await t.fn();
+      // Bounded test execution - prevents hanging tests from blocking CI
+      await Promise.race([
+        t.fn(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error(`TEST_TIMEOUT: "${t.name}" exceeded ${TEST_TIMEOUT_MS}ms`)), TEST_TIMEOUT_MS)
+        ),
+      ]);
       const duration = Date.now() - testStart;
       testState.passed++;
       suite.passed++;
@@ -51,11 +61,16 @@ export async function describe(suiteName, fn) {
       const duration = Date.now() - testStart;
       testState.failed++;
       suite.failed++;
-      console.log(`  ${colors.red}✖ FAIL${colors.reset} ${t.name} ${colors.gray}(${duration}ms)${colors.reset}`);
-      console.log(`    ${colors.red}Error: ${err.message}${colors.reset}`);
-      if (err.stack) {
-        const relevantStack = err.stack.split('\n').slice(1, 3).join('\n');
-        console.log(`    ${colors.gray}${relevantStack}${colors.reset}`);
+      if (err.message?.includes('TEST_TIMEOUT')) {
+        console.log(`  ${colors.red}✖ TIMEOUT${colors.reset} ${t.name} ${colors.gray}(${duration}ms)${colors.reset}`);
+        console.log(`    ${colors.red}${err.message}${colors.reset}`);
+      } else {
+        console.log(`  ${colors.red}✖ FAIL${colors.reset} ${t.name} ${colors.gray}(${duration}ms)${colors.reset}`);
+        console.log(`    ${colors.red}Error: ${err.message}${colors.reset}`);
+        if (err.stack) {
+          const relevantStack = err.stack.split('\n').slice(1, 3).join('\n');
+          console.log(`    ${colors.gray}${relevantStack}${colors.reset}`);
+        }
       }
     }
   }
