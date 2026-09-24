@@ -1126,4 +1126,404 @@ router.post('/students/:id/transfer', requirePermission('student.update'), async
   }
 });
 
+// ============================================================
+// Class Structure & Student Leadership
+// ============================================================
+
+// Get class structure with groups and positions
+router.get('/classes/:classId/structure', requirePermission('class.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { classId } = req.params;
+    const { academicYear } = req.query;
+
+    // Verify class belongs to school
+    const classInfo = db.prepare(`
+      SELECT c.*, u.name as homeroom_teacher_name
+      FROM classes c
+      LEFT JOIN users u ON u.id = c.homeroom_teacher_id
+      WHERE c.id = ? AND c.id IN (SELECT id FROM classes)
+    `).get(classId);
+
+    if (!classInfo) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy lớp học' });
+    }
+
+    const year = academicYear || classInfo.academic_year;
+
+    // Get all groups for this class
+    const groups = db.prepare(`
+      SELECT 
+        cg.id,
+        cg.name,
+        cg.description,
+        cg.is_active,
+        cg.created_at,
+        u.name as leader_name,
+        u.id as leader_user_id,
+        (SELECT COUNT(*) FROM class_group_members WHERE group_id = cg.id AND is_active = 1) as member_count
+      FROM class_groups cg
+      LEFT JOIN class_group_members cgm ON cgm.group_id = cg.id AND cgm.is_leader = 1 AND cgm.is_active = 1
+      LEFT JOIN students s ON s.id = cgm.student_id
+      LEFT JOIN users u ON u.id = s.user_id
+      WHERE cg.class_id = ? AND cg.academic_year = ?
+      ORDER BY cg.name
+    `).all(classId, year);
+
+    // Get class monitor
+    const classMonitor = db.prepare(`
+      SELECT 
+        scp.*,
+        u.name as student_name,
+        u.code as student_code
+      FROM student_class_positions scp
+      JOIN students s ON s.id = scp.student_id
+      JOIN users u ON u.id = s.user_id
+      WHERE scp.class_id = ? 
+        AND scp.position_type = 'class_monitor'
+        AND scp.academic_year = ?
+        AND scp.status = 'active'
+    `).get(classId, year);
+
+    // Get all class members
+    const classMembers = db.prepare(`
+      SELECT 
+        u.id as user_id,
+        u.name,
+        u.code,
+        s.id as student_id,
+        s.class_id
+      FROM students s
+      JOIN users u ON u.id = s.user_id
+      WHERE s.class_id = ?
+    `).all(classId);
+
+    res.json({
+      success: true,
+      data: {
+        class: {
+          ...classInfo,
+          homeroom_teacher_name: classInfo.homeroom_teacher_name,
+        },
+        groups,
+        classMonitor,
+        members: classMembers,
+        academicYear: year,
+      },
+      class: classInfo,
+      groups,
+      classMonitor,
+      members: classMembers,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Create a new group
+router.post('/classes/:classId/groups', requirePermission('class.manage'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { classId } = req.params;
+    const { name, description, academicYear } = req.body;
+
+    if (!name?.trim()) {
+      return res.status(400).json({ success: false, message: 'Tên nhóm không được để trống' });
+    }
+
+    // Verify class exists
+    const classInfo = db.prepare('SELECT id, academic_year FROM classes WHERE id = ?').get(classId);
+    if (!classInfo) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy lớp học' });
+    }
+
+    const year = academicYear || classInfo.academic_year;
+    const groupId = `grp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    db.prepare(`
+      INSERT INTO class_groups (id, class_id, name, description, academic_year)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(groupId, classId, name.trim(), description || null, year);
+
+    const group = db.prepare('SELECT * FROM class_groups WHERE id = ?').get(groupId);
+
+    res.json({
+      success: true,
+      message: 'Đã tạo nhóm mới',
+      data: { group },
+      group,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update group
+router.put('/groups/:groupId', requirePermission('class.manage'), async (req, res, next) => {
+  try {
+    const { groupId } = req.params;
+    const { name, description, isActive } = req.body;
+
+    const existing = db.prepare('SELECT * FROM class_groups WHERE id = ?').get(groupId);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm' });
+    }
+
+    const updates = [];
+    const params = [];
+
+    if (name !== undefined) {
+      updates.push('name = ?');
+      params.push(name.trim());
+    }
+    if (description !== undefined) {
+      updates.push('description = ?');
+      params.push(description);
+    }
+    if (isActive !== undefined) {
+      updates.push('is_active = ?');
+      params.push(isActive ? 1 : 0);
+    }
+    updates.push('updated_at = datetime("now")');
+
+    if (updates.length > 0) {
+      params.push(groupId);
+      db.prepare(`UPDATE class_groups SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    }
+
+    const group = db.prepare('SELECT * FROM class_groups WHERE id = ?').get(groupId);
+    res.json({ success: true, message: 'Đã cập nhật nhóm', data: { group }, group });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Archive/Deactivate group
+router.patch('/groups/:groupId/archive', requirePermission('class.manage'), async (req, res, next) => {
+  try {
+    const { groupId } = req.params;
+
+    db.prepare(`
+      UPDATE class_groups 
+      SET is_active = 0, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(groupId);
+
+    res.json({ success: true, message: 'Đã lưu trữ nhóm' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Add member to group
+router.post('/groups/:groupId/members', requirePermission('class.manage'), async (req, res, next) => {
+  try {
+    const { groupId } = req.params;
+    const { studentId, isLeader = false } = req.body;
+
+    if (!studentId) {
+      return res.status(400).json({ success: false, message: 'Vui lòng chọn học sinh' });
+    }
+
+    // Verify group exists
+    const group = db.prepare('SELECT * FROM class_groups WHERE id = ? AND is_active = 1').get(groupId);
+    if (!group) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm hoặc nhóm đã bị lưu trữ' });
+    }
+
+    // Check if student is already in another active group in this class
+    const existingGroup = db.prepare(`
+      SELECT cg.name, cg.id as group_id
+      FROM class_group_members cgm
+      JOIN class_groups cg ON cg.id = cgm.group_id
+      WHERE cgm.student_id = ? AND cgm.is_active = 1 AND cg.class_id = ? AND cg.id != ?
+    `).get(studentId, group.class_id, groupId);
+
+    if (existingGroup) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Học sinh đã thuộc nhóm "${existingGroup.name}". Vui lòng chuyển học sinh ra khỏi nhóm trước.` 
+      });
+    }
+
+    // Check if student is already in this group
+    const alreadyInGroup = db.prepare(`
+      SELECT * FROM class_group_members WHERE group_id = ? AND student_id = ? AND is_active = 1
+    `).get(groupId, studentId);
+
+    if (alreadyInGroup) {
+      return res.status(400).json({ success: false, message: 'Học sinh đã thuộc nhóm này' });
+    }
+
+    const memberId = `mgm_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    db.prepare(`
+      INSERT INTO class_group_members (id, group_id, student_id, is_leader, is_active)
+      VALUES (?, ?, ?, ?, 1)
+    `).run(memberId, groupId, studentId, isLeader ? 1 : 0);
+
+    res.json({ success: true, message: 'Đã thêm thành viên vào nhóm' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Remove member from group
+router.delete('/groups/:groupId/members/:studentId', requirePermission('class.manage'), async (req, res, next) => {
+  try {
+    const { groupId, studentId } = req.params;
+
+    db.prepare(`
+      UPDATE class_group_members 
+      SET is_active = 0, left_at = datetime('now')
+      WHERE group_id = ? AND student_id = ? AND is_active = 1
+    `).run(groupId, studentId);
+
+    // Also remove leader position if was leader
+    db.prepare(`
+      UPDATE class_group_positions 
+      SET status = 'removed', updated_at = datetime('now')
+      WHERE student_id = ? AND group_id = ? AND position_type = 'group_leader' AND status = 'active'
+    `).run(studentId, groupId);
+
+    res.json({ success: true, message: 'Đã xóa thành viên khỏi nhóm' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Assign group leader
+router.post('/groups/:groupId/leader', requirePermission('class.manage'), async (req, res, next) => {
+  try {
+    const { groupId } = req.params;
+    const { studentId, academicYear } = req.body;
+
+    if (!studentId) {
+      return res.status(400).json({ success: false, message: 'Vui lòng chọn học sinh' });
+    }
+
+    // Verify student is a member of this group
+    const membership = db.prepare(`
+      SELECT * FROM class_group_members WHERE group_id = ? AND student_id = ? AND is_active = 1
+    `).get(groupId, studentId);
+
+    if (!membership) {
+      return res.status(400).json({ success: false, message: 'Học sinh không thuộc nhóm này' });
+    }
+
+    // Get group info
+    const group = db.prepare('SELECT * FROM class_groups WHERE id = ?').get(groupId);
+
+    // Remove existing leader designation
+    db.prepare(`
+      UPDATE class_group_members SET is_leader = 0 WHERE group_id = ?
+    `).run(groupId);
+
+    // Set new leader
+    db.prepare(`
+      UPDATE class_group_members SET is_leader = 1 WHERE group_id = ? AND student_id = ?
+    `).run(groupId, studentId);
+
+    // Create position record
+    const positionId = `pos_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    db.prepare(`
+      INSERT INTO student_class_positions 
+      (id, student_id, class_id, position_type, group_id, academic_year, start_date, status, assigned_by)
+      VALUES (?, ?, ?, 'group_leader', ?, ?, date('now'), 'active', ?)
+    `).run(positionId, studentId, group.class_id, groupId, academicYear || group.academic_year, req.user.id);
+
+    res.json({ success: true, message: 'Đã назначить nhóm trưởng' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Assign class monitor
+router.post('/classes/:classId/monitor', requirePermission('class.manage'), async (req, res, next) => {
+  try {
+    const { classId } = req.params;
+    const { studentId, academicYear } = req.body;
+
+    if (!studentId) {
+      return res.status(400).json({ success: false, message: 'Vui lòng chọn học sinh' });
+    }
+
+    // Verify student is in this class
+    const student = db.prepare(`
+      SELECT s.*, u.name FROM students s JOIN users u ON u.id = s.user_id WHERE s.user_id = ? AND s.class_id = ?
+    `).get(studentId, classId);
+
+    if (!student) {
+      return res.status(400).json({ success: false, message: 'Học sinh không thuộc lớp này' });
+    }
+
+    // Get class info
+    const classInfo = db.prepare('SELECT * FROM classes WHERE id = ?').get(classId);
+
+    // End existing class monitor position
+    db.prepare(`
+      UPDATE student_class_positions 
+      SET status = 'ended', end_date = date('now'), updated_at = datetime('now')
+      WHERE class_id = ? AND position_type = 'class_monitor' AND academic_year = ? AND status = 'active'
+    `).run(classId, academicYear || classInfo.academic_year);
+
+    // Create new class monitor position
+    const positionId = `pos_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    db.prepare(`
+      INSERT INTO student_class_positions 
+      (id, student_id, class_id, position_type, academic_year, start_date, status, assigned_by)
+      VALUES (?, ?, ?, 'class_monitor', ?, date('now'), 'active', ?)
+    `).run(positionId, studentId, classId, academicYear || classInfo.academic_year, req.user.id);
+
+    res.json({ success: true, message: 'Đã назначить lớp trưởng' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Remove class monitor
+router.delete('/classes/:classId/monitor', requirePermission('class.manage'), async (req, res, next) => {
+  try {
+    const { classId } = req.params;
+    const { academicYear } = req.query;
+
+    const classInfo = db.prepare('SELECT academic_year FROM classes WHERE id = ?').get(classId);
+
+    db.prepare(`
+      UPDATE student_class_positions 
+      SET status = 'removed', end_date = date('now'), updated_at = datetime('now')
+      WHERE class_id = ? AND position_type = 'class_monitor' AND status = 'active'
+    `).run(classId, academicYear || classInfo?.academic_year);
+
+    res.json({ success: true, message: 'Đã xóa lớp trưởng' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get position history
+router.get('/students/:studentId/positions', requirePermission('class.read'), async (req, res, next) => {
+  try {
+    const { studentId } = req.params;
+
+    const positions = db.prepare(`
+      SELECT 
+        scp.*,
+        c.name as class_name,
+        cg.name as group_name,
+        u.name as assigned_by_name
+      FROM student_class_positions scp
+      LEFT JOIN classes c ON c.id = scp.class_id
+      LEFT JOIN class_groups cg ON cg.id = scp.group_id
+      LEFT JOIN users u ON u.id = scp.assigned_by
+      WHERE scp.student_id = ?
+      ORDER BY scp.start_date DESC
+    `).all(studentId);
+
+    res.json({ success: true, data: { positions }, positions });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

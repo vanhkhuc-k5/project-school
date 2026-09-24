@@ -1009,6 +1009,93 @@ export const adminApi = {
     return { classAssignments: [], subjectBreakdown: [], totals: { periods: 0, classes: 0, subjects: 0 }, homeroom: null };
   },
 
+  // ── Class Structure & Student Leadership ──────────────────────────────────────
+  async getClassStructure(classId: string, academicYear?: string): Promise<{
+    class: unknown;
+    groups: unknown[];
+    classMonitor: unknown | null;
+    members: unknown[];
+    academicYear: string;
+  } | null> {
+    const query = academicYear ? `?academicYear=${academicYear}` : '';
+    const res = await request<{
+      class: unknown;
+      groups: unknown[];
+      classMonitor: unknown | null;
+      members: unknown[];
+      academicYear: string;
+    }>(`/admin/classes/${classId}/structure${query}`);
+    if (res?.success) {
+      return {
+        class: (res as unknown as { class?: unknown }).class,
+        groups: (res as unknown as { groups?: unknown[] }).groups || [],
+        classMonitor: (res as unknown as { classMonitor?: unknown | null }).classMonitor || null,
+        members: (res as unknown as { members?: unknown[] }).members || [],
+        academicYear: (res as unknown as { academicYear?: string }).academicYear || academicYear || '',
+      };
+    }
+    return null;
+  },
+
+  async createGroup(classId: string, data: { name: string; description?: string; academicYear?: string }): Promise<StandardResponse> {
+    return request(`/admin/classes/${classId}/groups`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateGroup(groupId: string, data: { name?: string; description?: string; isActive?: boolean }): Promise<StandardResponse> {
+    return request(`/admin/groups/${groupId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async archiveGroup(groupId: string): Promise<StandardResponse> {
+    return request(`/admin/groups/${groupId}/archive`, {
+      method: 'PATCH',
+    });
+  },
+
+  async addGroupMember(groupId: string, data: { studentId: string; isLeader?: boolean }): Promise<StandardResponse> {
+    return request(`/admin/groups/${groupId}/members`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async removeGroupMember(groupId: string, studentId: string): Promise<StandardResponse> {
+    return request(`/admin/groups/${groupId}/members/${studentId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async assignGroupLeader(groupId: string, data: { studentId: string; academicYear?: string }): Promise<StandardResponse> {
+    return request(`/admin/groups/${groupId}/leader`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async assignClassMonitor(classId: string, data: { studentId: string; academicYear?: string }): Promise<StandardResponse> {
+    return request(`/admin/classes/${classId}/monitor`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async removeClassMonitor(classId: string, academicYear?: string): Promise<StandardResponse> {
+    const query = academicYear ? `?academicYear=${academicYear}` : '';
+    return request(`/admin/classes/${classId}/monitor${query}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async getStudentPositions(studentId: string): Promise<unknown[]> {
+    const res = await request<{ positions: unknown[] }>(`/admin/students/${studentId}/positions`);
+    return res?.success ? (res as unknown as { positions?: unknown[] }).positions || [] : [];
+  },
+
   // ── Announcements (G25) ──────────────────────────────────────────────────
   async getAnnouncements(params: {
     page?: number; limit?: number;

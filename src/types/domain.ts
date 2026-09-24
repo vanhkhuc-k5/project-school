@@ -325,3 +325,80 @@ export interface Department {
   member_count?: number;
   created_at?: string;
 }
+
+// ============================================================================
+// Class Structure & Student Leadership Types
+// ============================================================================
+
+export interface ClassGroup {
+  id: string;
+  class_id: string;
+  name: string;
+  description?: string | null;
+  academic_year: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+  // Computed fields from query
+  leader_name?: string | null;
+  leader_user_id?: string | null;
+  member_count?: number;
+}
+
+export interface ClassGroupMember {
+  id: string;
+  group_id: string;
+  student_id: string;
+  is_leader: boolean;
+  joined_at?: string;
+  left_at?: string | null;
+  is_active: boolean;
+  // Computed fields
+  student_name?: string;
+  student_code?: string;
+}
+
+export interface StudentPosition {
+  id: string;
+  student_id: string;
+  class_id: string;
+  position_type: 'class_monitor' | 'group_leader';
+  group_id?: string | null;
+  academic_year: string;
+  semester_id?: string | null;
+  start_date: string;
+  end_date?: string | null;
+  status: 'active' | 'ended' | 'removed';
+  assigned_by?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  // Computed fields
+  student_name?: string;
+  student_code?: string;
+  class_name?: string;
+  group_name?: string;
+  assigned_by_name?: string;
+}
+
+export interface ClassStructure {
+  class: {
+    id: string;
+    name: string;
+    grade_level: number;
+    academic_year: string;
+    homeroom_teacher_id?: string | null;
+    homeroom_teacher_name?: string | null;
+    max_students: number;
+  };
+  groups: ClassGroup[];
+  classMonitor: StudentPosition | null;
+  members: Array<{
+    user_id: string;
+    name: string;
+    code: string;
+    student_id: string;
+    class_id: string;
+  }>;
+  academicYear: string;
+}
