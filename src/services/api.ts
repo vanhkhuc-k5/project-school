@@ -2149,6 +2149,233 @@ export const adminApi = {
     return null;
   },
 
+  // ── System Administration ────────────────────────────────────────────────────────
+  async getSystemUsers(params?: {
+    search?: string;
+    role?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    users: Array<{
+      id: string;
+      email: string;
+      name: string;
+      code?: string;
+      role: string;
+      is_active: number;
+      last_login?: string;
+      created_at: string;
+    }>;
+    pagination: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const stringParams: Record<string, string> = {};
+    if (params?.search) stringParams.search = params.search;
+    if (params?.role) stringParams.role = params.role;
+    if (params?.status) stringParams.status = params.status;
+    if (params?.page) stringParams.page = String(params.page);
+    if (params?.limit) stringParams.limit = String(params.limit);
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{
+      users: Array<{
+        id: string;
+        email: string;
+        name: string;
+        code?: string;
+        role: string;
+        is_active: number;
+        last_login?: string;
+        created_at: string;
+      }>;
+      pagination: { page: number; limit: number; total: number; totalPages: number };
+    }>(`/admin/system/users${query ? `?${query}` : ''}`);
+    if (res?.success) {
+      return {
+        users: (res as unknown as { users: Array<{
+          id: string;
+          email: string;
+          name: string;
+          code?: string;
+          role: string;
+          is_active: number;
+          last_login?: string;
+          created_at: string;
+        }> }).users || [],
+        pagination: (res as unknown as { pagination: { page: number; limit: number; total: number; totalPages: number } }).pagination || { page: 1, limit: 50, total: 0, totalPages: 0 },
+      };
+    }
+    return { users: [], pagination: { page: 1, limit: 50, total: 0, totalPages: 0 } };
+  },
+
+  async adminUpdateUserStatus(userId: string, isActive: boolean): Promise<StandardResponse> {
+    return request(`/admin/system/users/${userId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive }),
+    });
+  },
+
+  async getSystemRoles(): Promise<{
+    roles: Array<{ id: string; name: string; description: string; color: string }>;
+    permissions: Array<{ id: string; name: string; category: string }>;
+  } | null> {
+    const res = await request<{
+      roles: Array<{ id: string; name: string; description: string; color: string }>;
+      permissions: Array<{ id: string; name: string; category: string }>;
+    }>('/admin/system/roles');
+    if (res?.success) {
+      return {
+        roles: (res as unknown as { roles: Array<{ id: string; name: string; description: string; color: string }> }).roles || [],
+        permissions: (res as unknown as { permissions: Array<{ id: string; name: string; category: string }> }).permissions || [],
+      };
+    }
+    return null;
+  },
+
+  async adminGetAuditLogs(params?: {
+    search?: string;
+    actor?: string;
+    action?: string;
+    entityType?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    logs: Array<{
+      id: string;
+      actor_id: string;
+      actor_name: string;
+      role: string;
+      action: string;
+      entity_type: string;
+      entity_id: string;
+      details: string;
+      ip_address?: string;
+      created_at: string;
+      description: string;
+    }>;
+    pagination: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const stringParams: Record<string, string> = {};
+    if (params?.search) stringParams.search = params.search;
+    if (params?.actor) stringParams.actor = params.actor;
+    if (params?.action) stringParams.action = params.action;
+    if (params?.entityType) stringParams.entityType = params.entityType;
+    if (params?.startDate) stringParams.startDate = params.startDate;
+    if (params?.endDate) stringParams.endDate = params.endDate;
+    if (params?.page) stringParams.page = String(params.page);
+    if (params?.limit) stringParams.limit = String(params.limit);
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{
+      logs: Array<{
+        id: string;
+        actor_id: string;
+        actor_name: string;
+        role: string;
+        action: string;
+        entity_type: string;
+        entity_id: string;
+        details: string;
+        ip_address?: string;
+        created_at: string;
+        description: string;
+      }>;
+      pagination: { page: number; limit: number; total: number; totalPages: number };
+    }>(`/admin/system/audit${query ? `?${query}` : ''}`);
+    if (res?.success) {
+      return {
+        logs: (res as unknown as { logs: Array<{
+          id: string;
+          actor_id: string;
+          actor_name: string;
+          role: string;
+          action: string;
+          entity_type: string;
+          entity_id: string;
+          details: string;
+          ip_address?: string;
+          created_at: string;
+          description: string;
+        }> }).logs || [],
+        pagination: (res as unknown as { pagination: { page: number; limit: number; total: number; totalPages: number } }).pagination || { page: 1, limit: 50, total: 0, totalPages: 0 },
+      };
+    }
+    return { logs: [], pagination: { page: 1, limit: 50, total: 0, totalPages: 0 } };
+  },
+
+  async getSystemHealth(): Promise<{
+    status: string;
+    timestamp: string;
+    services: { api: { status: string }; database: { status: string } };
+    environment: string;
+    version: string;
+  } | null> {
+    const res = await request<{
+      status: string;
+      timestamp: string;
+      services: { api: { status: string }; database: { status: string } };
+      environment: string;
+      version: string;
+    }>('/admin/system/health');
+    if (res?.success) {
+      return res as unknown as {
+        status: string;
+        timestamp: string;
+        services: { api: { status: string }; database: { status: string } };
+        environment: string;
+        version: string;
+      };
+    }
+    return null;
+  },
+
+  async getSystemSettingsCategories(): Promise<Array<{
+    id: string;
+    name: string;
+    icon: string;
+    description: string;
+  }>> {
+    const res = await request<{ categories: Array<{
+      id: string;
+      name: string;
+      icon: string;
+      description: string;
+    }> }>('/admin/system/settings');
+    return res?.success ? (res as unknown as { categories: Array<{
+      id: string;
+      name: string;
+      icon: string;
+      description: string;
+    }> }).categories || [] : [];
+  },
+
+  async getSystemSettings(category: string): Promise<Array<{
+    key: string;
+    label: string;
+    value: string;
+    type: string;
+  }>> {
+    const res = await request<{ settings: Array<{
+      key: string;
+      label: string;
+      value: string;
+      type: string;
+    }> }>(`/admin/system/settings/${category}`);
+    return res?.success ? (res as unknown as { settings: Array<{
+      key: string;
+      label: string;
+      value: string;
+      type: string;
+    }> }).settings || [] : [];
+  },
+
+  async updateSystemSetting(category: string, key: string, value: string): Promise<StandardResponse> {
+    return request(`/admin/system/settings/${category}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ key, value }),
+    });
+  },
+
   // ── Announcements (G25) ──────────────────────────────────────────────────
   async getAnnouncements(params: {
     page?: number; limit?: number;

@@ -75,6 +75,7 @@ import { AdminParentDetailPage } from '../pages/admin/AdminParentDetailPage';
 import { AdminCommunicationPage } from '../pages/admin/AdminCommunicationPage';
 import { AdminReportCenterPage } from '../pages/admin/AdminReportCenterPage';
 import { AdminDataOperationsPage } from '../pages/admin/AdminDataOperationsPage';
+import { AdminSystemPage } from '../pages/admin/AdminSystemPage';
 
 // =============================================================================
 // Role Constants
@@ -270,6 +271,7 @@ export function AppRouter() {
           <Route path="communication" element={<AdminCommunicationPage />} />
           <Route path="reports" element={<AdminReportCenterPage />} />
           <Route path="data" element={<AdminDataOperationsPage />} />
+          <Route path="system" element={<AdminSystemPage />} />
           {/* Future: /admin/settings */}
         </Route>
 
