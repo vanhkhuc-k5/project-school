@@ -23,22 +23,28 @@ export const dashboardService = {
     const [
       activeStudents,
       activeTeachers,
+      activeParents,
       classesCount,
       attendanceToday,
+      assignmentsSummary,
       pendingLeaveRequests,
       pendingAnnouncements,
       recentAnnouncements,
+      recentAuditLogs,
       lockedAccounts,
       failedLogins,
       enrollmentByGrade,
     ] = await Promise.all([
       repo.dashboardRepo.getActiveStudentsCount(schoolId, academicYearId),
       repo.dashboardRepo.getActiveTeachersCount(schoolId),
+      repo.dashboardRepo.getActiveParentsCount(schoolId),
       repo.dashboardRepo.getClassesCount(schoolId, academicYearId),
       repo.dashboardRepo.getAttendanceToday(schoolId),
+      repo.dashboardRepo.getAssignmentsSummary(schoolId, academicYearId),
       repo.dashboardRepo.getPendingLeaveRequestsCount(schoolId),
       repo.dashboardRepo.getPendingAnnouncementsCount(schoolId),
       repo.dashboardRepo.getRecentAnnouncements(schoolId, 5),
+      repo.dashboardRepo.getRecentAuditLogs(schoolId, 10),
       repo.dashboardRepo.getLockedAccountsCount(schoolId),
       repo.dashboardRepo.getRecentFailedLoginsCount(schoolId),
       repo.dashboardRepo.getEnrollmentByGrade(schoolId),
@@ -65,24 +71,42 @@ export const dashboardService = {
       students: parseInt(row.student_count || 0, 10),
     }));
 
+    // Format recent audit logs
+    const recentActivity = recentAuditLogs.map(log => ({
+      id: log.id,
+      text: log.action,
+      actor: log.actor_name,
+      time: log.created_at,
+      badge: log.badge,
+      badgeType: log.badge_type,
+    }));
+
     return {
-      // Quick Stats Cards
+      // Quick Stats Cards (top metric cards)
       quickStats: {
         students: {
           total: activeStudents,
           label: 'Học sinh đang học',
+          icon: 'users',
         },
         teachers: {
           total: activeTeachers,
           label: 'Giáo viên đang giảng dạy',
+          icon: 'briefcase',
+        },
+        parents: {
+          total: activeParents,
+          label: 'Phụ huynh hoạt động',
+          icon: 'family',
         },
         classes: {
           total: classesCount,
           label: 'Lớp học đang hoạt động',
+          icon: 'layers',
         },
       },
 
-      // Attendance Today
+      // Attendance Summary
       attendance: {
         date: new Date().toISOString().split('T')[0],
         summary: {
@@ -92,15 +116,43 @@ export const dashboardService = {
           late: attendanceToday.late,
           excused: attendanceToday.excused,
         },
-        rates: attendanceRates,
+        rates: {
+          present: Math.round((attendanceToday.present / (attendanceToday.total || 1)) * 100),
+          absent: Math.round((attendanceToday.absent / (attendanceToday.total || 1)) * 100),
+          late: Math.round((attendanceToday.late / (attendanceToday.total || 1)) * 100),
+          excused: Math.round((attendanceToday.excused / (attendanceToday.total || 1)) * 100),
+        },
       },
 
-      // Pending Operations
+      // Assignments Status
+      assignments: {
+        total: assignmentsSummary.total,
+        draft: assignmentsSummary.draft,
+        published: assignmentsSummary.published,
+        closed: assignmentsSummary.closed,
+        overdue: assignmentsSummary.overdue,
+      },
+
+      // Pending Operations (for backward compatibility with G31 tests)
       pendingOperations: {
         leaveRequests: pendingLeaveRequests,
         pendingAnnouncements: pendingAnnouncements,
-        total: totalPendingItems,
+        total: pendingLeaveRequests + pendingAnnouncements,
       },
+
+      // Action Center (Tasks needing attention)
+      actionCenter: {
+        classesWithoutHomeroom: await repo.dashboardRepo.getClassesWithoutHomeroom(schoolId),
+        teachersWithoutAssignment: await repo.dashboardRepo.getTeachersWithoutAssignment(schoolId),
+        studentsWithoutParent: await repo.dashboardRepo.getStudentsWithoutParent(schoolId),
+        excessiveAbsence: await repo.dashboardRepo.getStudentsWithExcessiveAbsence(schoolId),
+      },
+
+      // Alerts (priority-organized)
+      alerts: await repo.dashboardRepo.getSystemAlerts(schoolId),
+
+      // Data Quality Summary
+      dataQuality: await repo.dashboardRepo.getDataQualitySummary(schoolId),
 
       // Recent Announcements
       recentAnnouncements: recentAnnouncements.map(a => ({
@@ -113,11 +165,14 @@ export const dashboardService = {
         publishedAt: a.published_at,
       })),
 
+      // Recent Activity (Audit Logs)
+      recentActivity,
+
       // Security Overview
       security: {
         lockedAccounts,
         failedLogins,
-        totalIssues: securityIssues,
+        totalIssues: lockedAccounts + failedLogins,
       },
 
       // Grade Breakdown

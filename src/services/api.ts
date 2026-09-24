@@ -748,6 +748,92 @@ export const adminApi = {
 };
 
 // =============================================
+// 5.1 Dashboard API (Real Metrics)
+// =============================================
+
+export interface DashboardMetrics {
+  quickStats: {
+    students: { total: number; label: string; icon: string };
+    teachers: { total: number; label: string; icon: string };
+    parents: { total: number; label: string; icon: string };
+    classes: { total: number; label: string; icon: string };
+  };
+  attendance: {
+    date: string;
+    summary: { total: number; present: number; absent: number; late: number; excused: number };
+    rates: { present: number; absent: number; late: number; excused: number };
+  };
+  assignments: { total: number; draft: number; published: number; closed: number; overdue: number };
+  actionCenter: {
+    classesWithoutHomeroom: Array<{ id: string; name: string; grade_level: number }>;
+    teachersWithoutAssignment: Array<{ id: string; name: string; email: string; title: string }>;
+    studentsWithoutParent: Array<{ id: string; name: string; student_code: string; class_name: string }>;
+    excessiveAbsence: Array<{ id: string; name: string; student_code: string; class_name: string; absent_days: number }>;
+  };
+  alerts: Array<{
+    id: string;
+    priority: 'critical' | 'warning' | 'info';
+    title: string;
+    message: string;
+    count: number;
+    action: string;
+  }>;
+  dataQuality: {
+    totalStudents: number;
+    totalTeachers: number;
+    totalClasses: number;
+    totalAssignments: number;
+    issues: {
+      classesWithoutHomeroom: number;
+      teachersWithoutAssignment: number;
+      studentsWithoutParent: number;
+      overdueAssignments: number;
+    };
+    healthScore: number;
+    healthStatus: 'good' | 'warning' | 'critical';
+  };
+  recentAnnouncements: Array<{
+    id: string;
+    title: string;
+    content: string;
+    priority: string;
+    scope: string;
+    author: string;
+    publishedAt: string;
+  }>;
+  recentActivity: Array<{
+    id: string;
+    text: string;
+    actor: string;
+    time: string;
+    badge: string;
+    badgeType: string;
+  }>;
+  security: { lockedAccounts: number; failedLogins: number; totalIssues: number };
+  gradeBreakdown: Array<{ grade: number; students: number }>;
+  meta: { schoolId: string; academicYearId: string | null; period: string; generatedAt: string };
+}
+
+export const dashboardApi = {
+  async getMetrics(params?: { academicYearId?: string; period?: string }): Promise<DashboardMetrics | null> {
+    const queryParams = new URLSearchParams();
+    if (params?.academicYearId) queryParams.set('academicYearId', params.academicYearId);
+    if (params?.period) queryParams.set('period', params.period);
+    const query = queryParams.toString();
+    const res = await request<DashboardMetrics>(`/dashboard/metrics${query ? `?${query}` : ''}`);
+    return res?.success && res.data ? res.data : null;
+  },
+
+  async getAttendanceTrends(params?: { period?: string }): Promise<unknown | null> {
+    const queryParams = new URLSearchParams();
+    if (params?.period) queryParams.set('period', params.period);
+    const query = queryParams.toString();
+    const res = await request(`/dashboard/attendance-trends${query ? `?${query}` : ''}`);
+    return res?.success ? res.data : null;
+  },
+};
+
+// =============================================
 // 6. AI Tutor API
 // =============================================
 
