@@ -1485,6 +1485,189 @@ export const adminApi = {
     });
   },
 
+  // ── Parent & Guardian Management ────────────────────────────────────────────────
+  async getParents(params?: {
+    search?: string;
+    page?: number;
+    limit?: number;
+    status?: string;
+    relationship?: string;
+  }): Promise<{
+    parents: Array<{
+      user_id: string;
+      name: string;
+      email: string;
+      phone: string;
+      code: string;
+      is_active: number;
+      created_at: string;
+      child_count: number;
+      has_primary: number;
+    }>;
+    pagination: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const stringParams: Record<string, string> = {};
+    if (params?.search) stringParams.search = params.search;
+    if (params?.page) stringParams.page = String(params.page);
+    if (params?.limit) stringParams.limit = String(params.limit);
+    if (params?.status) stringParams.status = params.status;
+    if (params?.relationship) stringParams.relationship = params.relationship;
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{
+      parents: Array<{
+        user_id: string;
+        name: string;
+        email: string;
+        phone: string;
+        code: string;
+        is_active: number;
+        created_at: string;
+        child_count: number;
+        has_primary: number;
+      }>;
+      pagination: { page: number; limit: number; total: number; totalPages: number };
+    }>(`/admin/parents${query ? `?${query}` : ''}`);
+    if (res?.success) {
+      return {
+        parents: (res as unknown as { parents: Array<{
+          user_id: string;
+          name: string;
+          email: string;
+          phone: string;
+          code: string;
+          is_active: number;
+          created_at: string;
+          child_count: number;
+          has_primary: number;
+        }> }).parents || [],
+        pagination: (res as unknown as { pagination: { page: number; limit: number; total: number; totalPages: number } }).pagination || { page: 1, limit: 20, total: 0, totalPages: 0 },
+      };
+    }
+    return { parents: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } };
+  },
+
+  async getParentDetail(parentId: string): Promise<{
+    parent: { user_id: string; name: string; email: string; phone: string; code: string; is_active: number; created_at: string; avatar?: string };
+    children: Array<{
+      link_id: string;
+      relationship: string;
+      is_primary_contact: number;
+      is_verified: number;
+      is_active: number;
+      notes?: string;
+      student_id: string;
+      student_name: string;
+      student_code: string;
+      class_id: string;
+      class_name: string;
+      grade_level: number;
+      gpa: number;
+      class_rank?: string;
+    }>;
+    stats: { linkedChildren: number; messageCount: number; leaveRequestCount: number };
+  } | null> {
+    const res = await request<{
+      parent: { user_id: string; name: string; email: string; phone: string; code: string; is_active: number; created_at: string; avatar?: string };
+      children: Array<{
+        link_id: string;
+        relationship: string;
+        is_primary_contact: number;
+        is_verified: number;
+        is_active: number;
+        notes?: string;
+        student_id: string;
+        student_name: string;
+        student_code: string;
+        class_id: string;
+        class_name: string;
+        grade_level: number;
+        gpa: number;
+        class_rank?: string;
+      }>;
+      stats: { linkedChildren: number; messageCount: number; leaveRequestCount: number };
+    }>(`/admin/parents/${parentId}`);
+    if (res?.success) {
+      return {
+        parent: (res as unknown as { parent: { user_id: string; name: string; email: string; phone: string; code: string; is_active: number; created_at: string; avatar?: string } }).parent,
+        children: (res as unknown as { children: Array<{
+          link_id: string;
+          relationship: string;
+          is_primary_contact: number;
+          is_verified: number;
+          is_active: number;
+          notes?: string;
+          student_id: string;
+          student_name: string;
+          student_code: string;
+          class_id: string;
+          class_name: string;
+          grade_level: number;
+          gpa: number;
+          class_rank?: string;
+        }> }).children || [],
+        stats: (res as unknown as { stats: { linkedChildren: number; messageCount: number; leaveRequestCount: number } }).stats,
+      };
+    }
+    return null;
+  },
+
+  async linkChildToParent(parentId: string, data: { studentId: string; relationship: string; isPrimaryContact?: boolean; notes?: string }): Promise<StandardResponse> {
+    return request(`/admin/parents/${parentId}/children`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateParentChildLink(parentId: string, studentId: string, data: { relationship?: string; isPrimaryContact?: boolean; isActive?: boolean; notes?: string }): Promise<StandardResponse> {
+    return request(`/admin/parents/${parentId}/children/${studentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async unlinkChildFromParent(parentId: string, studentId: string): Promise<StandardResponse> {
+    return request(`/admin/parents/${parentId}/children/${studentId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async setParentAccountStatus(parentId: string, isActive: boolean): Promise<StandardResponse> {
+    return request(`/admin/parents/${parentId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive }),
+    });
+  },
+
+  async getAvailableStudentsForParent(parentId: string, params?: { search?: string; gradeLevel?: number }): Promise<Array<{
+    student_id: string;
+    student_name: string;
+    student_code: string;
+    class_id: string;
+    class_name: string;
+    grade_level: number;
+  }>> {
+    const stringParams: Record<string, string> = {};
+    if (params?.search) stringParams.search = params.search;
+    if (params?.gradeLevel) stringParams.gradeLevel = String(params.gradeLevel);
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{ students: Array<{
+      student_id: string;
+      student_name: string;
+      student_code: string;
+      class_id: string;
+      class_name: string;
+      grade_level: number;
+    }> }>(`/admin/parents/${parentId}/available-students${query ? `?${query}` : ''}`);
+    return res?.success ? (res as unknown as { students: Array<{
+      student_id: string;
+      student_name: string;
+      student_code: string;
+      class_id: string;
+      class_name: string;
+      grade_level: number;
+    }> }).students || [] : [];
+  },
+
   // ── Announcements (G25) ──────────────────────────────────────────────────
   async getAnnouncements(params: {
     page?: number; limit?: number;

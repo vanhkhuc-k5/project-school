@@ -2394,4 +2394,440 @@ router.patch('/assessment/periods/:periodId/lock', requirePermission('grade.mana
   }
 });
 
+// ============================================================
+// Parent & Guardian Management
+// ============================================================
+
+// Get parent list with search and filters
+router.get('/parents', requirePermission('user.manage'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { search, page = 1, limit = 20, status, relationship } = req.query;
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Build search conditions
+    let whereClause = `WHERE u.role IN ('parent', 'guardian') AND u.school_id = ?`;
+    const params: (string | number)[] = [schoolId];
+
+    if (search) {
+      whereClause += ` AND (u.name LIKE ? OR u.phone LIKE ? OR u.email LIKE ? OR u.code LIKE ?)`;
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+    }
+
+    if (status) {
+      if (status === 'active') {
+        whereClause += ` AND u.is_active = 1`;
+      } else if (status === 'inactive') {
+        whereClause += ` AND u.is_active = 0`;
+      }
+    }
+
+    // Count total
+    const countResult = db.prepare(`
+      SELECT COUNT(DISTINCT u.id) as total
+      FROM users u
+      ${whereClause}
+    `).get(...params) as { total: number };
+
+    // Get parents with their linked children
+    const parents = db.prepare(`
+      SELECT 
+        u.id as user_id,
+        u.name,
+        u.email,
+        u.phone,
+        u.code,
+        u.is_active,
+        u.created_at,
+        COUNT(DISTINCT psl.student_id) as child_count,
+        MAX(psl.is_primary_contact) as has_primary
+      FROM users u
+      LEFT JOIN parent_student_links psl ON psl.parent_id = u.id AND psl.is_active = 1
+      ${whereClause}
+      GROUP BY u.id, u.name, u.email, u.phone, u.code, u.is_active, u.created_at
+      ORDER BY u.name
+      LIMIT ? OFFSET ?
+    `).all(...params, parseInt(limit), offset);
+
+    res.json({
+      success: true,
+      data: {
+        parents,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: countResult.total,
+          totalPages: Math.ceil(countResult.total / parseInt(limit)),
+        },
+      },
+      parents,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: countResult.total,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get parent detail with children
+router.get('/parents/:parentId', requirePermission('user.manage'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { parentId } = req.params;
+
+    // Get parent info
+    const parent = db.prepare(`
+      SELECT id as user_id, name, email, phone, code, is_active, created_at, avatar
+      FROM users
+      WHERE id = ? AND school_id = ?
+    `).get(parentId, schoolId);
+
+    if (!parent) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy phụ huynh' });
+    }
+
+    // Get linked children with relationship details
+    const children = db.prepare(`
+      SELECT 
+        psl.id as link_id,
+        psl.relationship,
+        psl.is_primary_contact,
+        psl.is_verified,
+        psl.is_active,
+        psl.notes,
+        psl.created_at,
+        s.id as student_id,
+        u.id as student_user_id,
+        u.name as student_name,
+        u.code as student_code,
+        c.id as class_id,
+        c.name as class_name,
+        c.grade_level,
+        s.gpa,
+        s.class_rank
+      FROM parent_student_links psl
+      JOIN students s ON s.id = psl.student_id
+      JOIN users u ON u.id = s.user_id
+      JOIN classes c ON c.id = s.class_id
+      WHERE psl.parent_id = ?
+        AND c.school_id = ?
+    `).all(parentId, schoolId);
+
+    // Get communication stats
+    const messageCount = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM messages
+      WHERE sender_id = ? OR recipient_id = ?
+    `).get(parentId, parentId) as { count: number };
+
+    const leaveRequestCount = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM leave_requests lr
+      JOIN parent_student_links psl ON psl.student_id = lr.student_id
+      WHERE psl.parent_id = ? AND psl.is_active = 1
+    `).get(parentId) as { count: number };
+
+    res.json({
+      success: true,
+      data: {
+        parent,
+        children,
+        stats: {
+          linkedChildren: children.filter(c => c.is_active).length,
+          messageCount: messageCount.count,
+          leaveRequestCount: leaveRequestCount.count,
+        },
+      },
+      parent,
+      children,
+      stats: {
+        linkedChildren: children.filter(c => c.is_active).length,
+        messageCount: messageCount.count,
+        leaveRequestCount: leaveRequestCount.count,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Link child to parent
+router.post('/parents/:parentId/children', requirePermission('user.manage'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { parentId } = req.params;
+    const { studentId, relationship, isPrimaryContact = false, notes } = req.body;
+
+    if (!studentId || !relationship) {
+      return res.status(400).json({ success: false, message: 'Thiếu thông tin bắt buộc' });
+    }
+
+    // Verify parent exists and belongs to school
+    const parent = db.prepare(`SELECT id, name FROM users WHERE id = ? AND school_id = ?`).get(parentId, schoolId);
+    if (!parent) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy phụ huynh' });
+    }
+
+    // Verify student exists and belongs to same school
+    const student = db.prepare(`
+      SELECT s.id, s.user_id, u.name as student_name, c.school_id
+      FROM students s
+      JOIN users u ON u.id = s.user_id
+      JOIN classes c ON c.id = s.class_id
+      WHERE s.id = ? AND c.school_id = ?
+    `).get(studentId, schoolId);
+
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy học sinh hoặc học sinh không thuộc trường này' });
+    }
+
+    // Check if link already exists
+    const existingLink = db.prepare(`
+      SELECT id, is_active FROM parent_student_links WHERE parent_id = ? AND student_id = ?
+    `).get(parentId, studentId);
+
+    if (existingLink) {
+      if (existingLink.is_active) {
+        return res.status(400).json({ success: false, message: 'Phụ huynh đã liên kết với học sinh này' });
+      }
+      // Reactivate inactive link
+      db.prepare(`
+        UPDATE parent_student_links 
+        SET is_active = 1, relationship = ?, is_primary_contact = ?, notes = ?, updated_at = datetime('now')
+        WHERE id = ?
+      `).run(relationship, isPrimaryContact ? 1 : 0, notes || null, existingLink.id);
+    } else {
+      // Create new link
+      const linkId = `psl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      db.prepare(`
+        INSERT INTO parent_student_links (id, parent_id, student_id, relationship, is_primary_contact, notes)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(linkId, parentId, studentId, relationship, isPrimaryContact ? 1 : 0, notes || null);
+    }
+
+    // If setting as primary contact, unset others
+    if (isPrimaryContact) {
+      db.prepare(`
+        UPDATE parent_student_links 
+        SET is_primary_contact = 0 
+        WHERE parent_id = ? AND student_id != ? AND is_active = 1
+      `).run(parentId, studentId);
+    }
+
+    // Audit log
+    db.prepare(`
+      INSERT INTO audit_logs (id, actor_id, actor_name, role, action, entity_type, entity_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      `log_${Date.now()}`,
+      req.user.id,
+      req.user.name || 'Admin',
+      req.user.role,
+      'Liên kết phụ huynh - học sinh',
+      'parent_student_links',
+      parentId,
+      JSON.stringify({ student_id: studentId, relationship, is_primary_contact: isPrimaryContact })
+    );
+
+    res.json({ success: true, message: 'Đã liên kết học sinh với phụ huynh' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update parent-child relationship
+router.patch('/parents/:parentId/children/:studentId', requirePermission('user.manage'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { parentId, studentId } = req.params;
+    const { relationship, isPrimaryContact, isActive, notes } = req.body;
+
+    // Verify link exists and belongs to school
+    const link = db.prepare(`
+      SELECT psl.*, c.school_id
+      FROM parent_student_links psl
+      JOIN students s ON s.id = psl.student_id
+      JOIN classes c ON c.id = s.class_id
+      WHERE psl.parent_id = ? AND psl.student_id = ? AND c.school_id = ?
+    `).get(parentId, studentId, schoolId);
+
+    if (!link) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy liên kết' });
+    }
+
+    // Build update query
+    const updates: string[] = [];
+    const params: (string | number | null)[] = [];
+
+    if (relationship !== undefined) {
+      updates.push('relationship = ?');
+      params.push(relationship);
+    }
+    if (isPrimaryContact !== undefined) {
+      updates.push('is_primary_contact = ?');
+      params.push(isPrimaryContact ? 1 : 0);
+    }
+    if (isActive !== undefined) {
+      updates.push('is_active = ?');
+      params.push(isActive ? 1 : 0);
+    }
+    if (notes !== undefined) {
+      updates.push('notes = ?');
+      params.push(notes);
+    }
+    updates.push('updated_at = datetime("now")');
+
+    if (updates.length > 1) {
+      params.push(parentId, studentId);
+      db.prepare(`UPDATE parent_student_links SET ${updates.join(', ')} WHERE parent_id = ? AND student_id = ?`).run(...params);
+    }
+
+    // If setting as primary, unset others
+    if (isPrimaryContact) {
+      db.prepare(`
+        UPDATE parent_student_links 
+        SET is_primary_contact = 0 
+        WHERE parent_id = ? AND student_id != ? AND is_active = 1
+      `).run(parentId, studentId);
+    }
+
+    res.json({ success: true, message: 'Đã cập nhật liên kết' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Unlink parent from child
+router.delete('/parents/:parentId/children/:studentId', requirePermission('user.manage'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { parentId, studentId } = req.params;
+
+    // Verify link exists and belongs to school
+    const link = db.prepare(`
+      SELECT psl.*, c.school_id
+      FROM parent_student_links psl
+      JOIN students s ON s.id = psl.student_id
+      JOIN classes c ON c.id = s.class_id
+      WHERE psl.parent_id = ? AND psl.student_id = ? AND c.school_id = ?
+    `).get(parentId, studentId, schoolId);
+
+    if (!link) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy liên kết' });
+    }
+
+    // Soft delete - mark inactive
+    db.prepare(`
+      UPDATE parent_student_links 
+      SET is_active = 0, is_primary_contact = 0, updated_at = datetime('now')
+      WHERE parent_id = ? AND student_id = ?
+    `).run(parentId, studentId);
+
+    // Audit log
+    db.prepare(`
+      INSERT INTO audit_logs (id, actor_id, actor_name, role, action, entity_type, entity_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      `log_${Date.now()}`,
+      req.user.id,
+      req.user.name || 'Admin',
+      req.user.role,
+      'Hủy liên kết phụ huynh - học sinh',
+      'parent_student_links',
+      parentId,
+      JSON.stringify({ student_id: studentId })
+    );
+
+    res.json({ success: true, message: 'Đã hủy liên kết phụ huynh - học sinh' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Activate/Deactivate parent account
+router.patch('/parents/:parentId/status', requirePermission('user.manage'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { parentId } = req.params;
+    const { isActive } = req.body;
+
+    // Verify parent exists and belongs to school
+    const parent = db.prepare(`SELECT id, name FROM users WHERE id = ? AND school_id = ?`).get(parentId, schoolId);
+    if (!parent) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy phụ huynh' });
+    }
+
+    // Update status
+    db.prepare(`UPDATE users SET is_active = ? WHERE id = ?`).run(isActive ? 1 : 0, parentId);
+
+    // Audit log
+    db.prepare(`
+      INSERT INTO audit_logs (id, actor_id, actor_name, role, action, entity_type, entity_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      `log_${Date.now()}`,
+      req.user.id,
+      req.user.name || 'Admin',
+      req.user.role,
+      isActive ? 'Kích hoạt tài khoản phụ huynh' : 'Vô hiệu hóa tài khoản phụ huynh',
+      'users',
+      parentId,
+      JSON.stringify({ is_active: isActive })
+    );
+
+    res.json({ success: true, message: isActive ? 'Đã kích hoạt tài khoản' : 'Đã vô hiệu hóa tài khoản' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get available students for linking
+router.get('/parents/:parentId/available-students', requirePermission('user.manage'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { parentId } = req.params;
+    const { search, gradeLevel } = req.query;
+
+    // Get students not yet linked to this parent
+    let query = `
+      SELECT 
+        s.id as student_id,
+        u.name as student_name,
+        u.code as student_code,
+        c.id as class_id,
+        c.name as class_name,
+        c.grade_level
+      FROM students s
+      JOIN users u ON u.id = s.user_id
+      JOIN classes c ON c.id = s.class_id
+      WHERE c.school_id = ?
+        AND s.id NOT IN (SELECT student_id FROM parent_student_links WHERE parent_id = ? AND is_active = 1)
+    `;
+    const params: (string | number)[] = [schoolId, parentId];
+
+    if (search) {
+      query += ` AND (u.name LIKE ? OR u.code LIKE ?)`;
+      const pattern = `%${search}%`;
+      params.push(pattern, pattern);
+    }
+    if (gradeLevel) {
+      query += ` AND c.grade_level = ?`;
+      params.push(parseInt(gradeLevel as string));
+    }
+
+    query += ` ORDER BY c.grade_level, c.name, u.name LIMIT 50`;
+
+    const students = db.prepare(query).all(...params);
+
+    res.json({ success: true, data: { students }, students });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
