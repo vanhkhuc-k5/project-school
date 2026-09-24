@@ -1096,6 +1096,190 @@ export const adminApi = {
     return res?.success ? (res as unknown as { positions?: unknown[] }).positions || [] : [];
   },
 
+  // ── Attendance Management ──────────────────────────────────────────────────────
+  async getAttendanceOverview(params: {
+    academicYear?: string;
+    semesterId?: string;
+    gradeLevel?: number;
+    classId?: string;
+    startDate?: string;
+    endDate?: string;
+  } = {}): Promise<{
+    summary: {
+      present: number;
+      absent: number;
+      absentExcused: number;
+      absentUnexcused: number;
+      late: number;
+      earlyLeave: number;
+      total: number;
+    };
+    percentages: {
+      present: string;
+      absent: string;
+      absentExcused: string;
+      absentUnexcused: string;
+      late: string;
+      earlyLeave: string;
+    };
+  } | null> {
+    const stringParams: Record<string, string> = {};
+    if (params.academicYear) stringParams.academicYear = params.academicYear;
+    if (params.semesterId) stringParams.semesterId = params.semesterId;
+    if (params.gradeLevel) stringParams.gradeLevel = String(params.gradeLevel);
+    if (params.classId) stringParams.classId = params.classId;
+    if (params.startDate) stringParams.startDate = params.startDate;
+    if (params.endDate) stringParams.endDate = params.endDate;
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{
+      summary: { present: number; absent: number; absentExcused: number; absentUnexcused: number; late: number; earlyLeave: number; total: number };
+      percentages: { present: string; absent: string; absentExcused: string; absentUnexcused: string; late: string; earlyLeave: string };
+    }>(`/admin/attendance/overview${query ? `?${query}` : ''}`);
+    if (res?.success) {
+      return {
+        summary: (res as unknown as { summary: { present: number; absent: number; absentExcused: number; absentUnexcused: number; late: number; earlyLeave: number; total: number } }).summary,
+        percentages: (res as unknown as { percentages: { present: string; absent: string; absentExcused: string; absentUnexcused: string; late: string; earlyLeave: string } }).percentages,
+      };
+    }
+    return null;
+  },
+
+  async getAttendanceAtRisk(params: {
+    academicYear?: string;
+    gradeLevel?: number;
+    classId?: string;
+    threshold?: number;
+    limit?: number;
+  } = {}): Promise<Array<{
+    student_id: string;
+    student_name: string;
+    student_code: string;
+    class_id: string;
+    class_name: string;
+    grade_level: number;
+    total_days: number;
+    absent_days: number;
+    absence_rate: number;
+  }>> {
+    const stringParams: Record<string, string> = {};
+    if (params.academicYear) stringParams.academicYear = params.academicYear;
+    if (params.gradeLevel) stringParams.gradeLevel = String(params.gradeLevel);
+    if (params.classId) stringParams.classId = params.classId;
+    if (params.threshold) stringParams.threshold = String(params.threshold);
+    if (params.limit) stringParams.limit = String(params.limit);
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{ atRiskStudents: Array<{
+      student_id: string;
+      student_name: string;
+      student_code: string;
+      class_id: string;
+      class_name: string;
+      grade_level: number;
+      total_days: number;
+      absent_days: number;
+      absence_rate: number;
+    }> }>(`/admin/attendance/at-risk${query ? `?${query}` : ''}`);
+    return res?.success ? (res as unknown as { atRiskStudents: Array<{
+      student_id: string;
+      student_name: string;
+      student_code: string;
+      class_id: string;
+      class_name: string;
+      grade_level: number;
+      total_days: number;
+      absent_days: number;
+      absence_rate: number;
+    }> }).atRiskStudents || [] : [];
+  },
+
+  async getAttendanceConfig(): Promise<{
+    absence_alert_threshold: number;
+    absence_warning_threshold: number;
+    consecutive_absent_alert: number;
+    excused_absence_warning: number;
+  }> {
+    const res = await request<{ config: {
+      absence_alert_threshold: number;
+      absence_warning_threshold: number;
+      consecutive_absent_alert: number;
+      excused_absence_warning: number;
+    } }>(`/admin/attendance/config`);
+    if (res?.success) {
+      return (res as unknown as { config: {
+        absence_alert_threshold: number;
+        absence_warning_threshold: number;
+        consecutive_absent_alert: number;
+        excused_absence_warning: number;
+      } }).config;
+    }
+    return { absence_alert_threshold: 10, absence_warning_threshold: 5, consecutive_absent_alert: 3, excused_absence_warning: 5 };
+  },
+
+  async getStudentAttendanceHistory(studentId: string, params?: {
+    startDate?: string;
+    endDate?: string;
+    status?: string;
+    limit?: number;
+  }): Promise<{
+    history: Array<{
+      id: string;
+      status: string;
+      note?: string;
+      date: string;
+      period?: number;
+      class_name: string;
+      grade_level: number;
+      teacher_name?: string;
+      subject_name?: string;
+    }>;
+    summary: Array<{ status: string; count: number }>;
+  }> {
+    const stringParams: Record<string, string> = {};
+    if (params?.startDate) stringParams.startDate = params.startDate;
+    if (params?.endDate) stringParams.endDate = params.endDate;
+    if (params?.status) stringParams.status = params.status;
+    if (params?.limit) stringParams.limit = String(params.limit);
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{
+      history: Array<{
+        id: string;
+        status: string;
+        note?: string;
+        date: string;
+        period?: number;
+        class_name: string;
+        grade_level: number;
+        teacher_name?: string;
+        subject_name?: string;
+      }>;
+      summary: Array<{ status: string; count: number }>;
+    }>(`/admin/attendance/student/${studentId}${query ? `?${query}` : ''}`);
+    if (res?.success) {
+      return {
+        history: (res as unknown as { history: Array<{
+          id: string;
+          status: string;
+          note?: string;
+          date: string;
+          period?: number;
+          class_name: string;
+          grade_level: number;
+          teacher_name?: string;
+          subject_name?: string;
+        }> }).history || [],
+        summary: (res as unknown as { summary: Array<{ status: string; count: number }> }).summary || [],
+      };
+    }
+    return { history: [], summary: [] };
+  },
+
+  async updateAttendanceRecord(recordId: string, data: { status: string; note?: string }): Promise<StandardResponse> {
+    return request(`/admin/attendance/records/${recordId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
   // ── Announcements (G25) ──────────────────────────────────────────────────
   async getAnnouncements(params: {
     page?: number; limit?: number;

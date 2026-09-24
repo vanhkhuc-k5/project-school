@@ -1526,4 +1526,343 @@ router.get('/students/:studentId/positions', requirePermission('class.read'), as
   }
 });
 
+// ============================================================
+// Attendance Management (Admin View)
+// ============================================================
+
+// Get attendance overview/summary
+router.get('/attendance/overview', requirePermission('attendance.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { academicYear, semesterId, gradeLevel, classId, startDate, endDate } = req.query;
+
+    // Build date range
+    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const end = endDate || new Date().toISOString().split('T')[0];
+
+    // Get summary counts by status
+    let summaryQuery = `
+      SELECT 
+        ar.status,
+        COUNT(*) as count
+      FROM attendance_records ar
+      JOIN attendance_sessions ass ON ass.id = ar.session_id
+      JOIN students s ON s.id = ar.student_id
+      JOIN classes c ON c.id = s.class_id
+      WHERE ass.school_id = ?
+        AND ass.date >= ?
+        AND ass.date <= ?
+    `;
+    const summaryParams = [schoolId, start, end];
+
+    if (gradeLevel) {
+      summaryQuery += ' AND c.grade_level = ?';
+      summaryParams.push(parseInt(gradeLevel));
+    }
+    if (classId) {
+      summaryQuery += ' AND c.id = ?';
+      summaryParams.push(classId);
+    }
+    if (academicYear) {
+      summaryQuery += ' AND c.academic_year = ?';
+      summaryParams.push(academicYear);
+    }
+
+    summaryQuery += ' GROUP BY ar.status';
+
+    const summaryResults = db.prepare(summaryQuery).all(...summaryParams);
+
+    // Calculate totals and percentages
+    const summary = {
+      present: 0,
+      absent: 0,
+      absentExcused: 0,
+      absentUnexcused: 0,
+      late: 0,
+      earlyLeave: 0,
+      total: 0,
+    };
+
+    summaryResults.forEach(row => {
+      const status = (row.status || '').toLowerCase();
+      const count = row.count || 0;
+      summary.total += count;
+      switch (status) {
+        case 'present': summary.present += count; break;
+        case 'absent': summary.absent += count; break;
+        case 'excused': summary.absentExcused += count; break;
+        case 'absent':
+        case 'absent_unexcused': summary.absentUnexcused += count; break;
+        case 'late': summary.late += count; break;
+        case 'early_leave': summary.earlyLeave += count; break;
+      }
+    });
+
+    // Calculate percentages
+    const percentages = summary.total > 0 ? {
+      present: ((summary.present / summary.total) * 100).toFixed(1),
+      absent: ((summary.absent / summary.total) * 100).toFixed(1),
+      absentExcused: ((summary.absentExcused / summary.total) * 100).toFixed(1),
+      absentUnexcused: ((summary.absentUnexcused / summary.total) * 100).toFixed(1),
+      late: ((summary.late / summary.total) * 100).toFixed(1),
+      earlyLeave: ((summary.earlyLeave / summary.total) * 100).toFixed(1),
+    } : {
+      present: '0', absent: '0', absentExcused: '0', absentUnexcused: '0', late: '0', earlyLeave: '0'
+    };
+
+    res.json({
+      success: true,
+      data: {
+        summary,
+        percentages,
+        dateRange: { start, end },
+        filters: { academicYear, semesterId, gradeLevel, classId },
+      },
+      summary,
+      percentages,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get at-risk students (high absence rate)
+router.get('/attendance/at-risk', requirePermission('attendance.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { academicYear, gradeLevel, classId, threshold = 10, limit = 20 } = req.query;
+
+    // Get absence rate per student in date range
+    let query = `
+      SELECT 
+        s.id as student_id,
+        u.name as student_name,
+        u.code as student_code,
+        c.id as class_id,
+        c.name as class_name,
+        c.grade_level,
+        COUNT(*) as total_days,
+        SUM(CASE WHEN ar.status IN ('absent', 'ABSENT') THEN 1 ELSE 0 END) as absent_days,
+        ROUND(
+          CAST(SUM(CASE WHEN ar.status IN ('absent', 'ABSENT') THEN 1 ELSE 0 END) AS FLOAT) / 
+          NULLIF(COUNT(*), 0) * 100, 
+        1
+        ) as absence_rate
+      FROM attendance_records ar
+      JOIN attendance_sessions ass ON ass.id = ar.session_id
+      JOIN students s ON s.id = ar.student_id
+      JOIN users u ON u.id = s.user_id
+      JOIN classes c ON c.id = s.class_id
+      WHERE ass.school_id = ?
+        AND c.academic_year = COALESCE(?, c.academic_year)
+    `;
+    const params = [schoolId, academicYear];
+
+    if (gradeLevel) {
+      query += ' AND c.grade_level = ?';
+      params.push(parseInt(gradeLevel));
+    }
+    if (classId) {
+      query += ' AND c.id = ?';
+      params.push(classId);
+    }
+
+    query += `
+      GROUP BY s.id, u.name, u.code, c.id, c.name, c.grade_level
+      HAVING ROUND(
+        CAST(SUM(CASE WHEN ar.status IN ('absent', 'ABSENT') THEN 1 ELSE 0 END) AS FLOAT) / 
+        NULLIF(COUNT(*), 0) * 100, 
+        1
+      ) >= ?
+      ORDER BY absence_rate DESC
+      LIMIT ?
+    `;
+    params.push(parseFloat(threshold), parseInt(limit));
+
+    const atRiskStudents = db.prepare(query).all(...params);
+
+    res.json({
+      success: true,
+      data: { atRiskStudents },
+      atRiskStudents,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get attendance configuration
+router.get('/attendance/config', requirePermission('attendance.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+
+    // Try to get school config
+    const config = db.prepare(`
+      SELECT * FROM school_configs WHERE school_id = ?
+    `).get(schoolId);
+
+    // Default thresholds if not configured
+    const defaultConfig = {
+      absence_alert_threshold: 10,  // Alert if absence rate >= 10%
+      absence_warning_threshold: 5,   // Warning if >= 5%
+      consecutive_absent_alert: 3,    // Alert if 3+ consecutive absences
+      excused_absence_warning: 5,     // Warning if 5+ excused absences
+    };
+
+    res.json({
+      success: true,
+      data: {
+        config: config ? {
+          absence_alert_threshold: config.absence_alert_threshold || defaultConfig.absence_alert_threshold,
+          absence_warning_threshold: config.absence_warning_threshold || defaultConfig.absence_warning_threshold,
+          consecutive_absent_alert: config.consecutive_absent_alert || defaultConfig.consecutive_absent_alert,
+          excused_absence_warning: config.excused_absence_warning || defaultConfig.excused_absence_warning,
+        } : defaultConfig,
+      },
+      config: config || defaultConfig,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get attendance history for a student
+router.get('/attendance/student/:studentId', requirePermission('attendance.read'), async (req, res, next) => {
+  try {
+    const { studentId } = req.params;
+    const { startDate, endDate, status, limit = 100 } = req.query;
+
+    let whereClause = 'WHERE ar.student_id = ?';
+    const params = [studentId];
+
+    if (startDate) {
+      whereClause += ' AND ass.date >= ?';
+      params.push(startDate);
+    }
+    if (endDate) {
+      whereClause += ' AND ass.date <= ?';
+      params.push(endDate);
+    }
+    if (status) {
+      whereClause += ' AND ar.status = ?';
+      params.push(status);
+    }
+
+    params.push(parseInt(limit));
+
+    const history = db.prepare(`
+      SELECT 
+        ar.id,
+        ar.status,
+        ar.note,
+        ar.created_at,
+        ass.date,
+        ass.period,
+        c.name as class_name,
+        c.grade_level,
+        u.name as teacher_name,
+        s.name as subject_name
+      FROM attendance_records ar
+      JOIN attendance_sessions ass ON ass.id = ar.session_id
+      LEFT JOIN classes c ON c.id = ass.class_id
+      LEFT JOIN users u ON u.id = ass.teacher_id
+      LEFT JOIN subjects s ON s.id = ass.subject_id
+      ${whereClause}
+      ORDER BY ass.date DESC, ass.period DESC
+      LIMIT ?
+    `).all(...params);
+
+    // Calculate summary for this student
+    const summary = db.prepare(`
+      SELECT 
+        ar.status,
+        COUNT(*) as count
+      FROM attendance_records ar
+      JOIN attendance_sessions ass ON ass.id = ar.session_id
+      WHERE ar.student_id = ?
+        AND ass.date >= COALESCE(?, '2020-01-01')
+        AND ass.date <= COALESCE(?, '2030-12-31')
+      GROUP BY ar.status
+    `).all(studentId, startDate || '2020-01-01', endDate || '2030-12-31');
+
+    res.json({
+      success: true,
+      data: { history, summary },
+      history,
+      summary,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Admin correction for attendance record
+router.patch('/attendance/records/:recordId', requirePermission('attendance.update'), async (req, res, next) => {
+  try {
+    const { recordId } = req.params;
+    const { status, note } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ success: false, message: 'Trạng thái không được để trống' });
+    }
+
+    // Get existing record
+    const existing = db.prepare(`
+      SELECT ar.*, ass.date, ass.school_id
+      FROM attendance_records ar
+      JOIN attendance_sessions ass ON ass.id = ar.session_id
+      WHERE ar.id = ?
+    `).get(recordId);
+
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi điểm danh' });
+    }
+
+    // Verify school access
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    if (existing.school_id !== schoolId) {
+      return res.status(403).json({ success: false, message: 'Không có quyền sửa bản ghi này' });
+    }
+
+    const oldStatus = existing.status;
+    const oldNote = existing.note;
+
+    // Update the record
+    db.prepare(`
+      UPDATE attendance_records 
+      SET status = ?, note = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(status, note || existing.note, recordId);
+
+    // Create audit log
+    db.prepare(`
+      INSERT INTO audit_logs (id, actor_id, actor_name, role, action, entity_type, entity_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      `log_att_${Date.now()}`,
+      req.user.id,
+      req.user.name || 'Admin',
+      req.user.role,
+      'Điều chỉnh điểm danh',
+      'attendance_records',
+      recordId,
+      JSON.stringify({
+        record_date: existing.date,
+        old_status: oldStatus,
+        new_status: status,
+        old_note: oldNote,
+        new_note: note,
+        reason: 'Admin correction',
+      })
+    );
+
+    res.json({
+      success: true,
+      message: 'Đã cập nhật bản ghi điểm danh',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
