@@ -859,6 +859,98 @@ export const adminApi = {
       : [];
   },
 
+  // ── Student Management ─────────────────────────────────────────────────────────
+  async getStudents(params: {
+    search?: string;
+    classId?: string;
+    gradeLevel?: number;
+    status?: 'active' | 'inactive';
+    page?: number;
+    limit?: number;
+  } = {}): Promise<{ students: Student[]; pagination: PaginationMeta }> {
+    const stringParams: Record<string, string> = {};
+    if (params.search) stringParams.search = params.search;
+    if (params.classId) stringParams.classId = params.classId;
+    if (params.gradeLevel) stringParams.gradeLevel = String(params.gradeLevel);
+    if (params.status) stringParams.status = params.status;
+    if (params.page) stringParams.page = String(params.page);
+    if (params.limit) stringParams.limit = String(params.limit);
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{ students: Student[]; pagination: PaginationMeta }>(
+      `/admin/students${query ? `?${query}` : ''}`
+    );
+    return res?.success
+      ? {
+          students: (res as unknown as { students?: Student[] }).students || [],
+          pagination: (res as unknown as { pagination?: PaginationMeta }).pagination || { page: 1, limit: 50, total: 0, totalPages: 0, hasNext: false, hasPrev: false },
+        }
+      : { students: [], pagination: { page: 1, limit: 50, total: 0, totalPages: 0, hasNext: false, hasPrev: false } };
+  },
+
+  async getStudentById(id: string): Promise<Student | null> {
+    const res = await request<{ student: Student }>(`/admin/students/${id}`);
+    return res?.success ? (res as unknown as { student: Student }).student : null;
+  },
+
+  async updateStudent(id: string, data: {
+    name?: string;
+    phone?: string;
+    classId?: string;
+    parentId?: string;
+    isActive?: boolean;
+  }): Promise<StandardResponse> {
+    return request(`/admin/students/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getStudentEnrollments(studentId: string): Promise<unknown[]> {
+    const res = await request<{ enrollments: unknown[] }>(`/admin/students/${studentId}/enrollments`);
+    return res?.success ? (res as unknown as { enrollments: unknown[] }).enrollments || [] : [];
+  },
+
+  async getStudentAttendance(studentId: string, params?: { startDate?: string; endDate?: string; limit?: number }): Promise<unknown[]> {
+    const stringParams: Record<string, string> = {};
+    if (params?.startDate) stringParams.startDate = params.startDate;
+    if (params?.endDate) stringParams.endDate = params.endDate;
+    if (params?.limit) stringParams.limit = String(params.limit);
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{ attendance: unknown[] }>(`/admin/students/${studentId}/attendance${query ? `?${query}` : ''}`);
+    return res?.success ? (res as unknown as { attendance: unknown[] }).attendance || [] : [];
+  },
+
+  async getStudentGrades(studentId: string, params?: { semesterId?: string; subjectId?: string; limit?: number }): Promise<unknown[]> {
+    const stringParams: Record<string, string> = {};
+    if (params?.semesterId) stringParams.semesterId = params.semesterId;
+    if (params?.subjectId) stringParams.subjectId = params.subjectId;
+    if (params?.limit) stringParams.limit = String(params.limit);
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{ grades: unknown[] }>(`/admin/students/${studentId}/grades${query ? `?${query}` : ''}`);
+    return res?.success ? (res as unknown as { grades: unknown[] }).grades || [] : [];
+  },
+
+  async getStudentAssignments(studentId: string, params?: { status?: string; limit?: number }): Promise<unknown[]> {
+    const stringParams: Record<string, string> = {};
+    if (params?.status) stringParams.status = params.status;
+    if (params?.limit) stringParams.limit = String(params.limit);
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{ assignments: unknown[] }>(`/admin/students/${studentId}/assignments${query ? `?${query}` : ''}`);
+    return res?.success ? (res as unknown as { assignments: unknown[] }).assignments || [] : [];
+  },
+
+  async getStudentLeaveRequests(studentId: string): Promise<unknown[]> {
+    const res = await request<{ leaveRequests: unknown[] }>(`/admin/students/${studentId}/leave-requests`);
+    return res?.success ? (res as unknown as { leaveRequests: unknown[] }).leaveRequests || [] : [];
+  },
+
+  async transferStudent(studentId: string, data: { newClassId: string; effectiveDate?: string; reason?: string }): Promise<StandardResponse> {
+    return request(`/admin/students/${studentId}/transfer`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
   // ── Announcements (G25) ──────────────────────────────────────────────────
   async getAnnouncements(params: {
     page?: number; limit?: number;

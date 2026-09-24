@@ -28,17 +28,34 @@ export interface User {
 }
 
 export interface Student {
-  id: string;
-  userId: string;
-  classId: string;
-  parentId?: string | null;
-  gpa: number;
-  classRank?: string;
-  attendanceRate: number;
+  // User fields
+  user_id?: string;
+  id?: string;
   name?: string;
   code?: string;
-  className?: string;
+  email?: string;
+  phone?: string;
   avatar?: string | null;
+  is_active?: boolean;
+  created_at?: string;
+  // Student fields
+  userId?: string;
+  student_id?: string;
+  classId?: string;
+  parentId?: string | null;
+  gpa?: number;
+  classRank?: string;
+  attendanceRate?: number;
+  className?: string;
+  gradeLevel?: number;
+  class_academic_year?: string;
+  // Parent info
+  parent_name?: string;
+  parent_phone?: string;
+  parent_email?: string;
+  parent_user_id?: string;
+  // Computed fields
+  hasParent?: boolean;
 }
 
 export interface Teacher {

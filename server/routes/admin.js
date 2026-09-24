@@ -315,4 +315,497 @@ router.delete('/departments/:id', requirePermission('school.manage'), academicSt
 router.post('/classes/:id/archive', requirePermission('class.manage'), academicStructureController.archiveClass);
 router.get('/classes/:id/students', requirePermission('class.read'), academicStructureController.getClassStudents);
 
+// ============================================================
+// Student Management Endpoints
+// ============================================================
+
+// List students with search and filters
+router.get('/students', requirePermission('student.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { search, classId, gradeLevel, status, page = 1, limit = 50 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    let whereClause = 'WHERE u.school_id = ?';
+    const params = [schoolId];
+    
+    if (search) {
+      whereClause += ` AND (u.name LIKE ? OR u.code LIKE ? OR s.code LIKE ?)`;
+      const searchTerm = `%${search}%`;
+      params.push(searchTerm, searchTerm, searchTerm);
+    }
+    
+    if (gradeLevel) {
+      whereClause += ` AND c.grade_level = ?`;
+      params.push(parseInt(gradeLevel));
+    }
+    
+    if (classId) {
+      whereClause += ` AND s.class_id = ?`;
+      params.push(classId);
+    }
+    
+    // Status filter based on user is_active flag
+    if (status === 'active') {
+      whereClause += ` AND u.is_active = 1`;
+    } else if (status === 'inactive') {
+      whereClause += ` AND u.is_active = 0`;
+    }
+    
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM users u
+      JOIN students s ON s.user_id = u.id
+      LEFT JOIN classes c ON c.id = s.class_id
+      ${whereClause}
+    `;
+    
+    const listQuery = `
+      SELECT 
+        u.id as user_id,
+        u.name,
+        u.code,
+        u.email,
+        u.phone,
+        u.avatar,
+        u.is_active,
+        u.created_at,
+        s.id as student_id,
+        s.class_id,
+        s.parent_id,
+        s.gpa,
+        s.class_rank,
+        s.attendance_rate,
+        c.name as class_name,
+        c.grade_level,
+        p.name as parent_name,
+        p.phone as parent_phone
+      FROM users u
+      JOIN students s ON s.user_id = u.id
+      LEFT JOIN classes c ON c.id = s.class_id
+      LEFT JOIN users p ON p.id = s.parent_id
+      ${whereClause}
+      ORDER BY u.name ASC
+      LIMIT ? OFFSET ?
+    `;
+    
+    const countResult = db.prepare(countQuery).get(...params);
+    const students = db.prepare(listQuery).all(...params, parseInt(limit), offset);
+    
+    res.json({
+      success: true,
+      data: { students },
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: countResult.total,
+        totalPages: Math.ceil(countResult.total / parseInt(limit)),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get single student detail
+router.get('/students/:id', requirePermission('student.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { id } = req.params;
+    
+    const student = db.prepare(`
+      SELECT 
+        u.id as user_id,
+        u.name,
+        u.code,
+        u.email,
+        u.phone,
+        u.avatar,
+        u.is_active,
+        u.created_at,
+        s.id as student_id,
+        s.class_id,
+        s.parent_id,
+        s.gpa,
+        s.class_rank,
+        s.attendance_rate,
+        c.name as class_name,
+        c.grade_level,
+        c.academic_year as class_academic_year,
+        p.id as parent_user_id,
+        p.name as parent_name,
+        p.phone as parent_phone,
+        p.email as parent_email
+      FROM users u
+      JOIN students s ON s.user_id = u.id
+      LEFT JOIN classes c ON c.id = s.class_id
+      LEFT JOIN users p ON p.id = s.parent_id
+      WHERE u.id = ? AND u.school_id = ?
+    `).get(id, schoolId);
+    
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy học sinh' });
+    }
+    
+    res.json({
+      success: true,
+      data: { student },
+      student,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update student
+router.put('/students/:id', requirePermission('student.update'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { id } = req.params;
+    const { name, phone, classId, parentId, isActive } = req.body;
+    
+    // Verify student exists and belongs to school
+    const existing = db.prepare(`
+      SELECT s.id, u.name as user_name
+      FROM students s
+      JOIN users u ON u.id = s.user_id
+      WHERE u.id = ? AND u.school_id = ?
+    `).get(id, schoolId);
+    
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy học sinh' });
+    }
+    
+    // Update user fields
+    const updates = [];
+    const userParams = [];
+    
+    if (name !== undefined) {
+      updates.push('name = ?');
+      userParams.push(name);
+    }
+    if (phone !== undefined) {
+      updates.push('phone = ?');
+      userParams.push(phone);
+    }
+    if (isActive !== undefined) {
+      updates.push('is_active = ?');
+      userParams.push(isActive ? 1 : 0);
+    }
+    
+    if (updates.length > 0) {
+      userParams.push(id);
+      db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...userParams);
+    }
+    
+    // Update student fields
+    const studentUpdates = [];
+    const studentParams = [];
+    
+    if (classId !== undefined) {
+      studentUpdates.push('class_id = ?');
+      studentParams.push(classId);
+    }
+    if (parentId !== undefined) {
+      studentUpdates.push('parent_id = ?');
+      studentParams.push(parentId || null);
+    }
+    
+    if (studentUpdates.length > 0) {
+      studentParams.push(id);
+      db.prepare(`UPDATE students SET ${studentUpdates.join(', ')} WHERE user_id = ?`).run(...studentParams);
+    }
+    
+    // Get updated student
+    const updated = db.prepare(`
+      SELECT 
+        u.id as user_id,
+        u.name,
+        u.code,
+        u.email,
+        u.phone,
+        u.is_active,
+        s.id as student_id,
+        s.class_id,
+        s.parent_id,
+        c.name as class_name,
+        c.grade_level
+      FROM users u
+      JOIN students s ON s.user_id = u.id
+      LEFT JOIN classes c ON c.id = s.class_id
+      WHERE u.id = ?
+    `).get(id);
+    
+    res.json({
+      success: true,
+      message: 'Cập nhật thông tin học sinh thành công',
+      data: { student: updated },
+      student: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get student enrollments
+router.get('/students/:id/enrollments', requirePermission('student.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { id } = req.params;
+    
+    const enrollments = db.prepare(`
+      SELECT 
+        e.id,
+        e.student_id,
+        e.class_id,
+        e.academic_year_id,
+        e.semester_id,
+        e.is_current,
+        e.status,
+        e.enrolled_at,
+        c.name as class_name,
+        c.grade_level,
+        ay.name as academic_year_name
+      FROM class_enrollments e
+      JOIN classes c ON c.id = e.class_id
+      LEFT JOIN academic_years ay ON ay.id = e.academic_year_id
+      WHERE e.student_id IN (SELECT id FROM students WHERE user_id = ?)
+      ORDER BY e.enrolled_at DESC
+    `).all(id);
+    
+    res.json({
+      success: true,
+      data: { enrollments },
+      enrollments,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get student attendance
+router.get('/students/:id/attendance', requirePermission('attendance.read'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { startDate, endDate, limit = 30 } = req.query;
+    
+    let whereClause = 'WHERE a.student_id = ?';
+    const params = [id];
+    
+    if (startDate) {
+      whereClause += ' AND a.date >= ?';
+      params.push(startDate);
+    }
+    if (endDate) {
+      whereClause += ' AND a.date <= ?';
+      params.push(endDate);
+    }
+    
+    const attendance = db.prepare(`
+      SELECT 
+        a.id,
+        a.date,
+        a.status,
+        a.note,
+        c.name as class_name
+      FROM attendance a
+      JOIN students s ON s.id = a.student_id
+      LEFT JOIN classes c ON c.id = s.class_id
+      ${whereClause}
+      ORDER BY a.date DESC
+      LIMIT ?
+    `).all(...params, parseInt(limit));
+    
+    res.json({
+      success: true,
+      data: { attendance },
+      attendance,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get student grades
+router.get('/students/:id/grades', requirePermission('student.read'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { semesterId, subjectId, limit = 50 } = req.query;
+    
+    let whereClause = 'WHERE g.student_id = ?';
+    const params = [id];
+    
+    if (semesterId) {
+      whereClause += ' AND g.semester_id = ?';
+      params.push(semesterId);
+    }
+    if (subjectId) {
+      whereClause += ' AND g.subject_id = ?';
+      params.push(subjectId);
+    }
+    
+    const grades = db.prepare(`
+      SELECT 
+        g.id,
+        g.subject,
+        g.test_name,
+        g.score,
+        g.max_score,
+        g.coefficient,
+        g.semester,
+        g.teacher_name,
+        g.graded_at,
+        u.name as teacher_name_full
+      FROM grades g
+      LEFT JOIN users u ON u.name = g.teacher_name
+      ${whereClause}
+      ORDER BY g.graded_at DESC
+      LIMIT ?
+    `).all(...params, parseInt(limit));
+    
+    res.json({
+      success: true,
+      data: { grades },
+      grades,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get student assignments
+router.get('/students/:id/assignments', requirePermission('assignment.read'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status, limit = 50 } = req.query;
+    
+    let whereClause = 'WHERE sub.student_id = ?';
+    const params = [id];
+    
+    if (status) {
+      whereClause += ' AND sub.status = ?';
+      params.push(status);
+    }
+    
+    const assignments = db.prepare(`
+      SELECT 
+        sub.id as submission_id,
+        sub.status as submission_status,
+        sub.score,
+        sub.submitted_at,
+        sub.is_late,
+        a.id as assignment_id,
+        a.title,
+        a.subject,
+        a.type,
+        a.due_date,
+        a.due_time,
+        a.total_score
+      FROM assignment_submissions sub
+      JOIN assignments a ON a.id = sub.assignment_id
+      ${whereClause}
+      ORDER BY a.due_date DESC
+      LIMIT ?
+    `).all(...params, parseInt(limit));
+    
+    res.json({
+      success: true,
+      data: { assignments },
+      assignments,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get student leave requests
+router.get('/students/:id/leave-requests', requirePermission('student.read'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    // Get student_id from user_id
+    const studentRec = db.prepare('SELECT id FROM students WHERE user_id = ?').get(id);
+    
+    if (!studentRec) {
+      return res.json({ success: true, data: { leaveRequests: [] }, leaveRequests: [] });
+    }
+    
+    const leaveRequests = db.prepare(`
+      SELECT 
+        lr.id,
+        lr.start_date,
+        lr.end_date,
+        lr.reason,
+        lr.status,
+        lr.reviewed_by,
+        lr.reviewed_at,
+        lr.created_at,
+        u.name as reviewed_by_name
+      FROM leave_requests lr
+      LEFT JOIN users u ON u.id = lr.reviewed_by
+      WHERE lr.student_id = ?
+      ORDER BY lr.created_at DESC
+    `).all(studentRec.id);
+    
+    res.json({
+      success: true,
+      data: { leaveRequests },
+      leaveRequests,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Transfer student to different class
+router.post('/students/:id/transfer', requirePermission('student.update'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { id } = req.params;
+    const { newClassId, effectiveDate, reason } = req.body;
+    
+    if (!newClassId) {
+      return res.status(400).json({ success: false, message: 'Vui lòng chọn lớp chuyển đến' });
+    }
+    
+    // Get student record
+    const student = db.prepare('SELECT id, class_id FROM students WHERE user_id = ?').get(id);
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy học sinh' });
+    }
+    
+    // Verify new class exists
+    const newClass = db.prepare('SELECT id, name, grade_level FROM classes WHERE id = ?').get(newClassId);
+    if (!newClass) {
+      return res.status(400).json({ success: false, message: 'Lớp chuyển đến không tồn tại' });
+    }
+    
+    // Update student's class
+    db.prepare('UPDATE students SET class_id = ? WHERE user_id = ?').run(newClassId, id);
+    
+    // Log audit
+    db.prepare(`
+      INSERT INTO audit_logs (id, actor_id, actor_name, role, action, entity_type, entity_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      `log_${Date.now()}`,
+      req.user.id,
+      req.user.name || 'Admin',
+      req.user.role,
+      `Chuyển lớp học sinh`,
+      'students',
+      id,
+      JSON.stringify({ from: student.class_id, to: newClassId, reason })
+    );
+    
+    res.json({
+      success: true,
+      message: `Đã chuyển học sinh sang lớp ${newClass.name}`,
+      data: { newClass },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
