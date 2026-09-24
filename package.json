@@ -12,6 +12,7 @@
     "server:prod": "NODE_ENV=production node server/index.js",
     "server:staging": "NODE_ENV=staging node server/index.js",
     "seed": "node server/seed.js",
+    "seed:staging": "NODE_ENV=staging node server/seed-staging.js",
     "seed:supabase": "node server/supabase/seed-runner.js",
     
     "-- CI SCRIPTS (G50) --": "",

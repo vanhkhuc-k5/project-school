@@ -10,10 +10,24 @@ const BCRYPT_ROUNDS = config.BCRYPT_ROUNDS;
  *   mode='demo': Tạo dữ liệu demo đầy đủ để dev/test
  *   mode='init': Chỉ tạo 1 admin mặc định, trường trống để nhập liệu thật
  *
- * Chạy: node server/seed.js          → demo mode
- *        node server/seed.js --init   → init mode (production)
+ * CRITICAL: Automatic seeding is DISABLED. Seed must be explicit.
+ * - In production: blocked entirely
+ * - In staging: blocked (use npm run seed:staging instead)
+ * - In test: never runs (uses isolated test fixtures)
+ * - In development: allowed via explicit npm run seed command
+ *
+ * Chạy: node server/seed.js          → demo mode (dev only)
+ *        node server/seed.js --init   → init mode (dev only)
  */
 export function seedDatabase(mode = 'demo') {
+  // Safety guard: never seed automatically in staging or production
+  if (config.IS_STAGING || config.IS_PRODUCTION) {
+    console.warn('⚠️ [SEED] Automatic seeding is disabled in staging/production.');
+    console.warn('   Use npm run seed:staging for explicit staging seed.');
+    console.warn('   Use npm run seed:init for initial production setup (requires --init flag).');
+    return;
+  }
+
   initSchema();
 
   const existingUsers = db.prepare('SELECT COUNT(*) as count FROM users').get();
@@ -662,6 +676,13 @@ function seedSubjects() {
 // ============================================================
 const isDirectRun = process.argv[1]?.endsWith('seed.js');
 if (isDirectRun) {
+  // Safety guard for CLI execution
+  if (config.IS_STAGING || config.IS_PRODUCTION) {
+    console.error('❌ [SEED CLI] Cannot run seed.js directly in staging or production!');
+    console.error('   Use: npm run seed:staging');
+    process.exit(1);
+  }
+  
   const mode = process.argv.includes('--init') ? 'init' : 'demo';
   console.log(`\n🔧 Running seed in "${mode}" mode...\n`);
   seedDatabase(mode);

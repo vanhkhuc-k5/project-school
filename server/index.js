@@ -1,7 +1,6 @@
 import { config } from './config/env.js';
 import { createApp } from './app/app.js';
 import { verifyDatabaseHealth, pool } from './shared/database/index.js';
-import { seedDatabase } from './seed.js';
 
 const PORT = config.PORT;
 
@@ -53,15 +52,12 @@ async function start() {
   try {
     // 1. Verify PostgreSQL health (fail-fast in production)
     const dbHealthy = await verifyDatabaseHealth();
-    if (!dbHealthy && config.NODE_ENV === 'production') {
+    if (!dbHealthy && config.IS_PRODUCTION) {
       console.error('❌ [SERVER] Cannot start in production without healthy database');
       process.exit(1);
     }
 
-    // 2. Initialize database schema and seed data for transitional local routes
-    seedDatabase();
-
-    // 3. Create application instance
+    // 2. Create application instance
     const app = createApp();
 
     // 4. Start listening

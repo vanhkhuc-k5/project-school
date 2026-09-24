@@ -32,5 +32,16 @@ CREATE TABLE IF NOT EXISTS payment_idempotency (
   expires_at TIMESTAMPTZ
 );
 
+-- Add expires_at column if it doesn't exist (migration was previously applied without it)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'payment_idempotency' AND column_name = 'expires_at'
+  ) THEN
+    ALTER TABLE payment_idempotency ADD COLUMN expires_at TIMESTAMPTZ;
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_payment_idempotency_key ON payment_idempotency(key);
 CREATE INDEX IF NOT EXISTS idx_payment_idempotency_expires ON payment_idempotency(expires_at) WHERE expires_at IS NOT NULL;

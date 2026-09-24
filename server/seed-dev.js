@@ -673,10 +673,16 @@ function seedTuitionInvoices() {
 
 function seedDevData() {
   // Check environment
-  if (config.NODE_ENV === 'production') {
+  if (config.IS_PRODUCTION) {
     console.error('❌ PRODUCTION GUARD: Cannot seed development data in production environment!');
     console.error('   This is a safety measure to prevent accidental seeding of test data in production.');
     console.error('   If you need to reset production, use the admin panel or migration tools.');
+    process.exit(1);
+  }
+  
+  if (config.IS_STAGING) {
+    console.error('❌ STAGING GUARD: Cannot run development seed in staging environment!');
+    console.error('   Use npm run seed:staging for staging demo data.');
     process.exit(1);
   }
   
