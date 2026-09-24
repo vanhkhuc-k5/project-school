@@ -29,11 +29,19 @@ export default defineConfig({
     },
   ],
 
-  // NOTE: Playwright manages both backend and frontend servers automatically.
-  // Backend health check uses /api/health (not /) since Express only serves /api/*
+  // Playwright manages both backend and frontend servers automatically.
+  // 
+  // Backend: Uses dedicated E2E test server (tests/browser/e2e-server.js)
+  //   - Isolated :memory: SQLite database
+  //   - Uses test fixtures (NOT production seed)
+  //   - Health check: /api/health
+  //
+  // Frontend: Vite dev server
+  //   - Port: 5173
+  //   - Proxies /api/* to backend at localhost:5000
   webServer: [
     {
-      command: 'npm run server',
+      command: 'node tests/browser/e2e-server.js',
       url: 'http://localhost:5000/api/health',
       reuseExistingServer: !process.env.CI,
       timeout: 60000,
