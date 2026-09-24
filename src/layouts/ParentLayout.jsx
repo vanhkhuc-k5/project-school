@@ -51,7 +51,11 @@ export function ParentLayout() {
   const navigate = useNavigate();
   const activeTab = useActiveRoute();
   const { isOpen: isMobileMenuOpen, toggle: toggleMobileMenu, close: closeMobileMenu } = useMobileMenu();
-  const handleLogout = logout;
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   const menuItems = [
     { id: 'home', label: 'Trang chủ', icon: Home, route: '/parent/dashboard' },

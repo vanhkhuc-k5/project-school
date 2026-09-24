@@ -52,7 +52,11 @@ export function AdminLayout() {
   const navigate = useNavigate();
   const activeTab = useActiveRoute();
   const { isOpen: isMobileMenuOpen, toggle: toggleMobileMenu, close: closeMobileMenu } = useMobileMenu();
-  const handleLogout = onLogout || logout;
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   const mainNavItems = [
     { id: 'overview', label: 'Tổng quan toàn trường', icon: BarChart2, route: '/admin/overview' },

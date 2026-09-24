@@ -60,9 +60,9 @@ export function getAccessToken(): string | null {
 export function setAccessToken(token: string | null): void {
   inMemoryAccessToken = token;
   if (token) {
-    try { localStorage.setItem(SESSION_TOKEN_KEY, token); console.debug('[Auth] Token saved to localStorage:', token.substring(0, 20) + '...'); } catch (e) { console.warn('[Auth] localStorage save failed:', e); }
+    try { localStorage.setItem(SESSION_TOKEN_KEY, token); } catch (e) { console.warn('[Auth] localStorage save failed:', e); }
   } else {
-    try { localStorage.removeItem(SESSION_TOKEN_KEY); console.debug('[Auth] Token removed from localStorage'); } catch (e) { console.warn('[Auth] localStorage remove failed:', e); }
+    try { localStorage.removeItem(SESSION_TOKEN_KEY); } catch (e) { console.warn('[Auth] localStorage remove failed:', e); }
   }
 }
 
@@ -214,41 +214,62 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ identifier, password, role }),
     });
+
+    // ── Canonical backend response ──────────────────────────────────────────
+    // Backend returns { success: true, user, token, accessToken } directly
+    // (no nested data wrapper)
+    if (res?.success && (res as unknown as { user?: User }).user) {
+      const raw = res as unknown as { user?: User; token?: string; accessToken?: string };
+      const token = raw.accessToken || raw.token || '';
+      const user = raw.user;
+      if (token) setAccessToken(token);
+      return { success: true, user, token };
+    }
+
+    // ── Legacy wrapped response ──────────────────────────────────────────────
+    // Some backends may still return { success, data: { user, token, ... } }
     if (res?.success && res.data) {
       const responseData = res.data as { user?: User; token?: string; accessToken?: string };
       const token = responseData.accessToken || responseData.token || '';
       const user = responseData.user;
-      console.debug('[Auth] login success, token:', token.substring(0, 20) + '...');
-      setAccessToken(token);
+      if (token) setAccessToken(token);
       return { success: true, user, token };
     }
-    return { success: false, message: res?.message || 'Tài khoản hoặc mật khẩu không chính xác' };
+
+    // ── Error response ────────────────────────────────────────────────────────
+    const errorMessage =
+      res?.error?.message ||
+      res?.message ||
+      'Tài khoản hoặc mật khẩu không chính xác';
+    return { success: false, message: errorMessage };
   },
 
   async refresh(): Promise<{ success: boolean; token?: string; user?: User }> {
     const res = await request<{ user: User; token: string; accessToken?: string }>('/auth/refresh', {
       method: 'POST',
     });
-    if (res?.success) {
-      const token = res.data?.accessToken || res.data?.token || (res as unknown as { token?: string }).token;
-      const user = res.data?.user || (res as unknown as { user?: User }).user;
-      if (token) setAccessToken(token);
-      return { success: true, token, user };
-    }
-    return { success: false };
+    if (!res?.success) return { success: false };
+
+    // Canonical: { success, user, token, accessToken }
+    const raw = res as unknown as { user?: User; token?: string; accessToken?: string; data?: { user?: User; token?: string; accessToken?: string } };
+
+    // Try data wrapper first (legacy)
+    const fromData = raw.data;
+    const token = fromData?.accessToken || fromData?.token || raw.accessToken || raw.token;
+    const user = fromData?.user || raw.user;
+
+    if (token) setAccessToken(token);
+    return { success: true, token, user };
   },
 
   async getMe(): Promise<User | null> {
     // Restore token from localStorage on page reload (before any request)
     restoreAccessToken();
-    console.debug('[Auth] getMe - inMemoryToken:', inMemoryAccessToken ? 'EXISTS' : 'NULL');
     if (!inMemoryAccessToken) {
-      console.debug('[Auth] getMe - no token, returning null');
       return null;
     }
     // Use the standard request helper — handles 304 body parsing correctly
     const res = await request<User>('/auth/me');
-    console.debug('[Auth] getMe response:', { success: res?.success, hasData: !!res?.data });
     if (res?.success && res.data) {
       return res.data;
     }
@@ -258,7 +279,6 @@ export const authApi = {
     }
     // 401 → clear stale token
     if (res && 'status' in res && res.status === 401) {
-      console.debug('[Auth] getMe - 401, clearing token');
       setAccessToken(null);
     }
     return null;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/Button';
 import {
@@ -17,6 +17,11 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
+import { getDemoAccounts, getDemoLabel } from '../../lib/demo-accounts';
+
+// Resolve demo accounts for current environment (null = hidden in production)
+const DEMO_ACCOUNTS = getDemoAccounts();
+const DEMO_LABEL = getDemoLabel();
 
 export function LoginPage({ onLoginSuccess }) {
   const { login } = useAuth();
@@ -29,40 +34,46 @@ export function LoginPage({ onLoginSuccess }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [showTestAccounts, setShowTestAccounts] = useState(false);
 
-  const roleTabs = [
-    {
-      id: 'student',
-      label: 'Học sinh',
-      icon: GraduationCap,
-      placeholder: 'VD: teststudent1 hoặc email học sinh',
-      tip: 'Dành cho học sinh: Sử dụng mã định danh học sinh (VD: teststudent1) hoặc email trường cấp.',
-      testAccount: { code: 'teststudent1', pass: 'devpassword123', name: 'Em Nguyễn Văn Test (Lớp 10A)' },
-    },
-    {
-      id: 'teacher',
-      label: 'Giáo viên',
-      icon: Briefcase,
-      placeholder: 'VD: testteacher1 hoặc email giáo viên',
-      tip: 'Dành cho giáo viên: Sử dụng email nội bộ do phòng CNTT nhà trường cấp (VD: testteacher1).',
-      testAccount: { code: 'testteacher1', pass: 'devpassword123', name: 'Thầy Đỗ Văn Test (Tổ Toán học)' },
-    },
-    {
-      id: 'parent',
-      label: 'Phụ huynh',
-      icon: Users,
-      placeholder: 'VD: testparent1 hoặc email phụ huynh',
-      tip: 'Dành cho phụ huynh: Sử dụng mã định danh liên lạc học sinh (VD: testparent1) hoặc email đã đăng ký.',
-      testAccount: { code: 'testparent1', pass: 'devpassword123', name: 'Ông Nguyễn Văn Phụ Huynh (PH em Test)' },
-    },
-    {
-      id: 'admin',
-      label: 'Quản trị',
-      icon: Shield,
-      placeholder: 'VD: testadmin hoặc email quản trị',
-      tip: 'Dành cho Ban Giám Hiệu & Quản trị viên hệ thống có chữ ký số và phân quyền quản lý cấp cao.',
-      testAccount: { code: 'testadmin', pass: 'devpassword123', name: 'Admin Test Dev (Quản trị)' },
-    },
-  ];
+  const isStaging = import.meta.env?.NODE_ENV === 'staging';
+  const isProduction = import.meta.env?.NODE_ENV === 'production';
+
+  const roleTabs = useMemo(() => {
+    const tips = {
+      student: isStaging
+        ? 'Dành cho học sinh: Sử dụng mã định danh học sinh (VD: stg_student) hoặc email trường cấp.'
+        : 'Dành cho học sinh: Sử dụng mã định danh học sinh (VD: teststudent1) hoặc email trường cấp.',
+      teacher: isStaging
+        ? 'Dành cho giáo viên: Sử dụng email nội bộ do phòng CNTT nhà trường cấp (VD: stg_teacher).'
+        : 'Dành cho giáo viên: Sử dụng email nội bộ do phòng CNTT nhà trường cấp (VD: testteacher1).',
+      parent: isStaging
+        ? 'Dành cho phụ huynh: Sử dụng mã định danh liên lạc học sinh (VD: stg_parent) hoặc email đã đăng ký.'
+        : 'Dành cho phụ huynh: Sử dụng mã định danh liên lạc học sinh (VD: testparent1) hoặc email đã đăng ký.',
+      admin: isStaging
+        ? 'Dành cho Ban Giám Hiệu & Quản trị viên hệ thống có chữ ký số và phân quyền quản lý cấp cao. Tài khoản: stg_admin'
+        : 'Dành cho Ban Giám Hiệu & Quản trị viên hệ thống có chữ ký số và phân quyền quản lý cấp cao.',
+    };
+    const placeholders = {
+      student: isStaging ? 'VD: stg_student hoặc email học sinh' : 'VD: teststudent1 hoặc email học sinh',
+      teacher: isStaging ? 'VD: stg_teacher hoặc email giáo viên' : 'VD: testteacher1 hoặc email giáo viên',
+      parent: isStaging ? 'VD: stg_parent hoặc email phụ huynh' : 'VD: testparent1 hoặc email phụ huynh',
+      admin: isStaging ? 'VD: stg_admin hoặc email quản trị' : 'VD: testadmin hoặc email quản trị',
+    };
+
+    const tabs = [
+      { id: 'student', label: 'Học sinh', icon: GraduationCap },
+      { id: 'teacher', label: 'Giáo viên', icon: Briefcase },
+      { id: 'parent',  label: 'Phụ huynh', icon: Users },
+      { id: 'admin',   label: 'Quản trị',  icon: Shield },
+    ];
+
+    return tabs.map((tab) => ({
+      ...tab,
+      placeholder: placeholders[tab.id],
+      tip: tips[tab.id],
+      // testAccount is null in production unless explicitly enabled
+      testAccount: DEMO_ACCOUNTS?.[tab.id] ?? null,
+    }));
+  }, [isStaging]);
 
   const handleRoleSelect = (roleId) => {
     setSelectedRole(roleId);
@@ -71,12 +82,12 @@ export function LoginPage({ onLoginSuccess }) {
 
   const fillTestAccount = (roleId) => {
     const tab = roleTabs.find((r) => r.id === roleId);
-    if (tab) {
-      setSelectedRole(roleId);
-      setIdentifier(tab.testAccount.code);
-      setPassword(tab.testAccount.pass);
-      setErrorMessage('');
-    }
+    // Skip if no demo account for this environment/role
+    if (!tab?.testAccount) return;
+    setSelectedRole(roleId);
+    setIdentifier(tab.testAccount.code);
+    setPassword(tab.testAccount.pass);
+    setErrorMessage('');
   };
 
   const handleLogin = async (e) => {
@@ -108,6 +119,8 @@ export function LoginPage({ onLoginSuccess }) {
   };
 
   const currentTabInfo = roleTabs.find((r) => r.id === selectedRole);
+  // Count how many roles have demo accounts in this environment
+  const demoAccountCount = roleTabs.filter((t) => t.testAccount !== null).length;
 
   return (
     <div className="min-h-screen bg-[#F8F9FB] flex flex-col justify-between">
@@ -120,6 +133,11 @@ export function LoginPage({ onLoginSuccess }) {
           <span className="text-text-secondary text-xs hidden sm:inline">Academic Identity & Access Management</span>
         </div>
         <div className="flex items-center gap-6 text-sm">
+          {isStaging && (
+            <span className="px-2 py-0.5 rounded-pill bg-amber-100 text-amber-700 text-xs font-medium">
+              STAGING
+            </span>
+          )}
           <span className="text-primary font-medium">Cổng Đăng Nhập Chính Thức</span>
           <span className="text-text-secondary hover:text-text-primary cursor-pointer hidden sm:inline">Hướng dẫn</span>
           <span className="text-text-secondary hover:text-text-primary cursor-pointer hidden sm:inline">Hỗ trợ kỹ thuật</span>
@@ -275,54 +293,62 @@ export function LoginPage({ onLoginSuccess }) {
                 </span>
               </div>
 
-              <button
-                type="button"
-                onClick={() => fillTestAccount(selectedRole)}
-                className="w-full h-11 bg-surface-neutral hover:bg-hairline/50 border border-hairline rounded text-xs font-medium text-text-primary flex items-center justify-center gap-2.5 transition-colors"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
-                  <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"/>
-                  <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-                  <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-                </svg>
-                <span>Google Workspace for Education</span>
-              </button>
+              {/* Demo account fill button — only shown when demo accounts are available */}
+              {demoAccountCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => fillTestAccount(selectedRole)}
+                  className="w-full h-11 bg-surface-neutral hover:bg-hairline/50 border border-hairline rounded text-xs font-medium text-text-primary flex items-center justify-center gap-2.5 transition-colors"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"/>
+                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                  </svg>
+                  <span>Điền tài khoản {isStaging ? 'Staging' : 'Dev'} để đăng nhập nhanh</span>
+                </button>
+              )}
             </form>
 
-            {/* Quick Test Accounts Accordion for Evaluation */}
-            <div className="mt-5 pt-3 hairline-t">
-              <button
-                type="button"
-                onClick={() => setShowTestAccounts(!showTestAccounts)}
-                className="w-full flex items-center justify-between text-xs text-text-secondary hover:text-text-primary py-1"
-              >
-                <span className="flex items-center gap-1.5 font-medium">
-                  <Key className="w-3.5 h-3.5 text-ocean" />
-                  <span>Tài khoản kiểm thử hệ thống (Dành cho ban thẩm định)</span>
-                </span>
-                {showTestAccounts ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
+            {/* Quick Test Accounts Accordion — only shown when demo accounts are available */}
+            {demoAccountCount > 0 && (
+              <div className="mt-5 pt-3 hairline-t">
+                <button
+                  type="button"
+                  onClick={() => setShowTestAccounts(!showTestAccounts)}
+                  className="w-full flex items-center justify-between text-xs text-text-secondary hover:text-text-primary py-1"
+                >
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Key className="w-3.5 h-3.5 text-ocean" />
+                    <span>{DEMO_LABEL}</span>
+                  </span>
+                  {showTestAccounts ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
 
-              {showTestAccounts && (
-                <div className="mt-2.5 grid grid-cols-2 gap-2 p-2.5 bg-surface-neutral rounded border border-hairline text-xs">
-                  {roleTabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => fillTestAccount(tab.id)}
-                      className="p-2 text-left bg-white hover:bg-sky/50 border border-hairline rounded transition-colors group"
-                    >
-                      <div className="font-medium text-primary flex items-center justify-between">
-                        <span>{tab.label}</span>
-                        <span className="text-[10px] text-ocean opacity-0 group-hover:opacity-100 transition-opacity">Chọn &rarr;</span>
-                      </div>
-                      <div className="text-[11px] text-text-secondary mt-0.5 truncate">{tab.testAccount.code}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                {showTestAccounts && (
+                  <div className="mt-2.5 grid grid-cols-2 gap-2 p-2.5 bg-surface-neutral rounded border border-hairline text-xs">
+                    {roleTabs.map((tab) => {
+                      if (!tab.testAccount) return null;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => fillTestAccount(tab.id)}
+                          className="p-2 text-left bg-white hover:bg-sky/50 border border-hairline rounded transition-colors group"
+                        >
+                          <div className="font-medium text-primary flex items-center justify-between">
+                            <span>{tab.label}</span>
+                            <span className="text-[10px] text-ocean opacity-0 group-hover:opacity-100 transition-opacity">Chọn &rarr;</span>
+                          </div>
+                          <div className="text-[11px] text-text-secondary mt-0.5 truncate">{tab.testAccount.code}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="mt-4 pt-3 hairline-t text-center text-[11px] text-text-secondary leading-relaxed">
               Cần trợ giúp đăng nhập? Liên hệ Phòng Đào tạo: <a href="mailto:hotro@eduportal.vn" className="text-ocean hover:underline">hotro@eduportal.vn</a> | Hotline: <strong>1900 6868</strong>
@@ -352,7 +378,7 @@ export function LoginPage({ onLoginSuccess }) {
                 <span>Hệ thống giáo dục thông minh</span>
               </div>
               <p className="text-sm font-medium text-text-primary leading-snug">
-                “Môi trường giáo dục hiện đại, kết nối tri thức và công nghệ AI hỗ trợ học tập cá nhân hóa.”
+                "Môi trường giáo dục hiện đại, kết nối tri thức và công nghệ AI hỗ trợ học tập cá nhân hóa."
               </p>
 
               <div className="space-y-2 text-xs text-text-secondary">
