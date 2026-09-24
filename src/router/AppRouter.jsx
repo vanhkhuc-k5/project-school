@@ -69,6 +69,7 @@ import { AdminTeacherListPage } from '../pages/admin/AdminTeacherListPage';
 import { AdminTeacher360Page } from '../pages/admin/AdminTeacher360Page';
 import { AdminClassStructurePage } from '../pages/admin/AdminClassStructurePage';
 import { AdminAttendancePage } from '../pages/admin/AdminAttendancePage';
+import { AdminAssessmentPage } from '../pages/admin/AdminAssessmentPage';
 
 // =============================================================================
 // Role Constants
@@ -258,6 +259,7 @@ export function AppRouter() {
           <Route path="teachers/:teacherId" element={<AdminTeacher360Page />} />
           <Route path="classes/:classId/structure" element={<AdminClassStructurePage />} />
           <Route path="attendance" element={<AdminAttendancePage />} />
+          <Route path="assessment" element={<AdminAssessmentPage />} />
           {/* Future: /admin/settings */}
         </Route>
 

@@ -1865,4 +1865,533 @@ router.patch('/attendance/records/:recordId', requirePermission('attendance.upda
   }
 });
 
+// ============================================================
+// Academic Assessment Management (Admin View)
+// ============================================================
+
+// Get assessment overview/summary
+router.get('/assessment/overview', requirePermission('grade.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { academicYear, semesterId, gradeLevel, classId, teacherId } = req.query;
+
+    // Build filter conditions
+    const filters = [];
+    const params = [schoolId];
+
+    if (gradeLevel) {
+      filters.push('c.grade_level = ?');
+      params.push(parseInt(gradeLevel));
+    }
+    if (classId) {
+      filters.push('c.id = ?');
+      params.push(classId);
+    }
+    if (teacherId) {
+      filters.push('a.created_by = ?');
+      params.push(teacherId);
+    }
+
+    const whereClause = filters.length > 0 ? ` AND ${filters.join(' AND ')}` : '';
+
+    // Count assignments by status
+    const assignmentStats = db.prepare(`
+      SELECT 
+        COUNT(DISTINCT a.id) as total_assignments,
+        COUNT(DISTINCT CASE WHEN a.due_date >= date('now') THEN a.id END) as pending_assignments,
+        COUNT(DISTINCT CASE WHEN a.due_date < date('now') THEN a.id END) as past_assignments
+      FROM assignments a
+      JOIN classes c ON c.name = a.target_classes
+      WHERE a.school_id = ? ${whereClause}
+    `).get(...params) || { total_assignments: 0, pending_assignments: 0, past_assignments: 0 };
+
+    // Count submissions by status
+    const submissionStats = db.prepare(`
+      SELECT 
+        COUNT(*) as total_submissions,
+        COUNT(CASE WHEN sub.status = 'submitted' THEN 1 END) as submitted,
+        COUNT(CASE WHEN sub.status = 'graded' THEN 1 END) as graded,
+        COUNT(CASE WHEN sub.status = 'late' THEN 1 END) as late,
+        COUNT(CASE WHEN sub.status IS NULL THEN 1 END) as missing
+      FROM submissions sub
+      JOIN assignments a ON a.id = sub.assignment_id
+      JOIN classes c ON c.name = a.target_classes
+      WHERE a.school_id = ? ${whereClause}
+    `).get(...params) || { total_submissions: 0, submitted: 0, graded: 0, late: 0, missing: 0 };
+
+    // Count grades by status (draft vs published)
+    const gradeStats = db.prepare(`
+      SELECT 
+        COUNT(*) as total_grades,
+        COUNT(CASE WHEN g.status = 'draft' THEN 1 END) as draft_grades,
+        COUNT(CASE WHEN g.status = 'published' THEN 1 END) as published_grades
+      FROM grades g
+      JOIN assignments a ON a.id = g.assignment_id
+      JOIN classes c ON c.name = a.target_classes
+      WHERE a.school_id = ? ${whereClause}
+    `).get(...params) || { total_grades: 0, draft_grades: 0, published_grades: 0 };
+
+    // Calculate grading progress
+    const gradingProgress = gradeStats.total_grades > 0 
+      ? ((gradeStats.published_grades / gradeStats.total_grades) * 100).toFixed(1)
+      : '0';
+
+    // Count ungraded submissions
+    const ungradedSubmissions = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM submissions sub
+      JOIN assignments a ON a.id = sub.assignment_id
+      JOIN classes c ON c.name = a.target_classes
+      WHERE a.school_id = ? 
+        AND sub.status IN ('submitted', 'late')
+        AND sub.id NOT IN (SELECT grade_id FROM grade_audit_logs WHERE action = 'published')
+        ${whereClause}
+    `).get(...params) || { count: 0 };
+
+    res.json({
+      success: true,
+      data: {
+        assignments: assignmentStats,
+        submissions: submissionStats,
+        grades: gradeStats,
+        gradingProgress: parseFloat(gradingProgress),
+        ungradedSubmissions: ungradedSubmissions.count,
+      },
+      assignments: assignmentStats,
+      submissions: submissionStats,
+      grades: gradeStats,
+      gradingProgress: parseFloat(gradingProgress),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get grading progress by class/subject
+router.get('/assessment/grading-progress', requirePermission('grade.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { academicYear, semesterId, gradeLevel } = req.query;
+
+    // Get grading progress by class
+    const classProgress = db.prepare(`
+      SELECT 
+        c.id as class_id,
+        c.name as class_name,
+        c.grade_level,
+        COUNT(DISTINCT g.id) as total_grades,
+        COUNT(CASE WHEN g.status = 'published' THEN 1 END) as published_grades,
+        ROUND(CAST(COUNT(CASE WHEN g.status = 'published' THEN 1 END) AS FLOAT) / NULLIF(COUNT(DISTINCT g.id), 0) * 100, 1) as progress_percent
+      FROM grades g
+      JOIN assignments a ON a.id = g.assignment_id
+      JOIN classes c ON c.name = a.target_classes
+      WHERE a.school_id = ?
+      GROUP BY c.id, c.name, c.grade_level
+      ORDER BY c.grade_level, c.name
+    `).all(schoolId) || [];
+
+    // Get grading progress by subject
+    const subjectProgress = db.prepare(`
+      SELECT 
+        s.id as subject_id,
+        s.name as subject_name,
+        s.code as subject_code,
+        COUNT(DISTINCT g.id) as total_grades,
+        COUNT(CASE WHEN g.status = 'published' THEN 1 END) as published_grades,
+        ROUND(CAST(COUNT(CASE WHEN g.status = 'published' THEN 1 END) AS FLOAT) / NULLIF(COUNT(DISTINCT g.id), 0) * 100, 1) as progress_percent
+      FROM grades g
+      JOIN assignments a ON a.id = g.assignment_id
+      JOIN subjects s ON s.id = a.subject_id
+      WHERE a.school_id = ?
+      GROUP BY s.id, s.name, s.code
+      ORDER BY s.name
+    `).all(schoolId) || [];
+
+    // Get grading progress by teacher
+    const teacherProgress = db.prepare(`
+      SELECT 
+        u.id as teacher_id,
+        u.name as teacher_name,
+        COUNT(DISTINCT g.id) as total_grades,
+        COUNT(CASE WHEN g.status = 'published' THEN 1 END) as published_grades,
+        ROUND(CAST(COUNT(CASE WHEN g.status = 'published' THEN 1 END) AS FLOAT) / NULLIF(COUNT(DISTINCT g.id), 0) * 100, 1) as progress_percent
+      FROM grades g
+      JOIN assignments a ON a.id = g.assignment_id
+      JOIN users u ON u.id = a.created_by
+      WHERE a.school_id = ?
+      GROUP BY u.id, u.name
+      ORDER BY u.name
+    `).all(schoolId) || [];
+
+    res.json({
+      success: true,
+      data: { classProgress, subjectProgress, teacherProgress },
+      classProgress,
+      subjectProgress,
+      teacherProgress,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get grade analysis/overview
+router.get('/assessment/grade-analysis', requirePermission('grade.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { academicYear, semesterId, gradeLevel, classId, subjectId } = req.query;
+
+    const filters = [];
+    const params = [schoolId];
+
+    if (gradeLevel) {
+      filters.push('c.grade_level = ?');
+      params.push(parseInt(gradeLevel));
+    }
+    if (classId) {
+      filters.push('c.id = ?');
+      params.push(classId);
+    }
+    if (subjectId) {
+      filters.push('a.subject_id = ?');
+      params.push(subjectId);
+    }
+
+    const whereClause = filters.length > 0 ? ` AND ${filters.join(' AND ')}` : '';
+
+    // Grade distribution
+    const gradeDistribution = db.prepare(`
+      SELECT 
+        CASE 
+          WHEN g.raw_score >= 9 THEN 'Xuất sắc (9-10)'
+          WHEN g.raw_score >= 8 THEN 'Giỏi (8-9)'
+          WHEN g.raw_score >= 7 THEN 'Khá (7-8)'
+          WHEN g.raw_score >= 6 THEN 'Trung bình khá (6-7)'
+          WHEN g.raw_score >= 5 THEN 'Trung bình (5-6)'
+          ELSE 'Yếu/Kém (<5)'
+        END as range,
+        COUNT(*) as count
+      FROM grades g
+      JOIN assignments a ON a.id = g.assignment_id
+      JOIN classes c ON c.name = a.target_classes
+      WHERE a.school_id = ? AND g.status = 'published' ${whereClause}
+      GROUP BY range
+      ORDER BY MIN(g.raw_score) DESC
+    `).all(...params) || [];
+
+    // Average grade by class
+    const classAverages = db.prepare(`
+      SELECT 
+        c.id as class_id,
+        c.name as class_name,
+        c.grade_level,
+        ROUND(AVG(g.raw_score), 2) as average_score,
+        ROUND(AVG(g.raw_score) / NULLIF(AVG(g.max_score), 0) * 100, 1) as average_percent,
+        COUNT(*) as grade_count
+      FROM grades g
+      JOIN assignments a ON a.id = g.assignment_id
+      JOIN classes c ON c.name = a.target_classes
+      WHERE a.school_id = ? AND g.status = 'published' ${whereClause}
+      GROUP BY c.id, c.name, c.grade_level
+      ORDER BY c.grade_level, average_score DESC
+    `).all(...params) || [];
+
+    // Average grade by subject
+    const subjectAverages = db.prepare(`
+      SELECT 
+        s.id as subject_id,
+        s.name as subject_name,
+        s.code as subject_code,
+        ROUND(AVG(g.raw_score), 2) as average_score,
+        ROUND(AVG(g.raw_score) / NULLIF(AVG(g.max_score), 0) * 100, 1) as average_percent,
+        COUNT(*) as grade_count
+      FROM grades g
+      JOIN assignments a ON a.id = g.assignment_id
+      JOIN subjects s ON s.id = a.subject_id
+      WHERE a.school_id = ? AND g.status = 'published' ${whereClause}
+      GROUP BY s.id, s.name, s.code
+      ORDER BY average_score DESC
+    `).all(...params) || [];
+
+    // Overall statistics
+    const overallStats = db.prepare(`
+      SELECT 
+        COUNT(*) as total_published_grades,
+        ROUND(AVG(g.raw_score), 2) as overall_average,
+        ROUND(AVG(g.raw_score) / NULLIF(AVG(g.max_score), 0) * 100, 1) as overall_percent,
+        MIN(g.raw_score) as min_score,
+        MAX(g.raw_score) as max_score
+      FROM grades g
+      JOIN assignments a ON a.id = g.assignment_id
+      JOIN classes c ON c.name = a.target_classes
+      WHERE a.school_id = ? AND g.status = 'published' ${whereClause}
+    `).get(...params) || { total_published_grades: 0, overall_average: 0, overall_percent: 0, min_score: 0, max_score: 0 };
+
+    res.json({
+      success: true,
+      data: { gradeDistribution, classAverages, subjectAverages, overallStats },
+      gradeDistribution,
+      classAverages,
+      subjectAverages,
+      overallStats,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get assessment categories
+router.get('/assessment/categories', requirePermission('grade.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+
+    const categories = db.prepare(`
+      SELECT 
+        gc.id,
+        gc.name,
+        gc.weight,
+        gc.is_active,
+        COUNT(DISTINCT g.id) as grade_count
+      FROM grade_categories gc
+      LEFT JOIN grades g ON g.grade_category_id = gc.id
+      WHERE gc.school_id = ? OR gc.school_id IS NULL
+      GROUP BY gc.id, gc.name, gc.weight, gc.is_active
+      ORDER BY gc.sort_order, gc.name
+    `).all(schoolId) || [];
+
+    res.json({ success: true, data: { categories }, categories });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get ungraded submissions
+router.get('/assessment/ungraded', requirePermission('grade.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { limit = 50 } = req.query;
+
+    const ungraded = db.prepare(`
+      SELECT 
+        sub.id as submission_id,
+        sub.submitted_at,
+        sub.status as submission_status,
+        a.title as assignment_title,
+        a.due_date,
+        a.subject_id,
+        s.name as subject_name,
+        c.id as class_id,
+        c.name as class_name,
+        u_student.id as student_user_id,
+        u_student.name as student_name,
+        u_student.code as student_code,
+        u_teacher.id as teacher_id,
+        u_teacher.name as teacher_name
+      FROM submissions sub
+      JOIN assignments a ON a.id = sub.assignment_id
+      LEFT JOIN subjects s ON s.id = a.subject_id
+      JOIN classes c ON c.name = a.target_classes
+      JOIN students st ON st.user_id = sub.student_id
+      JOIN users u_student ON u_student.id = st.user_id
+      LEFT JOIN users u_teacher ON u_teacher.id = a.created_by
+      WHERE a.school_id = ?
+        AND sub.status IN ('submitted', 'late')
+        AND sub.id NOT IN (
+          SELECT entity_id FROM grade_audit_logs 
+          WHERE entity_type = 'grades' AND action = 'published'
+        )
+      ORDER BY sub.submitted_at DESC
+      LIMIT ?
+    `).all(schoolId, parseInt(limit)) || [];
+
+    res.json({ success: true, data: { ungraded }, ungraded });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get grading periods
+router.get('/assessment/periods', requirePermission('grade.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+
+    // Get grading periods from academic years and semesters
+    const periods = db.prepare(`
+      SELECT 
+        ay.id as academic_year_id,
+        ay.name as academic_year_name,
+        sem.id as semester_id,
+        sem.name as semester_name,
+        sem.start_date as semester_start,
+        sem.end_date as semester_end,
+        CASE 
+          WHEN date('now') BETWEEN sem.start_date AND sem.end_date THEN 'current'
+          WHEN sem.end_date < date('now') THEN 'past'
+          ELSE 'future'
+        END as status
+      FROM academic_years ay
+      JOIN semesters sem ON sem.academic_year_id = ay.id
+      WHERE ay.school_id = ? OR ay.school_id IS NULL
+      ORDER BY ay.name DESC, sem.start_date DESC
+    `).all(schoolId) || [];
+
+    // Get locked periods if any
+    const lockedPeriods = db.prepare(`
+      SELECT * FROM grading_locks 
+      WHERE school_id = ?
+      ORDER BY locked_at DESC
+    `).all(schoolId) || [];
+
+    res.json({
+      success: true,
+      data: { periods, lockedPeriods },
+      periods,
+      lockedPeriods,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Admin grade override (restricted)
+router.patch('/assessment/grades/:gradeId/override', requirePermission('grade.override'), async (req, res, next) => {
+  try {
+    const { gradeId } = req.params;
+    const { rawScore, maxScore, feedback, reason } = req.body;
+
+    if (!rawScore && !feedback) {
+      return res.status(400).json({ success: false, message: 'Phải cung cấp điểm số hoặc nhận xét' });
+    }
+
+    if (!reason) {
+      return res.status(400).json({ success: false, message: 'Phải cung cấp lý do ghi đè' });
+    }
+
+    // Get existing grade
+    const existing = db.prepare(`
+      SELECT g.*, a.school_id
+      FROM grades g
+      JOIN assignments a ON a.id = g.assignment_id
+      WHERE g.id = ?
+    `).get(gradeId);
+
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy điểm' });
+    }
+
+    // Verify school access
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    if (existing.school_id !== schoolId) {
+      return res.status(403).json({ success: false, message: 'Không có quyền sửa điểm này' });
+    }
+
+    // Build update query
+    const updates = [];
+    const params = [];
+
+    if (rawScore !== undefined) {
+      updates.push('raw_score = ?');
+      params.push(rawScore);
+    }
+    if (maxScore !== undefined) {
+      updates.push('max_score = ?');
+      params.push(maxScore);
+    }
+    if (feedback !== undefined) {
+      updates.push('feedback = ?');
+      params.push(feedback);
+    }
+    updates.push('updated_at = datetime("now")');
+
+    params.push(gradeId);
+    db.prepare(`UPDATE grades SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    // Create audit log
+    db.prepare(`
+      INSERT INTO grade_audit_logs 
+      (id, grade_id, student_id, subject, school_id, actor_id, actor_name, actor_role, action, previous_raw_score, previous_max_score, previous_feedback, new_raw_score, new_max_score, new_feedback, reason, assignment_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      `audit_grade_${Date.now()}`,
+      gradeId,
+      existing.student_id,
+      existing.subject,
+      existing.school_id,
+      req.user.id,
+      req.user.name || 'Admin',
+      req.user.role,
+      'correction',
+      existing.raw_score,
+      existing.max_score,
+      existing.feedback,
+      rawScore !== undefined ? rawScore : existing.raw_score,
+      maxScore !== undefined ? maxScore : existing.max_score,
+      feedback !== undefined ? feedback : existing.feedback,
+      reason,
+      existing.assignment_id
+    );
+
+    res.json({ success: true, message: 'Đã ghi đè điểm' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Lock/unlock grading period
+router.patch('/assessment/periods/:periodId/lock', requirePermission('grade.manage'), async (req, res, next) => {
+  try {
+    const { periodId } = req.params;
+    const { lock, lockReason } = req.body;
+
+    const action = lock ? 'lock' : 'unlock';
+
+    // Check if period exists
+    const period = db.prepare(`
+      SELECT * FROM semesters WHERE id = ?
+    `).get(periodId);
+
+    if (!period) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy kỳ học' });
+    }
+
+    // Create or update lock record
+    if (lock) {
+      db.prepare(`
+        INSERT OR REPLACE INTO grading_locks (id, semester_id, school_id, locked_by, reason, locked_at)
+        VALUES (
+          'glock_' || ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          datetime('now')
+        )
+      `).run(periodId, periodId, req.user?.schoolId || 'sch_bacau', req.user.id, lockReason || 'Admin lock');
+    } else {
+      db.prepare(`
+        DELETE FROM grading_locks WHERE semester_id = ?
+      `).run(periodId);
+    }
+
+    // Audit log
+    db.prepare(`
+      INSERT INTO audit_logs (id, actor_id, actor_name, role, action, entity_type, entity_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      `log_${Date.now()}`,
+      req.user.id,
+      req.user.name || 'Admin',
+      req.user.role,
+      action === 'lock' ? 'Khóa kỳ chấm điểm' : 'Mở khóa kỳ chấm điểm',
+      'grading_period',
+      periodId,
+      JSON.stringify({ reason: lockReason })
+    );
+
+    res.json({ success: true, message: action === 'lock' ? 'Đã khóa kỳ chấm điểm' : 'Đã mở khóa kỳ chấm điểm' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

@@ -1280,6 +1280,211 @@ export const adminApi = {
     });
   },
 
+  // ── Assessment Management ──────────────────────────────────────────────────────
+  async getAssessmentOverview(params?: {
+    academicYear?: string;
+    semesterId?: string;
+    gradeLevel?: number;
+    classId?: string;
+    teacherId?: string;
+  }): Promise<{
+    assignments: { total_assignments: number; pending_assignments: number; past_assignments: number };
+    submissions: { total_submissions: number; submitted: number; graded: number; late: number; missing: number };
+    grades: { total_grades: number; draft_grades: number; published_grades: number };
+    gradingProgress: number;
+    ungradedSubmissions: number;
+  } | null> {
+    const stringParams: Record<string, string> = {};
+    if (params?.academicYear) stringParams.academicYear = params.academicYear;
+    if (params?.semesterId) stringParams.semesterId = params.semesterId;
+    if (params?.gradeLevel) stringParams.gradeLevel = String(params.gradeLevel);
+    if (params?.classId) stringParams.classId = params.classId;
+    if (params?.teacherId) stringParams.teacherId = params.teacherId;
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{
+      assignments: { total_assignments: number; pending_assignments: number; past_assignments: number };
+      submissions: { total_submissions: number; submitted: number; graded: number; late: number; missing: number };
+      grades: { total_grades: number; draft_grades: number; published_grades: number };
+      gradingProgress: number;
+      ungradedSubmissions: number;
+    }>(`/admin/assessment/overview${query ? `?${query}` : ''}`);
+    if (res?.success) {
+      return {
+        assignments: (res as unknown as { assignments: { total_assignments: number; pending_assignments: number; past_assignments: number } }).assignments,
+        submissions: (res as unknown as { submissions: { total_submissions: number; submitted: number; graded: number; late: number; missing: number } }).submissions,
+        grades: (res as unknown as { grades: { total_grades: number; draft_grades: number; published_grades: number } }).grades,
+        gradingProgress: (res as unknown as { gradingProgress: number }).gradingProgress,
+        ungradedSubmissions: (res as unknown as { ungradedSubmissions: number }).ungradedSubmissions,
+      };
+    }
+    return null;
+  },
+
+  async getGradingProgress(params?: {
+    academicYear?: string;
+    semesterId?: string;
+    gradeLevel?: number;
+  }): Promise<{
+    classProgress: Array<{ class_id: string; class_name: string; grade_level: number; total_grades: number; published_grades: number; progress_percent: number }>;
+    subjectProgress: Array<{ subject_id: string; subject_name: string; subject_code: string; total_grades: number; published_grades: number; progress_percent: number }>;
+    teacherProgress: Array<{ teacher_id: string; teacher_name: string; total_grades: number; published_grades: number; progress_percent: number }>;
+  }> {
+    const stringParams: Record<string, string> = {};
+    if (params?.academicYear) stringParams.academicYear = params.academicYear;
+    if (params?.semesterId) stringParams.semesterId = params.semesterId;
+    if (params?.gradeLevel) stringParams.gradeLevel = String(params.gradeLevel);
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{
+      classProgress: Array<{ class_id: string; class_name: string; grade_level: number; total_grades: number; published_grades: number; progress_percent: number }>;
+      subjectProgress: Array<{ subject_id: string; subject_name: string; subject_code: string; total_grades: number; published_grades: number; progress_percent: number }>;
+      teacherProgress: Array<{ teacher_id: string; teacher_name: string; total_grades: number; published_grades: number; progress_percent: number }>;
+    }>(`/admin/assessment/grading-progress${query ? `?${query}` : ''}`);
+    if (res?.success) {
+      return {
+        classProgress: (res as unknown as { classProgress: Array<{ class_id: string; class_name: string; grade_level: number; total_grades: number; published_grades: number; progress_percent: number }> }).classProgress || [],
+        subjectProgress: (res as unknown as { subjectProgress: Array<{ subject_id: string; subject_name: string; subject_code: string; total_grades: number; published_grades: number; progress_percent: number }> }).subjectProgress || [],
+        teacherProgress: (res as unknown as { teacherProgress: Array<{ teacher_id: string; teacher_name: string; total_grades: number; published_grades: number; progress_percent: number }> }).teacherProgress || [],
+      };
+    }
+    return { classProgress: [], subjectProgress: [], teacherProgress: [] };
+  },
+
+  async getGradeAnalysis(params?: {
+    academicYear?: string;
+    semesterId?: string;
+    gradeLevel?: number;
+    classId?: string;
+    subjectId?: string;
+  }): Promise<{
+    gradeDistribution: Array<{ range: string; count: number }>;
+    classAverages: Array<{ class_id: string; class_name: string; grade_level: number; average_score: number; average_percent: number; grade_count: number }>;
+    subjectAverages: Array<{ subject_id: string; subject_name: string; subject_code: string; average_score: number; average_percent: number; grade_count: number }>;
+    overallStats: { total_published_grades: number; overall_average: number; overall_percent: number; min_score: number; max_score: number };
+  }> {
+    const stringParams: Record<string, string> = {};
+    if (params?.academicYear) stringParams.academicYear = params.academicYear;
+    if (params?.semesterId) stringParams.semesterId = params.semesterId;
+    if (params?.gradeLevel) stringParams.gradeLevel = String(params.gradeLevel);
+    if (params?.classId) stringParams.classId = params.classId;
+    if (params?.subjectId) stringParams.subjectId = params.subjectId;
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{
+      gradeDistribution: Array<{ range: string; count: number }>;
+      classAverages: Array<{ class_id: string; class_name: string; grade_level: number; average_score: number; average_percent: number; grade_count: number }>;
+      subjectAverages: Array<{ subject_id: string; subject_name: string; subject_code: string; average_score: number; average_percent: number; grade_count: number }>;
+      overallStats: { total_published_grades: number; overall_average: number; overall_percent: number; min_score: number; max_score: number };
+    }>(`/admin/assessment/grade-analysis${query ? `?${query}` : ''}`);
+    if (res?.success) {
+      return {
+        gradeDistribution: (res as unknown as { gradeDistribution: Array<{ range: string; count: number }> }).gradeDistribution || [],
+        classAverages: (res as unknown as { classAverages: Array<{ class_id: string; class_name: string; grade_level: number; average_score: number; average_percent: number; grade_count: number }> }).classAverages || [],
+        subjectAverages: (res as unknown as { subjectAverages: Array<{ subject_id: string; subject_name: string; subject_code: string; average_score: number; average_percent: number; grade_count: number }> }).subjectAverages || [],
+        overallStats: (res as unknown as { overallStats: { total_published_grades: number; overall_average: number; overall_percent: number; min_score: number; max_score: number } }).overallStats,
+      };
+    }
+    return { gradeDistribution: [], classAverages: [], subjectAverages: [], overallStats: { total_published_grades: 0, overall_average: 0, overall_percent: 0, min_score: 0, max_score: 0 } };
+  },
+
+  async getUngradedSubmissions(limit?: number): Promise<Array<{
+    submission_id: string;
+    submitted_at: string;
+    submission_status: string;
+    assignment_title: string;
+    due_date: string;
+    subject_name: string;
+    class_id: string;
+    class_name: string;
+    student_name: string;
+    student_code: string;
+    teacher_name: string;
+  }>> {
+    const query = limit ? `?limit=${limit}` : '';
+    const res = await request<{ ungraded: Array<{
+      submission_id: string;
+      submitted_at: string;
+      submission_status: string;
+      assignment_title: string;
+      due_date: string;
+      subject_name: string;
+      class_id: string;
+      class_name: string;
+      student_name: string;
+      student_code: string;
+      teacher_name: string;
+    }> }>(`/admin/assessment/ungraded${query}`);
+    if (res?.success) {
+      return (res as unknown as { ungraded: Array<{
+        submission_id: string;
+        submitted_at: string;
+        submission_status: string;
+        assignment_title: string;
+        due_date: string;
+        subject_name: string;
+        class_id: string;
+        class_name: string;
+        student_name: string;
+        student_code: string;
+        teacher_name: string;
+      }> }).ungraded || [];
+    }
+    return [];
+  },
+
+  async getAssessmentPeriods(): Promise<{
+    periods: Array<{
+      academic_year_id: string;
+      academic_year_name: string;
+      semester_id: string;
+      semester_name: string;
+      semester_start: string;
+      semester_end: string;
+      status: string;
+    }>;
+    lockedPeriods: unknown[];
+  }> {
+    const res = await request<{
+      periods: Array<{
+        academic_year_id: string;
+        academic_year_name: string;
+        semester_id: string;
+        semester_name: string;
+        semester_start: string;
+        semester_end: string;
+        status: string;
+      }>;
+      lockedPeriods: unknown[];
+    }>(`/admin/assessment/periods`);
+    if (res?.success) {
+      return {
+        periods: (res as unknown as { periods: Array<{
+          academic_year_id: string;
+          academic_year_name: string;
+          semester_id: string;
+          semester_name: string;
+          semester_start: string;
+          semester_end: string;
+          status: string;
+        }> }).periods || [],
+        lockedPeriods: (res as unknown as { lockedPeriods: unknown[] }).lockedPeriods || [],
+      };
+    }
+    return { periods: [], lockedPeriods: [] };
+  },
+
+  async overrideGrade(gradeId: string, data: { rawScore?: number; maxScore?: number; feedback?: string; reason: string }): Promise<StandardResponse> {
+    return request(`/admin/assessment/grades/${gradeId}/override`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async lockGradingPeriod(periodId: string, lock: boolean, lockReason?: string): Promise<StandardResponse> {
+    return request(`/admin/assessment/periods/${periodId}/lock`, {
+      method: 'PATCH',
+      body: JSON.stringify({ lock, lockReason }),
+    });
+  },
+
   // ── Announcements (G25) ──────────────────────────────────────────────────
   async getAnnouncements(params: {
     page?: number; limit?: number;
