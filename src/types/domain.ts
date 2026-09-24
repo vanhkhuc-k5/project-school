@@ -67,6 +67,8 @@ export interface ClassRoom {
   homeroomTeacherId?: string | null;
   maxStudents?: number;
   studentCount?: number;
+  room?: string | null;
+  academicYearId?: string;
 }
 
 export interface Subject {
@@ -267,4 +269,18 @@ export interface AnnouncementCategory {
   icon?: string | null;
   sortOrder?: number;
   createdAt?: string;
+}
+
+// Note: Semester and AcademicYear types are also defined in api.ts to avoid circular dependencies
+// Only Department is kept here since it's not in api.ts
+
+export interface Department {
+  id: string;
+  school_id?: string;
+  name: string;
+  code?: string | null;
+  description?: string | null;
+  head_teacher_id?: string | null;
+  member_count?: number;
+  created_at?: string;
 }

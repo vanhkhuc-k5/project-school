@@ -20,6 +20,7 @@ import type {
   Teacher,
   Announcement,
   AnnouncementCategory,
+  Student,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -663,6 +664,17 @@ export const adminApi = {
     });
   },
 
+  async updateClass(id: string, data: Record<string, unknown>): Promise<StandardResponse> {
+    return request(`/admin/classes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteClass(id: string): Promise<StandardResponse> {
+    return request(`/admin/classes/${id}`, { method: 'DELETE' });
+  },
+
   async getTeachers(): Promise<Teacher[]> {
     const res = await request<{ teachers: Teacher[] }>('/admin/teachers');
     return res?.success && Array.isArray((res as unknown as { teachers?: Teacher[] }).teachers)
@@ -686,6 +698,164 @@ export const adminApi = {
     const res = await request<{ subjects: Subject[] }>('/admin/subjects');
     return res?.success && Array.isArray((res as unknown as { subjects?: Subject[] }).subjects)
       ? (res as unknown as { subjects: Subject[] }).subjects
+      : [];
+  },
+
+  async createSubject(data: {
+    name: string;
+    code: string;
+    departmentId?: string;
+    gradeLevel?: number;
+    weeklyPeriods?: number;
+  }): Promise<StandardResponse & { subject?: Subject }> {
+    return request('/admin/subjects', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateSubject(id: string, data: Partial<{
+    name: string;
+    code: string;
+    departmentId: string;
+    gradeLevel: number;
+    weeklyPeriods: number;
+  }>): Promise<StandardResponse & { subject?: Subject }> {
+    return request(`/admin/subjects/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteSubject(id: string): Promise<StandardResponse> {
+    return request(`/admin/subjects/${id}`, { method: 'DELETE' });
+  },
+
+  // ── Academic Years & Semesters ──────────────────────────────────────────────
+  async getAcademicYears(): Promise<AcademicYear[]> {
+    const res = await request<{ academicYears: AcademicYear[] }>('/admin/academic-years');
+    return res?.success && Array.isArray((res as unknown as { academicYears?: AcademicYear[] }).academicYears)
+      ? (res as unknown as { academicYears: AcademicYear[] }).academicYears
+      : [];
+  },
+
+  async getAcademicYearById(id: string): Promise<AcademicYear | null> {
+    const res = await request<{ academicYear: AcademicYear }>(`/admin/academic-years/${id}`);
+    return res?.success ? (res as unknown as { academicYear: AcademicYear }).academicYear : null;
+  },
+
+  async createAcademicYear(data: {
+    name: string;
+    startDate: string;
+    endDate: string;
+    isCurrent?: boolean;
+  }): Promise<StandardResponse & { academicYear?: AcademicYear }> {
+    return request('/admin/academic-years', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateAcademicYear(id: string, data: Partial<{
+    name: string;
+    startDate: string;
+    endDate: string;
+    isCurrent: boolean;
+  }>): Promise<StandardResponse & { academicYear?: AcademicYear }> {
+    return request(`/admin/academic-years/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async setCurrentAcademicYear(id: string): Promise<StandardResponse & { academicYear?: AcademicYear }> {
+    return request(`/admin/academic-years/${id}/set-current`, { method: 'PATCH' });
+  },
+
+  async deleteAcademicYear(id: string): Promise<StandardResponse> {
+    return request(`/admin/academic-years/${id}`, { method: 'DELETE' });
+  },
+
+  // Semesters
+  async createSemester(yearId: string, data: {
+    name: string;
+    semesterNumber: number;
+    startDate: string;
+    endDate: string;
+    isCurrent?: boolean;
+  }): Promise<StandardResponse & { semester?: Semester }> {
+    return request(`/admin/academic-years/${yearId}/semesters`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateSemester(yearId: string, semesterId: string, data: Partial<{
+    name: string;
+    semesterNumber: number;
+    startDate: string;
+    endDate: string;
+    isCurrent: boolean;
+  }>): Promise<StandardResponse & { semester?: Semester }> {
+    return request(`/admin/academic-years/${yearId}/semesters/${semesterId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async setCurrentSemester(yearId: string, semesterId: string): Promise<StandardResponse & { semester?: Semester }> {
+    return request(`/admin/academic-years/${yearId}/semesters/${semesterId}/set-current`, { method: 'PATCH' });
+  },
+
+  async deleteSemester(yearId: string, semesterId: string): Promise<StandardResponse> {
+    return request(`/admin/academic-years/${yearId}/semesters/${semesterId}`, { method: 'DELETE' });
+  },
+
+  // ── Departments ──────────────────────────────────────────────────────────────
+  async getDepartments(): Promise<Department[]> {
+    const res = await request<{ departments: Department[] }>('/admin/departments');
+    return res?.success && Array.isArray((res as unknown as { departments?: Department[] }).departments)
+      ? (res as unknown as { departments: Department[] }).departments
+      : [];
+  },
+
+  async createDepartment(data: {
+    name: string;
+    code?: string;
+    description?: string;
+    headTeacherId?: string;
+  }): Promise<StandardResponse & { department?: Department }> {
+    return request('/admin/departments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateDepartment(id: string, data: Partial<{
+    name: string;
+    code: string;
+    description: string;
+    headTeacherId: string;
+  }>): Promise<StandardResponse & { department?: Department }> {
+    return request(`/admin/departments/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteDepartment(id: string): Promise<StandardResponse> {
+    return request(`/admin/departments/${id}`, { method: 'DELETE' });
+  },
+
+  // ── Archive Class ────────────────────────────────────────────────────────────
+  async archiveClass(id: string): Promise<StandardResponse> {
+    return request(`/admin/classes/${id}/archive`, { method: 'POST' });
+  },
+
+  async getClassStudents(classId: string): Promise<Student[]> {
+    const res = await request<{ students: Student[] }>(`/admin/classes/${classId}/students`);
+    return res?.success && Array.isArray((res as unknown as { students?: Student[] }).students)
+      ? (res as unknown as { students: Student[] }).students
       : [];
   },
 
@@ -1042,6 +1212,17 @@ export interface AcademicYear {
 export interface AcademicCycle {
   academicYear: AcademicYear | null;
   currentSemester: Semester | null;
+}
+
+export interface Department {
+  id: string;
+  school_id?: string;
+  name: string;
+  code?: string | null;
+  description?: string | null;
+  head_teacher_id?: string | null;
+  member_count?: number;
+  created_at?: string;
 }
 
 export const academicYearsApi = {
@@ -2587,6 +2768,10 @@ export const gradebookApi = {
     return res?.success ? res.data as GradeSnapshotListResponse : null;
   },
 };
+
+// Re-export adminApi methods as a default `api` alias for backward compatibility
+// Note: adminApi already contains all the academic management methods (years, semesters, departments)
+export { adminApi as api };
 
 
 

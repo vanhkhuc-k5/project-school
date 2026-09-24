@@ -15,6 +15,7 @@ const ROUTE_TO_ID = {
   '/admin': 'overview',
   '/admin/overview': 'overview',
   '/admin/curriculum': 'curriculum',
+  '/admin/academic': 'curriculum',
   '/admin/teachers': 'teachers',
   '/admin/students': 'students',
   '/admin/reports': 'reports',
@@ -60,7 +61,7 @@ export function AdminLayout() {
 
   const mainNavItems = [
     { id: 'overview', label: 'Tổng quan toàn trường', icon: BarChart2, route: '/admin/overview' },
-    { id: 'curriculum', label: 'Chuyên môn & Khối lớp', icon: BookOpen, route: '/admin/curriculum' },
+    { id: 'curriculum', label: 'Thiết lập Học vụ', icon: BookOpen, route: '/admin/academic' },
     { id: 'teachers', label: 'Quản lý giáo viên', icon: Users, route: '/admin/teachers' },
     { id: 'students', label: 'Học sinh & Điểm số', icon: Award, route: '/admin/students' },
     { id: 'reports', label: 'Báo cáo & Thông báo', icon: FileText, route: '/admin/reports' },

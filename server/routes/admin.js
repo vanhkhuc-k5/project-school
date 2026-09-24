@@ -8,6 +8,7 @@ import { authenticateToken, requireRole, requirePermission, requireAnyPermission
 import { usersController } from '../modules/users/index.js';
 import { schoolsService } from '../modules/schools/index.js';
 import { academicYearsService } from '../modules/academic-years/index.js';
+import { academicYearsController } from '../modules/academic-years/index.js';
 import { academicStructureController } from '../modules/academic-structure/index.js';
 
 const router = express.Router();
@@ -277,5 +278,41 @@ router.get('/audit-logs', requirePermission('audit.read'), async (req, res) => {
 
 // Subjects (danh sách môn học)
 router.get('/subjects', requirePermission('class.read'), academicStructureController.listSubjects);
+router.post('/subjects', requirePermission('class.manage'), academicStructureController.createSubject);
+router.put('/subjects/:id', requirePermission('class.manage'), academicStructureController.updateSubject);
+router.delete('/subjects/:id', requirePermission('class.manage'), academicStructureController.deleteSubject);
+
+// ============================================================
+// Academic Configuration (Academic Years, Semesters)
+// Delegated to academic-years module
+// ============================================================
+router.get('/academic-years', requirePermission('school.manage'), academicYearsController.listAcademicYears);
+router.get('/academic-years/current', requirePermission('school.manage'), academicYearsController.getCurrentCycle);
+router.get('/academic-years/:id', requirePermission('school.manage'), academicYearsController.getAcademicYearById);
+router.post('/academic-years', requirePermission('school.manage'), academicYearsController.createAcademicYear);
+router.put('/academic-years/:id', requirePermission('school.manage'), academicYearsController.updateAcademicYear);
+router.patch('/academic-years/:id/set-current', requirePermission('school.manage'), academicYearsController.setCurrentAcademicYear);
+router.delete('/academic-years/:id', requirePermission('school.manage'), academicYearsController.deleteAcademicYear);
+
+// Semesters
+router.post('/academic-years/:yearId/semesters', requirePermission('school.manage'), academicYearsController.createSemester);
+router.put('/academic-years/:yearId/semesters/:id', requirePermission('school.manage'), academicYearsController.updateSemester);
+router.patch('/academic-years/:yearId/semesters/:id/set-current', requirePermission('school.manage'), academicYearsController.setCurrentSemester);
+router.delete('/academic-years/:yearId/semesters/:id', requirePermission('school.manage'), academicYearsController.deleteSemester);
+
+// ============================================================
+// Academic Structure (Departments, Subjects, Classes)
+// Delegated to academic-structure module
+// ============================================================
+
+// Departments
+router.get('/departments', requirePermission('school.manage'), academicStructureController.listDepartments);
+router.post('/departments', requirePermission('school.manage'), academicStructureController.createDepartment);
+router.put('/departments/:id', requirePermission('school.manage'), academicStructureController.updateDepartment);
+router.delete('/departments/:id', requirePermission('school.manage'), academicStructureController.deleteDepartment);
+
+// Archive endpoints
+router.post('/classes/:id/archive', requirePermission('class.manage'), academicStructureController.archiveClass);
+router.get('/classes/:id/students', requirePermission('class.read'), academicStructureController.getClassStudents);
 
 export default router;

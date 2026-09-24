@@ -62,6 +62,7 @@ import { ParentDashboard } from '../pages/parent/ParentDashboard';
 // ── Admin Pages ─────────────────────────────────────────────────────────────
 import { AdminDashboard } from '../pages/admin/AdminDashboard';
 import { AdminAnnouncementsPage } from '../pages/admin/AdminAnnouncementsPage';
+import { AdminAcademicPage } from '../pages/admin/AdminAcademicPage';
 
 // =============================================================================
 // Role Constants
@@ -244,6 +245,7 @@ export function AppRouter() {
           <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="overview" element={<AdminDashboard />} />
           <Route path="announcements" element={<AdminAnnouncementsPage />} />
+          <Route path="academic" element={<AdminAcademicPage />} />
           {/* Future: /admin/teachers, /admin/students, /admin/classes, /admin/settings */}
         </Route>
 
