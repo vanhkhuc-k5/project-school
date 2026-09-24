@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { useSync } from '../../context/SyncContext';
+import { useAuth } from '../../context/AuthContext';
+import { profilesApi } from '../../services/api';
 import {
   Users,
   BookOpen,
@@ -22,8 +25,26 @@ export function TeacherDashboard({
   onNavigateClasses,
   onNavigateAssignments,
 }) {
-  const { syncStatus } = useSync();
+  const navigate = useNavigate();
+  const { syncStatus, lastSync } = useSync();
+  const { currentUser } = useAuth();
+  const [profile, setProfile] = useState(null);
   const pendingGrading = syncStatus?.pendingGradingCount ?? 15;
+
+  useEffect(() => {
+    let isMounted = true;
+    profilesApi.getTeacherMe().then((res) => {
+      if (isMounted && res) {
+        setProfile(res);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [lastSync]);
+
+  const teacherName = profile?.name || currentUser?.name || 'Thầy/Cô';
+  const departmentName = profile?.department_name || 'Tổ bộ môn';
 
   return (
     <div className="space-y-6">
@@ -31,10 +52,10 @@ export function TeacherDashboard({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-medium text-text-primary">
-            Chào mừng trở lại, Cô Mai Lan 👋
+            Chào mừng trở lại, {teacherName} 👋
           </h1>
           <p className="text-xs text-text-secondary mt-1">
-            Tổ Toán học • Bạn có <strong className="text-primary">2 lớp giảng dạy hôm nay</strong> và <strong className="text-danger">{pendingGrading} bài kiểm tra chờ chấm điểm</strong>.
+            {departmentName} • Bạn có <strong className="text-primary">2 lớp giảng dạy hôm nay</strong> và <strong className="text-danger">{pendingGrading} bài kiểm tra chờ chấm điểm</strong>.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -42,7 +63,7 @@ export function TeacherDashboard({
             variant="secondary"
             size="md"
             icon={BarChart2}
-            onClick={onNavigateAnalytics}
+            onClick={() => navigate('/teacher/analytics')}
           >
             Xem phân tích năng lực
           </Button>
@@ -50,7 +71,7 @@ export function TeacherDashboard({
             variant="primary"
             size="md"
             icon={Plus}
-            onClick={onNavigateCreateAssignment}
+            onClick={() => navigate('/teacher/assignments/create')}
           >
             Tạo bài tập mới
           </Button>
@@ -59,13 +80,13 @@ export function TeacherDashboard({
 
       {/* 4 KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card padding="p-5" className="cursor-pointer hover:border-ocean transition-colors" onClick={onNavigateClasses}>
+        <Card padding="p-5" className="cursor-pointer hover:border-ocean transition-colors" onClick={() => navigate('/teacher/classes')}>
           <div className="text-xs text-text-secondary">Tổng học sinh phụ trách</div>
           <div className="text-3xl font-semibold text-primary mt-2">79 em</div>
           <div className="text-xs text-text-secondary mt-2">Lớp 10A1 (39) & 10A2 (40)</div>
         </Card>
 
-        <Card padding="p-5" className="cursor-pointer hover:border-danger transition-colors" onClick={onNavigateAssignments}>
+        <Card padding="p-5" className="cursor-pointer hover:border-danger transition-colors" onClick={() => navigate('/teacher/assignments')}>
           <div className="flex justify-between items-start">
             <span className="text-xs text-text-secondary">Bài cần chấm điểm</span>
             <Badge variant="danger">Gấp</Badge>
@@ -74,7 +95,7 @@ export function TeacherDashboard({
           <div className="text-xs text-text-secondary mt-2">Hạn chót chấm: Hôm nay 18:00</div>
         </Card>
 
-        <Card padding="p-5" className="cursor-pointer hover:border-primary transition-colors" onClick={onNavigateAnalytics}>
+        <Card padding="p-5" className="cursor-pointer hover:border-primary transition-colors" onClick={() => navigate('/teacher/analytics')}>
           <div className="flex justify-between items-start">
             <span className="text-xs text-text-secondary">Đạt chuẩn năng lực</span>
             <Badge variant="success">+3.2%</Badge>
@@ -83,7 +104,7 @@ export function TeacherDashboard({
           <div className="text-xs text-text-secondary mt-2">34/42 em lớp 10A1 đạt chỉ tiêu</div>
         </Card>
 
-        <Card padding="p-5" className="cursor-pointer hover:border-warning transition-colors" onClick={onNavigateAnalytics}>
+        <Card padding="p-5" className="cursor-pointer hover:border-warning transition-colors" onClick={() => navigate('/teacher/analytics')}>
           <div className="flex justify-between items-start">
             <span className="text-xs text-text-secondary">Cảnh báo can thiệp</span>
             <Badge variant="warning">3 học sinh</Badge>
@@ -114,7 +135,7 @@ export function TeacherDashboard({
                 <div className="text-sm font-medium text-text-primary">Đại số 10: Dấu của tam thức bậc hai</div>
                 <div className="text-xs text-text-secondary">Lớp 10A1 • Phòng 302</div>
               </div>
-              <Button variant="secondary" size="sm" onClick={onNavigateClasses}>Sổ điểm danh</Button>
+              <Button variant="secondary" size="sm" onClick={() => navigate('/teacher/classes')}>Sổ điểm danh</Button>
             </div>
 
             <div className="p-4 bg-sky/30 rounded border border-ocean/20 flex items-center justify-between">
@@ -126,7 +147,7 @@ export function TeacherDashboard({
                 <div className="text-sm font-medium text-text-primary">Hình học 10: Tích vô hướng của 2 vectơ</div>
                 <div className="text-xs text-text-secondary">Lớp 10A2 • Phòng 304</div>
               </div>
-              <Button variant="primary" size="sm" onClick={onNavigateClasses}>Vào lớp</Button>
+              <Button variant="primary" size="sm" onClick={() => navigate('/teacher/classes')}>Vào lớp</Button>
             </div>
           </div>
         </Card>
@@ -138,7 +159,7 @@ export function TeacherDashboard({
               <h2 className="text-base font-medium text-text-primary">Bài tập & Đánh giá gần nhất</h2>
             </div>
             <button
-              onClick={onNavigateCreateAssignment}
+              onClick={() => navigate('/teacher/assignments/create')}
               className="text-xs font-medium text-ocean hover:underline"
             >
               + Tạo bài mới

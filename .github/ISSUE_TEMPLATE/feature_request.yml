@@ -1,0 +1,78 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature] "
+labels: ["enhancement"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Thank you for your feature request!
+
+        Please fill out the sections below to help us understand your request.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Pain Point
+      description: What problem does this feature solve?
+      placeholder: |
+        Example: Teachers need a way to quickly see which students are struggling in their classes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like to see.
+      placeholder: |
+        Example: Add a "At-Risk Students" widget to the teacher dashboard that shows students with GPA below a configurable threshold.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: |
+        Describe any alternative solutions you've considered:
+        - Option A: ...
+        - Option B: ...
+      placeholder: |
+        We considered using manual spreadsheet exports, but it's too time-consuming.
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature?
+      options:
+        - Critical - Blocks core functionality
+        - High - Important for most users
+        - Medium - Nice to have
+        - Low - Can wait
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component(s) Affected
+      description: Which part(s) of the system does this affect?
+      options:
+        - Authentication
+        - Frontend
+        - Backend/API
+        - Database
+        - Tests
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add any other context or mockups about the feature request.

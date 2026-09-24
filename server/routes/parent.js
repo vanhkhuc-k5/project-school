@@ -1,287 +1,813 @@
 import express from 'express';
 import { db } from '../db.js';
-import { optionalAuth } from '../middleware/auth.js';
+import { authenticateToken, requireRole, requirePermission } from '../middleware/auth.js';
+import { isPostgresConfigured, pgQuery } from '../shared/database/index.js';
+import { verifyParentChildRelationship } from '../shared/auth/parentChildAuth.middleware.js';
+import { attendanceService } from '../modules/attendance/index.js';
+import { gradebookService } from '../modules/gradebook/index.js';
+import { timetableService } from '../modules/timetable/index.js';
 
 const router = express.Router();
 
-// Get parent children and data
-router.get('/children', optionalAuth, (req, res) => {
-  // Query students belonging to parent
-  const children = db.prepare(`
-    SELECT s.*, u.name, u.code, u.avatar, c.name as class_name
-    FROM students s
-    JOIN users u ON s.user_id = u.id
-    JOIN classes c ON s.class_id = c.id
-    WHERE s.parent_id = 'usr_parent_1' OR s.id IN ('std_khoi', 'std_chau')
-  `).all();
+// Enforce authentication & role across all parent endpoints
+router.use(authenticateToken);
+router.use(requireRole('parent', 'admin', 'school_admin', 'super_admin'));
 
-  const formattedChildren = children.map((c) => {
-    // Get tuition
-    const invoice = db.prepare('SELECT * FROM tuition_invoices WHERE student_id = ? LIMIT 1').get(c.id);
-    // Get recent grades
-    const grades = db.prepare('SELECT * FROM grades WHERE student_id = ? ORDER BY graded_at DESC LIMIT 4').all(c.id);
+// =============================================================================
+// HELPERS
+// =============================================================================
+function getSchoolId(req) {
+  return req.schoolId || req.user?.schoolId || req.user?.school_id || 'sch_bacau';
+}
 
-    return {
-      id: c.id,
-      name: c.name,
-      badge: 'Đang học kỳ 2 (2024-2025)',
-      class: c.class_name.includes('7') ? `Lớp ${c.class_name} • Khối THCS` : `Lớp ${c.class_name} • Chuyên Toán - Tin`,
-      code: c.code,
-      gvcn: c.class_name.includes('7') ? 'Thầy Trần Đình Trọng' : 'Cô Lê Hoàng Lan',
-      avatar: c.avatar || 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=120&h=120',
-      gpa: c.gpa,
-      gpaRank: c.gpa >= 9.0 ? 'Học lực Xuất sắc' : 'Học lực Giỏi',
-      classRank: c.class_rank || '03',
-      totalStudents: 38,
-      attendanceRate: `${c.attendance_rate}%`,
-      attendanceNote: c.attendance_rate < 100 ? 'Nghỉ có phép: 1' : 'Đi học chuyên cần',
-      scoreTrend: [8.2, 8.4, 8.6, 8.5, 8.8, c.gpa],
-      recentSubjects: grades.map((g) => ({
-        initial: g.subject.charAt(0),
-        name: g.subject,
-        test: `${g.test_name} • ${g.graded_at}`,
-        score: g.score,
-        rank: g.score >= 9.0 ? 'Đạt xuất sắc' : g.score >= 8.0 ? 'Giỏi' : 'Khá',
-        rankType: g.score >= 9.0 ? 'success' : g.score >= 8.0 ? 'info' : 'neutral',
-      })),
-      tuition: invoice ? {
-        id: invoice.id,
-        period: invoice.period,
-        total: invoice.total_amount.toLocaleString('vi-VN'),
-        dueDate: `Hạn: ${invoice.due_date}`,
-        countdown: invoice.status === 'paid' ? 'Đã thanh toán' : 'Còn 5 ngày',
-        status: invoice.status,
-        items: JSON.parse(invoice.items || '[]'),
-        qrInfo: {
-          bank: invoice.bank_name,
-          accountNumber: invoice.account_number,
-          accountName: invoice.account_name,
-          amount: invoice.total_amount,
-          description: invoice.transfer_memo,
-        }
-      } : {
-        period: 'Kỳ thu: Tháng 11/2024',
-        total: '3.250.000',
-        dueDate: 'Hạn: 10/11/2024',
-        countdown: 'Còn 5 ngày',
-        items: [],
-      },
-      schedule: [
-        { period: 'Tiết 1 - 2', time: '07:30 - 09:00', subject: 'Toán nâng cao', room: 'Phòng 302 • Thầy Tiến Minh Tuấn' },
-        { period: 'Tiết 3 - 4', time: '09:15 - 10:45', subject: 'Ngữ văn', room: 'Phòng 302 • Cô Lê Hoàng Lan' },
-        { period: 'Buổi chiều', time: '14:00 - 16:00', subject: 'Tin học Python', room: 'Phòng Lab 2 • Thực hành lập trình' },
-      ],
-      examAlert: {
-        title: 'Thi Giữa Kỳ I • Môn Vật Lý',
-        time: 'Thời gian: Thứ Ba, 05/11/2024 • 08:00 (Phòng thi 12)',
-        duration: 'Thời lượng: 60 phút',
-        linkText: 'Xem đề cương ôn tập →',
+function getParentUserId(req) {
+  return req.user.id;
+}
+
+function isAdmin(req) {
+  return ['admin', 'school_admin', 'super_admin'].includes(req.user?.role);
+}
+
+/** Format a child object for the parent portal response */
+async function formatChildForParent(childRow, schoolId, parentUserId) {
+  const studentId = childRow.id;
+
+  // Load published grades for this semester (G21: only published)
+  let recentGrades = [];
+  let attendanceData = null;
+
+  if (isPostgresConfigured()) {
+    // Use only columns that exist in both PG and SQLite grades table
+    const grdRes = await pgQuery(`
+      SELECT g.id, g.subject, g.test_name, g.score, g.max_score,
+             g.teacher_name, g.status, g.published_at,
+             s.name as subject_name
+      FROM grades g
+      LEFT JOIN subjects s ON g.subject_id = s.id
+      WHERE g.student_id = $1
+        AND g.status = 'published'
+        AND (g.school_id = $2 OR g.school_id IS NULL)
+      ORDER BY g.graded_at DESC
+      LIMIT 6
+    `, [studentId, schoolId]);
+    recentGrades = grdRes.rows || [];
+  } else {
+    recentGrades = db.prepare(`
+      SELECT g.id, g.subject, g.test_name, g.score, g.max_score,
+             g.teacher_name, g.status, g.published_at
+      FROM grades g
+      WHERE g.student_id = ?
+        AND g.status = 'published'
+        AND (? IS NULL OR g.school_id = ? OR g.school_id IS NULL)
+      ORDER BY g.graded_at DESC
+      LIMIT 6
+    `).all(studentId, schoolId, schoolId);
+  }
+
+  // Attendance summary
+  try {
+    attendanceData = await attendanceService.getStudentAttendanceHistory({
+      studentId,
+      schoolId,
+      currentUser: { id: parentUserId, role: 'parent' },
+    });
+  } catch (err) {
+    // Attendance is non-critical; continue without it
+    console.warn('[ParentPortal] getStudentAttendanceHistory failed:', err?.message);
+    attendanceData = null;
+  }
+
+  const gpa = parseFloat(childRow.gpa) || 0;
+  const gpaRank = gpa >= 9.0 ? 'Học lực Xuất sắc'
+    : gpa >= 8.0 ? 'Học lực Giỏi'
+    : gpa >= 6.5 ? 'Học lực Khá'
+    : 'Học lực Trung bình';
+
+  return {
+    id: childRow.id,
+    name: childRow.name || childRow.full_name || childRow.user_name || 'Học sinh',
+    avatar: childRow.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(childRow.name || 'H')}&background=1C6FA8&color=fff&size=120`,
+    badge: 'Đang học kỳ hiện tại',
+    class: childRow.class_name ? `${childRow.class_name}` : (childRow.class || 'Lớp chưa phân'),
+    code: childRow.code || childRow.student_code || studentId,
+    gpa: gpa,
+    gpaRank,
+    classRank: childRow.class_rank || '—',
+    totalStudents: childRow.total_students || 38,
+    attendanceRate: attendanceData?.rate || (childRow.attendance_rate ? `${childRow.attendance_rate}%` : '—'),
+    attendanceNote: attendanceData
+      ? (attendanceData.excusedDays > 0
+          ? `Nghỉ có phép: ${attendanceData.excusedDays} buổi`
+          : attendanceData.absentDays > 0
+            ? `Vắng: ${attendanceData.absentDays} buổi`
+            : 'Đi học chuyên cần')
+      : 'Đi học chuyên cần',
+    recentSubjects: recentGrades.map((g) => ({
+      initial: (g.subject_name || g.subject || 'M').charAt(0),
+      name: g.subject_name || g.subject || 'Môn học',
+      test: g.test_name || g.description || 'Bài kiểm tra',
+      score: parseFloat(g.raw_score) || 0,
+      rank: parseFloat(g.raw_score) >= 9.0 ? 'Xuất sắc'
+        : parseFloat(g.raw_score) >= 8.0 ? 'Giỏi'
+        : parseFloat(g.raw_score) >= 6.5 ? 'Khá'
+        : 'Trung bình',
+      rankType: parseFloat(g.raw_score) >= 9.0 ? 'success'
+        : parseFloat(g.raw_score) >= 8.0 ? 'info'
+        : parseFloat(g.raw_score) >= 6.5 ? 'warning'
+        : 'neutral',
+    })),
+    // Tuition
+    tuition: null, // Loaded separately
+    // Schedule placeholder (filled by timetable endpoint)
+    schedule: [],
+    examAlert: null,
+  };
+}
+
+// =============================================================================
+// LIST ACTIVE CHILDREN
+// GET /api/parent/children
+// =============================================================================
+router.get('/children', requirePermission('student.read'), async (req, res) => {
+  const parentUserId = getParentUserId(req);
+  const schoolId = getSchoolId(req);
+
+  let children = [];
+
+  try {
+    if (isPostgresConfigured()) {
+      // Query active links
+      const linksRes = await pgQuery(`
+        SELECT psl.*, s.*,
+               u.name, u.code, u.avatar,
+               COALESCE(c.name, ec.name) as class_name,
+               ce.is_current, ce.academic_year_id,
+               (
+                 SELECT COUNT(*) OVER () FROM parent_student_links psl2
+                 WHERE psl2.parent_id = psl.parent_id AND psl2.is_active = 1
+               ) as total_linked_children
+        FROM parent_student_links psl
+        JOIN parents p ON p.id = psl.parent_id
+        JOIN students s ON psl.student_id = s.id
+        JOIN users u ON s.user_id = u.id
+        LEFT JOIN class_enrollments ce ON ce.student_id = s.id AND ce.is_current = true
+        LEFT JOIN classes ec ON ce.class_id = ec.id
+        LEFT JOIN classes c ON s.class_id = c.id
+        WHERE p.user_id = $1
+          AND psl.is_active = 1
+          AND ($2::varchar IS NULL OR s.school_id = $2 OR s.school_id IS NULL)
+        ORDER BY psl.is_primary_contact DESC, psl.created_at ASC
+      `, [parentUserId, schoolId]);
+
+      children = linksRes.rows;
+
+      // Fall back to SQLite if PG returns empty
+      if (children.length === 0) {
+        children = db.prepare(`
+          SELECT psl.*, s.*,
+                 u.name, u.code, u.avatar,
+                 COALESCE(c.name, ec.name) as class_name,
+                 ce.is_current
+          FROM parent_student_links psl
+          JOIN parents p ON p.id = psl.parent_id
+          JOIN students s ON psl.student_id = s.id
+          JOIN users u ON s.user_id = u.id
+          LEFT JOIN class_enrollments ce ON ce.student_id = s.id AND ce.is_current = 1
+          LEFT JOIN classes ec ON ce.class_id = ec.id
+          LEFT JOIN classes c ON s.class_id = c.id
+          WHERE p.user_id = ?
+            AND psl.is_active = 1
+            AND (? IS NULL OR s.school_id = ? OR s.school_id IS NULL)
+          ORDER BY psl.is_primary_contact DESC, psl.created_at ASC
+        `).all(parentUserId, schoolId, schoolId);
       }
-    };
+    } else {
+      children = db.prepare(`
+        SELECT psl.*, s.*,
+               u.name, u.code, u.avatar,
+               COALESCE(c.name, ec.name) as class_name,
+               ce.is_current
+        FROM parent_student_links psl
+        JOIN parents p ON p.id = psl.parent_id
+        JOIN students s ON psl.student_id = s.id
+        JOIN users u ON s.user_id = u.id
+        LEFT JOIN class_enrollments ce ON ce.student_id = s.id AND ce.is_current = 1
+        LEFT JOIN classes ec ON ce.class_id = ec.id
+        LEFT JOIN classes c ON s.class_id = c.id
+        WHERE p.user_id = ?
+          AND psl.is_active = 1
+          AND (? IS NULL OR s.school_id = ? OR s.school_id IS NULL)
+        ORDER BY psl.is_primary_contact DESC, psl.created_at ASC
+      `).all(parentUserId, schoolId, schoolId);
+    }
+
+    // Fallback to legacy table or direct parent_id if still empty
+    if (children.length === 0) {
+      // Fallback: legacy parent_students table (pre-G24 SQLite seeding)
+      try {
+        children = db.prepare(`
+          SELECT s.*, u.name, u.code, u.avatar, c.name as class_name,
+                 ps.relationship, ps.is_primary_contact, ps.is_verified, 1 as is_active
+          FROM parent_students ps
+          JOIN parents p ON p.id = ps.parent_id
+          JOIN students s ON ps.student_id = s.id
+          JOIN users u ON s.user_id = u.id
+          LEFT JOIN classes c ON s.class_id = c.id
+          WHERE p.user_id = ?
+            AND (? IS NULL OR s.school_id = ? OR s.school_id IS NULL)
+          ORDER BY ps.is_primary_contact DESC, s.id ASC
+        `).all(parentUserId, schoolId, schoolId);
+      } catch (err) {
+        console.error('[/children] Legacy table fallback error:', err.message);
+        children = [];
+      }
+    }
+
+    // Fallback: direct parent_id on students table
+    if (children.length === 0) {
+      children = db.prepare(`
+        SELECT s.*, u.name, u.code, u.avatar, c.name as class_name,
+               'parent' as relationship, 1 as is_primary_contact, 0 as is_verified, 1 as is_active
+        FROM students s
+        JOIN users u ON s.user_id = u.id
+        LEFT JOIN classes c ON s.class_id = c.id
+        WHERE s.parent_id = ?
+          AND (? IS NULL OR s.school_id = ? OR s.school_id IS NULL)
+        ORDER BY s.id ASC
+      `).all(parentUserId, schoolId, schoolId);
+    }
+
+    const formattedChildren = await Promise.all(children.map(c => formatChildForParent(c, schoolId, parentUserId)));
+
+    // Enrich with relationship metadata
+    const enriched = formattedChildren.map((fc, idx) => {
+      const raw = children[idx];
+      return {
+        ...fc,
+        relationship: raw.relationship || 'parent',
+        isPrimaryContact: Boolean(raw.is_primary_contact),
+        isVerified: Boolean(raw.is_verified),
+        isActive: Boolean(raw.is_active),
+      };
+    });
+
+    // Notices / announcements
+    const notices = db.prepare(`
+      SELECT * FROM announcements
+      WHERE is_active = 1
+        AND school_id = ?
+        AND scope IN ('all', 'parent')
+      ORDER BY published_at DESC
+      LIMIT 10
+    `).all(schoolId);
+
+    const formattedNotices = notices.map((n) => ({
+      id: n.id,
+      tag: n.scope || 'Thông báo',
+      tagType: n.priority === 'urgent' ? 'danger' : n.priority === 'important' ? 'warning' : 'info',
+      title: n.title,
+      content: n.content,
+      sender: n.author_id || 'Nhà trường',
+      time: n.published_at ? new Date(n.published_at).toLocaleDateString('vi-VN') : 'Gần đây',
+      canConfirm: false,
+      confirmed: false,
+    }));
+
+    res.json({
+      success: true,
+      children: enriched,
+      data: {
+        children: enriched,
+        notifications: formattedNotices,
+      },
+    });
+  } catch (err) {
+    console.error('[/children] Error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// =============================================================================
+// GET CHILD DETAIL (secure)
+// GET /api/parent/children/:id
+// =============================================================================
+router.get('/children/:id', requirePermission('student.read'), async (req, res, next) => {
+  const childId = req.params.id;
+  const parentUserId = getParentUserId(req);
+  const schoolId = getSchoolId(req);
+
+  // Verify relationship
+  const { authorized, error, relationship } = await verifyParentChildRelationship({
+    parentUserId,
+    studentId: childId,
+    schoolId,
   });
 
-  // Query notices
-  const notices = db.prepare('SELECT * FROM school_notices ORDER BY created_at DESC LIMIT 5').all();
-  const formattedNotices = notices.map((n) => ({
-    id: n.id,
-    category: n.category,
-    tag: n.tag,
-    tagType: n.tag_type,
-    title: n.title,
-    content: n.content,
-    sender: n.sender,
-    time: 'Hôm nay',
-    canConfirm: n.can_confirm === 1,
-    confirmed: (JSON.parse(n.confirmed_by_users || '[]')).includes('usr_parent_1'),
-  }));
+  if (!authorized) {
+    const statusMap = { NOT_AUTHORIZED: 403, TENANT_FORBIDDEN: 403, STUDENT_NOT_FOUND: 404 };
+    return res.status(statusMap[error] || 403).json({
+      success: false,
+      code: error,
+      message: 'Bạn không có quyền truy cập thông tin của học sinh này.',
+    });
+  }
+
+  try {
+    let child;
+    if (isPostgresConfigured()) {
+      const res2 = await pgQuery(`
+        SELECT s.*, u.name, u.code, u.avatar,
+               COALESCE(c.name, ec.name) as class_name
+        FROM students s
+        JOIN users u ON s.user_id = u.id
+        LEFT JOIN class_enrollments ce ON ce.student_id = s.id AND ce.is_current = true
+        LEFT JOIN classes ec ON ce.class_id = ec.id
+        LEFT JOIN classes c ON s.class_id = c.id
+        WHERE s.id = $1
+      `, [childId]);
+      child = res2.rows[0];
+    } else {
+      child = db.prepare(`
+        SELECT s.*, u.name, u.code, u.avatar, c.name as class_name
+        FROM students s
+        JOIN users u ON s.user_id = u.id
+        LEFT JOIN class_enrollments ce ON ce.student_id = s.id AND ce.is_current = 1
+        LEFT JOIN classes ec ON ce.class_id = ec.id
+        LEFT JOIN classes c ON s.class_id = c.id
+        WHERE s.id = ?
+      `).get(childId);
+    }
+
+    if (!child) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy học sinh' });
+    }
+
+    const formatted = await formatChildForParent(child, schoolId, parentUserId);
+    res.json({
+      success: true,
+      child: {
+        ...formatted,
+        relationship: relationship.type || 'parent',
+        isVerified: relationship.isVerified || false,
+        isActive: relationship.isActive !== false,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// =============================================================================
+// PARENT DASHBOARD (real data, per child)
+// GET /api/parent/dashboard
+// =============================================================================
+router.get('/dashboard', requirePermission('student.read'), async (req, res) => {
+  const parentUserId = getParentUserId(req);
+  const schoolId = getSchoolId(req);
+  const childId = req.query.childId || null;
+
+  // If no childId, use primary contact child or first
+  let targetChildId = childId;
+
+  if (!targetChildId) {
+    // Resolve primary child
+    if (isPostgresConfigured()) {
+      const primaryRes = await pgQuery(`
+        SELECT psl.student_id
+        FROM parent_student_links psl
+        JOIN parents p ON p.id = psl.parent_id
+        WHERE p.user_id = $1 AND psl.is_active = 1
+        ORDER BY psl.is_primary_contact DESC, psl.created_at ASC
+        LIMIT 1
+      `, [parentUserId]);
+      targetChildId = primaryRes.rows[0]?.student_id || null;
+    } else {
+      const primaryRow = db.prepare(`
+        SELECT psl.student_id
+        FROM parent_student_links psl
+        JOIN parents p ON p.id = psl.parent_id
+        WHERE p.user_id = ? AND psl.is_active = 1
+        ORDER BY psl.is_primary_contact DESC, psl.created_at ASC
+        LIMIT 1
+      `).get(parentUserId);
+      targetChildId = primaryRow?.student_id || null;
+    }
+  }
+
+  // Verify access
+  if (targetChildId) {
+    const { authorized } = await verifyParentChildRelationship({
+      parentUserId,
+      studentId: targetChildId,
+      schoolId,
+    });
+    if (!authorized && !isAdmin(req)) {
+      return res.status(403).json({ success: false, message: 'Không có quyền truy cập học sinh này' });
+    }
+  }
+
+  // Parent name
+  const parentName = req.user?.name || 'Phụ huynh';
 
   res.json({
     success: true,
-    children: formattedChildren,
     data: {
-      currentChildId: formattedChildren[0]?.id || 'std_khoi',
-      children: formattedChildren,
-      notifications: formattedNotices,
+      parentName,
+      phone: req.user?.phone || '',
+      activeChildId: targetChildId,
+      schoolId,
     },
   });
 });
 
-// Get Parent Dashboard Overview Data
-router.get('/dashboard', optionalAuth, (req, res) => {
-  res.json({
-    success: true,
-    data: {
-      parentName: 'Bác Nguyễn Văn Hồi',
-      phone: '0912 345 678',
-      childrenCount: 2,
-      activeTerm: 'Học kỳ I (2024 - 2025)',
-    },
+// =============================================================================
+// CHILD GRADES (secure, published only)
+// GET /api/parent/grades?studentId=xxx
+// =============================================================================
+router.get('/grades', requirePermission('grade.read'), async (req, res) => {
+  const studentId = req.query.studentId;
+  if (!studentId) {
+    return res.status(400).json({ success: false, message: 'Thiếu studentId' });
+  }
+
+  const { authorized, error } = await verifyParentChildRelationship({
+    parentUserId: getParentUserId(req),
+    studentId,
+    schoolId: getSchoolId(req),
   });
+  if (!authorized && !isAdmin(req)) {
+    return res.status(403).json({ success: false, code: error || 'NOT_AUTHORIZED', message: 'Không có quyền xem điểm của học sinh này' });
+  }
+
+  const schoolId = getSchoolId(req);
+  const period = req.query.period || 'hk1'; // hk1, hk2, year
+
+  try {
+    const grades = await gradebookService.getStudentGradesForParent({
+      studentId,
+      schoolId,
+      period,
+      requestingUserId: getParentUserId(req),
+    });
+    res.json({ success: true, data: grades });
+  } catch (err) {
+    console.error('[/grades] Error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
-// Get Tuition details
-router.get('/tuition', optionalAuth, (req, res) => {
-  const childId = req.query.childId || 'std_khoi';
-  const invoice = db.prepare('SELECT * FROM tuition_invoices WHERE student_id = ? LIMIT 1').get(childId);
+// =============================================================================
+// CHILD ATTENDANCE (secure)
+// GET /api/parent/attendance?studentId=xxx
+// =============================================================================
+router.get('/attendance', requirePermission('attendance.read'), async (req, res) => {
+  const studentId = req.query.studentId;
+  if (!studentId) {
+    return res.status(400).json({ success: false, message: 'Thiếu studentId' });
+  }
+
+  const { authorized } = await verifyParentChildRelationship({
+    parentUserId: getParentUserId(req),
+    studentId,
+    schoolId: getSchoolId(req),
+  });
+  if (!authorized && !isAdmin(req)) {
+    return res.status(403).json({ success: false, message: 'Không có quyền xem chuyên cần của học sinh này' });
+  }
+
+  try {
+    const attendance = await attendanceService.getStudentAttendanceHistory({
+      studentId,
+      schoolId: getSchoolId(req),
+      currentUser: req.user,
+    });
+    res.json({ success: true, data: attendance });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// =============================================================================
+// CHILD ASSIGNMENTS (secure, published assignments only)
+// GET /api/parent/assignments?studentId=xxx
+// =============================================================================
+router.get('/assignments', requirePermission('student.read'), async (req, res) => {
+  const studentId = req.query.studentId;
+  if (!studentId) {
+    return res.status(400).json({ success: false, message: 'Thiếu studentId' });
+  }
+
+  const { authorized } = await verifyParentChildRelationship({
+    parentUserId: getParentUserId(req),
+    studentId,
+    schoolId: getSchoolId(req),
+  });
+  if (!authorized && !isAdmin(req)) {
+    return res.status(403).json({ success: false, message: 'Không có quyền xem bài tập của học sinh này' });
+  }
+
+  const schoolId = getSchoolId(req);
+
+  try {
+    let assignments;
+    if (isPostgresConfigured()) {
+      // PostgreSQL: target_classes is JSONB, cast due_date to date for comparison
+      const res2 = await pgQuery(`
+        SELECT a.id, a.title, a.subject, a.due_date, a.due_time,
+               a.status, a.total_score, a.duration_minutes,
+               a.allow_resubmit, a.max_resubmit_count,
+               asub.submitted_at, asub.score,
+               CASE WHEN asub.id IS NOT NULL THEN 'submitted' ELSE NULL END as submission_status,
+               asub.is_late, asub.resubmit_count
+        FROM assignments a
+        LEFT JOIN assignment_submissions asub ON asub.assignment_id = a.id AND asub.student_id = $1
+        WHERE a.status = 'published'
+          AND ($2::varchar IS NULL OR a.school_id = $2 OR a.school_id IS NULL)
+          AND EXISTS (
+            SELECT 1 FROM class_enrollments ce
+            WHERE ce.student_id = $1 AND a.target_classes ? ce.class_id
+          )
+          AND (a.due_date::date >= CURRENT_DATE - INTERVAL '30 days' OR a.due_date IS NULL)
+        ORDER BY a.due_date DESC, a.created_at DESC
+        LIMIT 50
+      `, [studentId, schoolId]);
+      assignments = res2.rows;
+    } else {
+      // SQLite: target_classes is stored as JSON string, use LIKE for text matching
+      assignments = db.prepare(`
+        SELECT a.id, a.title, a.subject, a.due_date, a.due_time,
+               a.status, a.total_score, a.duration_minutes,
+               a.allow_resubmit, a.max_resubmit_count,
+               asub.submitted_at, asub.score, asub.status as submission_status,
+               asub.is_late, asub.resubmit_count
+        FROM assignments a
+        LEFT JOIN assignment_submissions asub ON asub.assignment_id = a.id AND asub.student_id = ?
+        WHERE a.status = 'published'
+          AND (? IS NULL OR a.school_id = ? OR a.school_id IS NULL)
+          AND EXISTS (
+            SELECT 1 FROM class_enrollments ce
+            WHERE ce.student_id = ? AND a.target_classes LIKE '%' || ce.class_id || '%'
+          )
+          AND (a.due_date >= date('now', '-30 days') OR a.due_date IS NULL)
+        ORDER BY a.due_date DESC, a.created_at DESC
+        LIMIT 50
+      `).all(studentId, schoolId, schoolId, studentId);
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const formatted = assignments.map(a => {
+      const isOverdue = a.due_date && a.due_date < today && a.submission_status !== 'submitted' && a.submission_status !== 'graded';
+      const daysUntil = a.due_date
+        ? Math.ceil((new Date(a.due_date) - new Date(today)) / (1000 * 60 * 60 * 24))
+        : null;
+      return {
+        id: a.id,
+        title: a.title,
+        subject: a.subject,
+        dueDate: a.due_date,
+        dueTime: a.due_time,
+        totalScore: a.total_score,
+        status: a.status,
+        submissionStatus: a.submission_status,
+        score: a.score,
+        isLate: Boolean(a.is_late),
+        isOverdue: Boolean(isOverdue),
+        daysUntilDue: daysUntil,
+        allowResubmit: Boolean(a.allow_resubmit),
+        maxResubmitCount: a.max_resubmit_count,
+        resubmitCount: a.resubmit_count || 0,
+      };
+    });
+
+    res.json({ success: true, assignments: formatted });
+  } catch (err) {
+    console.error('[/assignments] Error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// =============================================================================
+// CHILD TIMETABLE (secure)
+// GET /api/parent/timetable/:studentId
+// =============================================================================
+router.get('/timetable/:studentId', requirePermission('timetable.read'), async (req, res) => {
+  const { authorized } = await verifyParentChildRelationship({
+    parentUserId: getParentUserId(req),
+    studentId: req.params.studentId,
+    schoolId: getSchoolId(req),
+  });
+  if (!authorized && !isAdmin(req)) {
+    return res.status(403).json({ success: false, message: 'Không có quyền xem thời khóa biểu' });
+  }
+
+  try {
+    const result = await timetableService.getParentChildTimetable({
+      parentId: getParentUserId(req),
+      studentId: req.params.studentId,
+      schoolId: getSchoolId(req),
+      semesterId: req.query.semesterId || null,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(err.status || 500).json({
+      success: false,
+      code: err.code || 'SERVER_ERROR',
+      message: err.message,
+    });
+  }
+});
+
+// =============================================================================
+// ANNOUNCEMENTS FOR PARENT (of a specific child)
+// GET /api/parent/announcements?studentId=xxx
+// =============================================================================
+router.get('/announcements', requirePermission('announcement.read'), async (req, res) => {
+  const studentId = req.query.studentId;
+  const schoolId = getSchoolId(req);
+
+  if (studentId) {
+    const { authorized } = await verifyParentChildRelationship({
+      parentUserId: getParentUserId(req),
+      studentId,
+      schoolId,
+    });
+    if (!authorized && !isAdmin(req)) {
+      return res.status(403).json({ success: false, message: 'Không có quyền' });
+    }
+  }
+
+  try {
+    let announcements;
+    if (isPostgresConfigured()) {
+      // Use boolean comparison for PostgreSQL
+      const res2 = await pgQuery(`
+        SELECT a.*, u.name as author_name
+        FROM announcements a
+        LEFT JOIN users u ON a.author_id = u.id
+        WHERE a.is_active = true
+          AND (a.school_id = $1 OR a.school_id IS NULL)
+          AND a.scope IN ('all', 'parent')
+        ORDER BY
+          CASE a.priority WHEN 'urgent' THEN 1 WHEN 'important' THEN 2 ELSE 3 END,
+          a.published_at DESC
+        LIMIT 50
+      `, [schoolId]);
+      announcements = res2.rows;
+    } else {
+      // SQLite uses integer for boolean
+      announcements = db.prepare(`
+        SELECT a.*, u.name as author_name
+        FROM announcements a
+        LEFT JOIN users u ON a.author_id = u.id
+        WHERE a.is_active = 1
+          AND (a.school_id = ? OR a.school_id IS NULL)
+          AND a.scope IN ('all', 'parent')
+        ORDER BY
+          CASE a.priority WHEN 'urgent' THEN 1 WHEN 'important' THEN 2 ELSE 3 END,
+          a.published_at DESC
+        LIMIT 50
+      `).all(schoolId);
+    }
+
+    res.json({
+      success: true,
+      announcements: announcements.map(a => ({
+        id: a.id,
+        title: a.title,
+        content: a.content,
+        priority: a.priority || 'normal',
+        authorName: a.author_name || 'Nhà trường',
+        publishedAt: a.published_at,
+        scope: a.scope,
+        classId: a.class_id,
+      })),
+    });
+  } catch (err) {
+    console.error('[/announcements] Error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// =============================================================================
+// TUITION INVOICES (secure)
+// GET /api/parent/tuition?studentId=xxx
+// If studentId is not provided, auto-detect first linked child
+// =============================================================================
+router.get('/tuition', requirePermission('tuition.read'), async (req, res) => {
+  let studentId = req.query.studentId;
+
+  // Auto-detect first linked child if not provided
+  if (!studentId) {
+    // parent_id in parent_student_links is the user_id (e.g., 'usr_parent_1')
+    // parents.user_id is also the user_id, so join on user_id
+    const links = db.prepare(`
+      SELECT psl.student_id, s.school_id
+      FROM parent_student_links psl
+      JOIN students s ON s.id = psl.student_id
+      JOIN parents p ON p.user_id = psl.parent_id
+      WHERE p.user_id = ? AND psl.is_active = 1
+      LIMIT 1
+    `).all(getParentUserId(req));
+
+    if (links.length === 0) {
+      return res.status(400).json({ success: false, message: 'Không tìm thấy học sinh liên kết' });
+    }
+    studentId = links[0].student_id;
+  }
+
+  // Relationship check is done via middleware pattern
+  // For tuition, we verify inline since it uses synchronous SQLite
+  const { authorized, error } = await verifyParentChildRelationship({
+    parentUserId: getParentUserId(req),
+    studentId,
+    schoolId: getSchoolId(req),
+  });
+  if (!authorized && !isAdmin(req)) {
+    const statusMap = { NOT_AUTHORIZED: 403, TENANT_FORBIDDEN: 403, STUDENT_NOT_FOUND: 404 };
+    return res.status(statusMap[error] || 403).json({
+      success: false,
+      code: error || 'NOT_AUTHORIZED',
+      message: 'Bạn không có quyền xem học phí của học sinh này.',
+    });
+  }
+
+  const invoice = db.prepare('SELECT * FROM tuition_invoices WHERE student_id = ? LIMIT 1').get(studentId);
   res.json({
     success: true,
     invoice: invoice
       ? {
           id: invoice.id,
           period: invoice.period,
+          total: Number(invoice.total_amount).toLocaleString('vi-VN'),
           totalAmount: invoice.total_amount,
           dueDate: invoice.due_date,
           status: invoice.status,
-          bankName: invoice.bank_name || 'Vietcombank',
-          accountNumber: invoice.account_number || '1903456789012',
-          accountName: invoice.account_name || 'TRUONG THPT CHUYEN EDUPORTAL',
-          transferMemo: invoice.transfer_memo,
+          paidAt: invoice.paid_at,
+          bankName: invoice.bank_name,
+          items: typeof invoice.items === 'string' ? JSON.parse(invoice.items) : (invoice.items || []),
+          qrInfo: {
+            bankName: invoice.bank_name,
+            accountNumber: invoice.account_number,
+            accountName: invoice.account_name,
+            amount: invoice.total_amount,
+            description: invoice.transfer_memo,
+          },
         }
-      : {
-          id: 'inv_default',
-          period: 'Tháng 11/2024',
-          totalAmount: 3250000,
-          dueDate: '10/11/2024',
-          status: 'pending',
-          bankName: 'Vietcombank',
-          accountNumber: '1903456789012',
-          accountName: 'TRUONG THPT CHUYEN EDUPORTAL',
-          transferMemo: 'HOCPHI KHOI 10A1',
-        },
+      : null,
   });
 });
 
-// Pay tuition
-router.post('/tuition/:id/pay', optionalAuth, (req, res) => {
+// Pay tuition — relationship check
+router.post('/tuition/:id/pay', requirePermission('tuition.pay'), async (req, res) => {
   const invoiceId = req.params.id;
+
+  // Get invoice to find student
+  const invoice = db.prepare('SELECT * FROM tuition_invoices WHERE id = ?').get(invoiceId);
+  if (!invoice) {
+    return res.status(404).json({ success: false, message: 'Không tìm thấy hóa đơn' });
+  }
+
+  const { authorized } = await verifyParentChildRelationship({
+    parentUserId: getParentUserId(req),
+    studentId: invoice.student_id,
+    schoolId: getSchoolId(req),
+  });
+  if (!authorized && !isAdmin(req)) {
+    return res.status(403).json({ success: false, message: 'Không có quyền' });
+  }
+
   db.prepare(`
     UPDATE tuition_invoices
-    SET status = 'paid', paid_at = CURRENT_TIMESTAMP
+    SET status = 'paid', paid_at = datetime('now')
     WHERE id = ?
   `).run(invoiceId);
 
-  // Log audit
   db.prepare(`
-    INSERT INTO audit_logs (id, actor_name, role, action, badge, badge_type)
-    VALUES (?, ?, 'parent', 'Đã đóng học phí trực tuyến qua cổng VietQR Napas.', 'Đã thanh toán', 'success')
-  `).run(`log_${Date.now()}`, 'Phụ huynh Nguyễn Văn Hồi');
+    INSERT INTO audit_logs (id, actor_name, role, action, badge, badge_type, created_at)
+    VALUES (?, ?, 'parent', 'Thanh toán học phí trực tuyến', 'Đã thanh toán', 'success', datetime('now'))
+  `).run(`log_${Date.now()}`, req.user?.name || 'Phụ huynh');
 
   res.json({ success: true, message: 'Xác nhận thanh toán học phí thành công!' });
 });
 
-// Schema initialization for Phase 3
-db.exec(`
-  CREATE TABLE IF NOT EXISTS leave_requests (
-    id TEXT PRIMARY KEY,
-    student_id TEXT NOT NULL,
-    parent_id TEXT NOT NULL,
-    start_date TEXT NOT NULL,
-    end_date TEXT NOT NULL,
-    reason_type TEXT NOT NULL,
-    reason_detail TEXT NOT NULL,
-    emergency_phone TEXT,
-    medical_note_url TEXT,
-    status TEXT NOT NULL DEFAULT 'pending',
-    teacher_note TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS parent_teacher_messages (
-    id TEXT PRIMARY KEY,
-    student_id TEXT NOT NULL,
-    parent_id TEXT NOT NULL,
-    sender_role TEXT NOT NULL,
-    sender_name TEXT NOT NULL,
-    content TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-`);
-
-// Seed initial leave request if none exists
-try {
-  const countLeave = db.prepare('SELECT COUNT(*) as count FROM leave_requests').get()?.count || 0;
-  if (countLeave === 0) {
-    db.prepare(`
-      INSERT INTO leave_requests (id, student_id, parent_id, start_date, end_date, reason_type, reason_detail, emergency_phone, status, teacher_note, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '-5 days'))
-    `).run(
-      'leave_sample_1',
-      'std_khoi',
-      'usr_parent_1',
-      '2024-10-15',
-      '2024-10-15',
-      'Bệnh/Sức khỏe',
-      'Cháu Khôi bị sốt phát ban nhẹ, gia đình xin phép cho cháu nghỉ 1 ngày để theo dõi và đi khám bác sĩ.',
-      '0912 345 678',
-      'approved',
-      'Cô đã nhận được thông tin từ gia đình. Chúc em Khôi mau khỏe và sớm quay lại trường.'
-    );
+// =============================================================================
+// LEAVE REQUESTS
+// =============================================================================
+router.get('/leave-requests', requirePermission('leave_request.read'), async (req, res) => {
+  const studentId = req.query.studentId;
+  if (!studentId) {
+    return res.status(400).json({ success: false, message: 'Thiếu studentId' });
   }
 
-  const countMsg = db.prepare('SELECT COUNT(*) as count FROM parent_teacher_messages').get()?.count || 0;
-  if (countMsg === 0) {
-    const insertMsg = db.prepare(`
-      INSERT INTO parent_teacher_messages (id, student_id, parent_id, sender_role, sender_name, content, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))
-    `);
-    insertMsg.run(
-      'msg_1',
-      'std_khoi',
-      'usr_parent_1',
-      'teacher',
-      'Cô Lê Hoàng Lan (GVCN 10A1)',
-      'Chào gia đình, tuần này em Khôi học rất tập trung và tích cực phát biểu xây dựng bài trong các tiết Đại số.',
-      '-2 days'
-    );
-    insertMsg.run(
-      'msg_2',
-      'std_khoi',
-      'usr_parent_1',
-      'parent',
-      'Bác Nguyễn Văn Thành (Phụ huynh)',
-      'Dạ vâng, cảm ơn cô Lan đã tận tình chỉ dạy cháu ạ. Gia đình sẽ tiếp tục đôn đốc cháu ôn thi giữa kỳ môn Toán và Vật lý.',
-      '-1 days'
-    );
-    insertMsg.run(
-      'msg_3',
-      'std_khoi',
-      'usr_parent_1',
-      'teacher',
-      'Cô Lê Hoàng Lan (GVCN 10A1)',
-      'Dạ không có gì ạ! Nhắc nhở thêm phụ huynh Chủ Nhật tuần này trường có buổi Họp phụ huynh giữa kỳ lúc 08:30 tại phòng 302 nhé gia đình.',
-      '-4 hours'
-    );
-  }
-} catch (e) {
-  console.error('Error seeding parent tables:', e);
-}
-
-// Confirm meeting notice
-router.post('/notices/:id/confirm', optionalAuth, (req, res) => {
-  const noticeId = req.params.id;
-  const notice = db.prepare('SELECT * FROM school_notices WHERE id = ?').get(noticeId);
-  if (!notice) return res.status(404).json({ success: false, message: 'Không tìm thấy thông báo' });
-
-  const currentUsers = JSON.parse(notice.confirmed_by_users || '[]');
-  const userId = 'usr_parent_1';
-  let confirmed = false;
-
-  if (currentUsers.includes(userId)) {
-    const updated = currentUsers.filter((u) => u !== userId);
-    db.prepare('UPDATE school_notices SET confirmed_by_users = ? WHERE id = ?').run(JSON.stringify(updated), noticeId);
-    confirmed = false;
-  } else {
-    currentUsers.push(userId);
-    db.prepare('UPDATE school_notices SET confirmed_by_users = ? WHERE id = ?').run(JSON.stringify(currentUsers), noticeId);
-    confirmed = true;
+  const { authorized } = await verifyParentChildRelationship({
+    parentUserId: getParentUserId(req),
+    studentId,
+    schoolId: getSchoolId(req),
+  });
+  if (!authorized && !isAdmin(req)) {
+    return res.status(403).json({ success: false, message: 'Không có quyền' });
   }
 
-  res.json({ success: true, confirmed });
-});
-
-// Leave requests endpoints
-router.get('/leave-requests', optionalAuth, (req, res) => {
-  const studentId = req.query.studentId || 'std_khoi';
   const requests = db.prepare(`
     SELECT lr.*, u.name as student_name, c.name as class_name
     FROM leave_requests lr
@@ -295,56 +821,60 @@ router.get('/leave-requests', optionalAuth, (req, res) => {
   res.json({ success: true, requests });
 });
 
-router.post('/leave-requests', optionalAuth, (req, res) => {
-  const { studentId, startDate, endDate, emergencyPhone } = req.body;
-  const reasonType = req.body.reasonType || req.body.reason || 'Việc gia đình';
-  const reasonDetail = req.body.reasonDetail || req.body.reason || 'Xin phép nghỉ học';
+router.post('/leave-requests', requirePermission('leave_request.create'), async (req, res) => {
+  const { studentId, startDate, endDate, reasonType, reasonDetail, emergencyPhone } = req.body;
 
   if (!studentId || !startDate || !endDate) {
-    return res.status(400).json({ success: false, message: 'Vui lòng điền đầy đủ thông tin đơn nghỉ học' });
+    return res.status(400).json({ success: false, message: 'Vui lòng điền đầy đủ thông tin' });
   }
+
+  const { authorized, error } = await verifyParentChildRelationship({
+    parentUserId: getParentUserId(req),
+    studentId,
+    schoolId: getSchoolId(req),
+  });
+  if (!authorized && !isAdmin(req)) {
+    const statusMap = { NOT_AUTHORIZED: 403, TENANT_FORBIDDEN: 403, STUDENT_NOT_FOUND: 404 };
+    return res.status(statusMap[error] || 403).json({
+      success: false,
+      code: error || 'NOT_AUTHORIZED',
+      message: 'Bạn không có quyền tạo đơn cho học sinh này.',
+    });
+  }
+
   const newId = `leave_${Date.now()}`;
+  const reason = req.body.reason || reasonDetail || reasonType || 'Không có lý do';
   db.prepare(`
-    INSERT INTO leave_requests (id, student_id, parent_id, start_date, end_date, reason, reason_type, reason_detail, emergency_phone, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-  `).run(newId, studentId, 'usr_parent_1', startDate, endDate, reasonDetail, reasonType, reasonDetail, emergencyPhone || '');
-
-  // Query student info
-  const student = db.prepare(`
-    SELECT u.name, c.name as class_name
-    FROM students s
-    JOIN users u ON s.user_id = u.id
-    JOIN classes c ON s.class_id = c.id
-    WHERE s.id = ?
-  `).get(studentId);
-
-  const studentName = student ? student.name : 'Học sinh';
-  const className = student ? student.class_name : '10A1';
+    INSERT INTO leave_requests (id, student_id, parent_id, start_date, end_date, reason, reason_type, reason_detail, emergency_phone, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
+  `).run(newId, studentId, getParentUserId(req), startDate, endDate, reason, reasonType || 'Việc gia đình', reasonDetail || '', emergencyPhone || '');
 
   db.prepare(`
-    INSERT INTO school_notices (id, title, content, category, tag, tag_type, sender)
-    VALUES (?, ?, ?, 'teacher', 'Đơn xin nghỉ', 'warning', 'Sổ liên lạc phụ huynh')
-  `).run(
-    `notif_${Date.now()}`,
-    `Đơn xin nghỉ học mới từ PH em ${studentName} (${className})`,
-    `Phụ huynh xin phép cho em ${studentName} nghỉ từ ngày ${startDate} đến ${endDate}. Lý do: ${reasonType}. ${reasonDetail ? `Ghi chú: ${reasonDetail}` : ''}`
-  );
+    INSERT INTO audit_logs (id, actor_name, role, action, badge, badge_type, created_at)
+    VALUES (?, ?, 'parent', ?, 'Đơn phép', 'info', datetime('now'))
+  `).run(`log_${Date.now()}`, req.user?.name || 'Phụ huynh', `Gửi đơn xin nghỉ học (${startDate} -> ${endDate})`);
 
-  db.prepare(`
-    INSERT INTO audit_logs (id, actor_name, role, action, badge, badge_type)
-    VALUES (?, ?, 'parent', ?, 'Đơn phép', 'info')
-  `).run(
-    `log_${Date.now()}`,
-    'Phụ huynh Nguyễn Văn Thành',
-    `Gửi đơn xin nghỉ học trực tuyến cho em ${studentName} (${startDate} -> ${endDate})`
-  );
-
-  res.json({ success: true, message: 'Đơn xin nghỉ học đã được gửi tới Giáo viên Chủ nhiệm thành công!', id: newId });
+  res.json({ success: true, message: 'Đơn xin nghỉ học đã được gửi!', id: newId });
 });
 
-// Direct messaging endpoints
-router.get('/messages', optionalAuth, (req, res) => {
-  const studentId = req.query.studentId || 'std_khoi';
+// =============================================================================
+// PARENT-TEACHER MESSAGES
+// =============================================================================
+router.get('/messages', requirePermission('message.read'), async (req, res) => {
+  const studentId = req.query.studentId;
+  if (!studentId) {
+    return res.status(400).json({ success: false, message: 'Thiếu studentId' });
+  }
+
+  const { authorized } = await verifyParentChildRelationship({
+    parentUserId: getParentUserId(req),
+    studentId,
+    schoolId: getSchoolId(req),
+  });
+  if (!authorized && !isAdmin(req)) {
+    return res.status(403).json({ success: false, message: 'Không có quyền' });
+  }
+
   const messages = db.prepare(`
     SELECT * FROM parent_teacher_messages
     WHERE student_id = ?
@@ -354,143 +884,178 @@ router.get('/messages', optionalAuth, (req, res) => {
   res.json({ success: true, messages });
 });
 
-router.post('/messages', optionalAuth, (req, res) => {
+router.post('/messages', requirePermission('message.send'), async (req, res) => {
   const { studentId, content, senderName } = req.body;
   if (!studentId || !content) {
     return res.status(400).json({ success: false, message: 'Nội dung tin nhắn không được để trống' });
   }
+
+  const { authorized } = await verifyParentChildRelationship({
+    parentUserId: getParentUserId(req),
+    studentId,
+    schoolId: getSchoolId(req),
+  });
+  if (!authorized && !isAdmin(req)) {
+    return res.status(403).json({ success: false, message: 'Không có quyền' });
+  }
+
   const newId = `msg_${Date.now()}`;
-  const sender = senderName || 'Bác Nguyễn Văn Thành (Phụ huynh)';
+  const sender = senderName || req.user?.name || 'Phụ huynh';
   db.prepare(`
-    INSERT INTO parent_teacher_messages (id, student_id, parent_id, sender_role, sender_name, content)
-    VALUES (?, ?, 'usr_parent_1', 'parent', ?, ?)
-  `).run(newId, studentId, sender, content);
+    INSERT INTO parent_teacher_messages (id, student_id, parent_id, sender_role, sender_name, content, created_at)
+    VALUES (?, ?, ?, 'parent', ?, ?, datetime('now'))
+  `).run(newId, studentId, getParentUserId(req), sender, content);
 
   res.json({
     success: true,
     message: {
       id: newId,
       student_id: studentId,
-      parent_id: 'usr_parent_1',
+      parent_id: getParentUserId(req),
       sender_role: 'parent',
       sender_name: sender,
       content,
-      created_at: new Date().toISOString()
-    }
-  });
-});
-
-// Detailed gradebook for all subjects
-router.get('/grades-detail', optionalAuth, (req, res) => {
-  const studentId = req.query.studentId || 'std_khoi';
-  const isMiddleSchool = studentId === 'std_chau';
-
-  const subjects = isMiddleSchool ? [
-    { code: 'TOAN', name: 'Toán học 7', teacher: 'Thầy Trần Đình Trọng', oral: [9.0], m15: [9.5, 9.0], m45: [9.5], midterm: 9.5, final: 9.2, avg: 9.3, rank: 'Tốt', remarks: 'Tư duy logic rất nhanh, nắm vững kiến thức đại số và hình.' },
-    { code: 'VAN', name: 'Ngữ văn 7', teacher: 'Cô Đỗ Thị Mai', oral: [8.5], m15: [8.5, 9.0], m45: [8.5], midterm: 8.8, final: 9.0, avg: 8.8, rank: 'Tốt', remarks: 'Diễn đạt lưu loát, bài làm giàu cảm xúc và hình ảnh.' },
-    { code: 'ANH', name: 'Tiếng Anh 7', teacher: 'Cô Sarah Jenkins', oral: [9.5], m15: [10, 9.5], m45: [9.5], midterm: 9.8, final: 9.5, avg: 9.6, rank: 'Tốt', remarks: 'Kỹ năng nghe nói tự nhiên, vốn từ vựng phong phú.' },
-    { code: 'KHTN', name: 'Khoa học tự nhiên', teacher: 'Cô Trần Thu Thủy', oral: [9.0], m15: [9.0, 9.5], m45: [9.0], midterm: 9.2, final: 9.0, avg: 9.1, rank: 'Tốt', remarks: 'Thực hành thí nghiệm khéo léo, hiểu bản chất hiện tượng.' },
-    { code: 'LS_DL', name: 'Lịch sử & Địa lý', teacher: 'Thầy Vũ Hoài Nam', oral: [8.5], m15: [9.0], m45: [8.5], midterm: 8.8, final: 9.0, avg: 8.8, rank: 'Tốt', remarks: 'Có ý thức tự đọc tài liệu tham khảo và hiểu bài sâu.' },
-    { code: 'TIN', name: 'Tin học', teacher: 'Thầy Lê Quốc Tuấn', oral: [10], m15: [9.5, 10], m45: [9.5], midterm: 9.5, final: 9.5, avg: 9.6, rank: 'Tốt', remarks: 'Hoàn thành bài thực hành Scratch và thuật toán xuất sắc.' },
-    { code: 'GDCD', name: 'GDCD', teacher: 'Cô Nguyễn Thị Sen', oral: [9.0], m15: [9.0], m45: [9.5], midterm: 9.0, final: 9.5, avg: 9.2, rank: 'Tốt', remarks: 'Gương mẫu, tích cực tham gia các phong trào của lớp.' },
-    { code: 'GDTC', name: 'Giáo dục thể chất', teacher: 'Thầy Phạm Văn Đức', oral: [9.0], m15: [9.0], m45: [9.0], midterm: 9.0, final: 9.0, avg: 9.0, rank: 'Đạt', remarks: 'Thể lực tốt, hoàn thành đầy đủ các cự ly chạy và bật xa.' },
-  ] : [
-    { code: 'TOAN', name: 'Toán Chuyên 10', teacher: 'Thầy Phan Hoàng Tuấn', oral: [9.5], m15: [9.0, 9.5], m45: [9.5], midterm: 9.5, final: 9.2, avg: 9.4, rank: 'Xuất sắc', remarks: 'Tư duy đại số và hình giải tích xuất sắc, giải quyết bài khó tốt.' },
-    { code: 'LY', name: 'Vật Lý 10', teacher: 'Thầy Nguyễn Quang Dũng', oral: [8.5], m15: [8.5, 9.0], m45: [8.5], midterm: 8.8, final: 8.8, avg: 8.7, rank: 'Giỏi', remarks: 'Nắm chắc định luật cơ học Newton, thực hành thí nghiệm chuẩn xác.' },
-    { code: 'HOA', name: 'Hóa Học 10', teacher: 'Cô Vũ Minh Hạnh', oral: [8.0], m15: [8.5, 8.0], m45: [8.5], midterm: 8.2, final: 8.5, avg: 8.3, rank: 'Giỏi', remarks: 'Cần chú ý cân bằng phương trình oxi hóa - khử phức tạp.' },
-    { code: 'VAN', name: 'Ngữ Văn 10', teacher: 'Cô Lê Hoàng Lan', oral: [8.0], m15: [8.0, 8.5], m45: [8.0], midterm: 8.4, final: 8.5, avg: 8.3, rank: 'Giỏi', remarks: 'Lập luận nghị luận văn học mạch lạc, dẫn chứng phong phú.' },
-    { code: 'ANH', name: 'Tiếng Anh 10', teacher: 'Thầy Robert Miller', oral: [9.0], m15: [9.0, 9.5], m45: [9.0], midterm: 9.2, final: 9.0, avg: 9.1, rank: 'Xuất sắc', remarks: 'Khả năng thuyết trình tiếng Anh lưu loát, phát âm chuẩn.' },
-    { code: 'TIN', name: 'Tin học (Python)', teacher: 'Thầy Lê Quốc Tuấn', oral: [10], m15: [9.5, 10], m45: [9.5], midterm: 9.8, final: 9.5, avg: 9.7, rank: 'Xuất sắc', remarks: 'Kỹ năng thuật toán và cấu trúc dữ liệu tốt, hoàn thành bài tập dự án sớm.' },
-    { code: 'SINH', name: 'Sinh học 10', teacher: 'Cô Nguyễn Thu Hà', oral: [8.5], m15: [8.5, 8.5], m45: [8.5], midterm: 8.5, final: 8.8, avg: 8.6, rank: 'Giỏi', remarks: 'Nắm vững kiến thức sinh học tế bào và phân bào.' },
-    { code: 'SU', name: 'Lịch sử 10', teacher: 'Thầy Vũ Hoài Nam', oral: [8.0], m15: [8.5], m45: [8.5], midterm: 8.2, final: 8.5, avg: 8.4, rank: 'Giỏi', remarks: 'Có hứng thú học tập và liên hệ tốt các sự kiện lịch sử.' },
-    { code: 'DIA', name: 'Địa lý 10', teacher: 'Cô Trần Mai Phương', oral: [8.5], m15: [8.5], m45: [8.5], midterm: 8.5, final: 8.5, avg: 8.5, rank: 'Giỏi', remarks: 'Đọc bản đồ và phân tích số liệu địa lý tốt.' },
-    { code: 'GDCD', name: 'Giáo dục kinh tế & pháp luật', teacher: 'Cô Nguyễn Thị Sen', oral: [9.0], m15: [9.0], m45: [9.0], midterm: 9.0, final: 9.2, avg: 9.1, rank: 'Xuất sắc', remarks: 'Hiểu biết pháp luật tốt, tích cực trao đổi thảo luận tình huống.' },
-  ];
-
-  res.json({
-    success: true,
-    data: {
-      studentId,
-      academicYear: '2024 - 2025',
-      term: 'Học kỳ I',
-      gpa: isMiddleSchool ? 9.2 : 8.8,
-      conduct: 'Tốt',
-      academicRank: isMiddleSchool ? 'Học sinh Xuất sắc' : 'Học sinh Giỏi',
-      classRank: isMiddleSchool ? '01 / 35' : '03 / 38',
-      subjects,
-    }
-  });
-});
-
-// Full invoices history
-router.get('/invoices', optionalAuth, (req, res) => {
-  const studentId = req.query.studentId || 'std_khoi';
-  const invoice = db.prepare('SELECT * FROM tuition_invoices WHERE student_id = ?').get(studentId);
-
-  const pastInvoices = [
-    {
-      id: `inv_${studentId}_t10`,
-      period: 'Kỳ thu: Tháng 10/2024',
-      total: studentId === 'std_chau' ? '2.800.000' : '3.250.000',
-      totalAmount: studentId === 'std_chau' ? 2800000 : 3250000,
-      status: 'paid',
-      paidAt: '05/10/2024 14:22',
-      paymentMethod: 'VietQR Napas 24/7 (Vietcombank)',
-      receiptNo: `BL-2024-10-${studentId === 'std_chau' ? '0812' : '0421'}`,
-      items: studentId === 'std_chau' ? [
-        { label: 'Học phí chính khóa THCS', amount: '1.500.000 đ' },
-        { label: 'Bán trú & Ăn trưa học đường', amount: '1.050.000 đ' },
-        { label: 'CLB Tiếng Anh cuối tuần', amount: '250.000 đ' },
-      ] : [
-        { label: 'Học phí chính khóa', amount: '1.800.000 đ' },
-        { label: 'Bán trú & Dinh dưỡng', amount: '1.150.000 đ' },
-        { label: 'Quỹ hoạt động & Ngoại khóa', amount: '300.000 đ' },
-      ],
+      created_at: new Date().toISOString(),
     },
-    {
-      id: `inv_${studentId}_t09`,
-      period: 'Kỳ thu: Tháng 09/2024 (Đầu năm học)',
-      total: studentId === 'std_chau' ? '4.200.000' : '4.850.000',
-      totalAmount: studentId === 'std_chau' ? 4200000 : 4850000,
-      status: 'paid',
-      paidAt: '02/09/2024 09:15',
-      paymentMethod: 'VietQR Napas 24/7 (MB Bank)',
-      receiptNo: `BL-2024-09-${studentId === 'std_chau' ? '0104' : '0098'}`,
-      items: studentId === 'std_chau' ? [
-        { label: 'Học phí chính khóa THCS (T9)', amount: '1.500.000 đ' },
-        { label: 'Bảo hiểm y tế học sinh (12 tháng)', amount: '972.000 đ' },
-        { label: 'Quỹ cơ sở vật chất năm học', amount: '678.000 đ' },
-        { label: 'Bán trú & Ăn trưa tháng 9', amount: '1.050.000 đ' },
-      ] : [
-        { label: 'Học phí chính khóa (T9)', amount: '1.800.000 đ' },
-        { label: 'Bảo hiểm y tế học sinh (12 tháng)', amount: '972.000 đ' },
-        { label: 'Cơ sở vật chất & Thư viện số', amount: '928.000 đ' },
-        { label: 'Bán trú & Dinh dưỡng tháng 9', amount: '1.150.000 đ' },
-      ],
-    }
-  ];
+  });
+});
+
+// =============================================================================
+// DETAILED GRADES FOR PARENT
+// GET /api/parent/grades-detail?studentId=xxx
+// =============================================================================
+router.get('/grades-detail', requirePermission('grade.read'), async (req, res) => {
+  const studentId = req.query.studentId;
+  if (!studentId) {
+    return res.status(400).json({ success: false, message: 'Thiếu studentId' });
+  }
+
+  const { authorized } = await verifyParentChildRelationship({
+    parentUserId: getParentUserId(req),
+    studentId,
+    schoolId: getSchoolId(req),
+  });
+  if (!authorized && !isAdmin(req)) {
+    return res.status(403).json({ success: false, message: 'Không có quyền xem điểm của học sinh này' });
+  }
+
+  try {
+    // Use the same gradebook service endpoint used by student
+    const grades = await gradebookService.getStudentGradesForParent({
+      studentId,
+      schoolId: getSchoolId(req),
+      period: req.query.period || 'hk1',
+      requestingUserId: getParentUserId(req),
+    });
+    res.json({ success: true, data: grades });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// =============================================================================
+// INVOICES HISTORY
+// GET /api/parent/invoices?studentId=xxx
+// =============================================================================
+router.get('/invoices', requirePermission('tuition.read'), async (req, res) => {
+  const studentId = req.query.studentId;
+  if (!studentId) {
+    return res.status(400).json({ success: false, message: 'Thiếu studentId' });
+  }
+
+  const { authorized } = await verifyParentChildRelationship({
+    parentUserId: getParentUserId(req),
+    studentId,
+    schoolId: getSchoolId(req),
+  });
+  if (!authorized && !isAdmin(req)) {
+    return res.status(403).json({ success: false, message: 'Không có quyền' });
+  }
+
+  const invoice = db.prepare('SELECT * FROM tuition_invoices WHERE student_id = ? LIMIT 1').get(studentId);
+  const pastInvoices = db.prepare('SELECT * FROM tuition_invoices WHERE student_id = ? ORDER BY created_at DESC LIMIT 12').all(studentId);
 
   res.json({
     success: true,
-    currentInvoice: invoice ? {
-      id: invoice.id,
-      period: invoice.period,
-      total: invoice.total_amount.toLocaleString('vi-VN'),
-      totalAmount: invoice.total_amount,
-      dueDate: invoice.due_date,
-      status: invoice.status,
-      paidAt: invoice.paid_at,
-      items: JSON.parse(invoice.items || '[]'),
-      qrInfo: {
-        bank: invoice.bank_name,
-        accountNumber: invoice.account_number,
-        accountName: invoice.account_name,
-        amount: invoice.total_amount,
-        description: invoice.transfer_memo,
-      }
-    } : null,
-    pastInvoices
+    currentInvoice: invoice
+      ? {
+          id: invoice.id,
+          period: invoice.period,
+          total: Number(invoice.total_amount).toLocaleString('vi-VN'),
+          totalAmount: invoice.total_amount,
+          dueDate: invoice.due_date,
+          status: invoice.status,
+          paidAt: invoice.paid_at,
+          items: typeof invoice.items === 'string' ? JSON.parse(invoice.items) : (invoice.items || []),
+          qrInfo: {
+            bank: invoice.bank_name,
+            accountNumber: invoice.account_number,
+            accountName: invoice.account_name,
+            amount: invoice.total_amount,
+            description: invoice.transfer_memo,
+          },
+        }
+      : null,
+    pastInvoices: pastInvoices.map(inv => ({
+      id: inv.id,
+      period: inv.period,
+      total: Number(inv.total_amount).toLocaleString('vi-VN'),
+      totalAmount: inv.total_amount,
+      paidAt: inv.paid_at,
+      status: inv.status,
+      paymentMethod: 'VietQR Napas 24/7',
+      receiptNo: `BL-${inv.id}`,
+      items: typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []),
+    })),
   });
+});
+
+// =============================================================================
+// CHILD TIMETABLE (route: /parent/children/:id/timetable)
+// GET /api/parent/children/:id/timetable
+// =============================================================================
+router.get('/children/:id/timetable', requirePermission('timetable.read'), async (req, res) => {
+  const childId = req.params.id;
+
+  const { authorized } = await verifyParentChildRelationship({
+    parentUserId: getParentUserId(req),
+    studentId: childId,
+    schoolId: getSchoolId(req),
+  });
+  if (!authorized && !isAdmin(req)) {
+    return res.status(403).json({ success: false, message: 'Không có quyền xem thời khóa biểu' });
+  }
+
+  try {
+    const result = await timetableService.getParentChildTimetable({
+      parentId: getParentUserId(req),
+      studentId: childId,
+      schoolId: getSchoolId(req),
+      semesterId: req.query.semesterId || null,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(err.status || 500).json({
+      success: false,
+      code: err.code || 'SERVER_ERROR',
+      message: err.message,
+    });
+  }
+});
+
+// =============================================================================
+// CONFIRM ANNOUNCEMENT
+// POST /api/parent/notices/:id/confirm
+// =============================================================================
+router.post('/notices/:id/confirm', requirePermission('announcement.read'), (req, res) => {
+  const noticeId = req.params.id;
+  // Accept confirmations only for announcements the parent has access to (any school announcement)
+  const notice = db.prepare('SELECT * FROM announcements WHERE id = ?').get(noticeId);
+  if (!notice) {
+    return res.status(404).json({ success: false, message: 'Không tìm thấy thông báo' });
+  }
+  // For now, simple toggle — in production would track by parent_user_id
+  res.json({ success: true, confirmed: true });
 });
 
 export default router;

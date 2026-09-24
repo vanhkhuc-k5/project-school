@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 
 export function TeacherAnalytics({ onNavigateCreateAssignment }) {
+  const navigate = useNavigate();
   const { triggerSync } = useSync();
   const [data, setData] = useState(TEACHER_ANALYTICS_DATA);
   const [selectedClass, setSelectedClass] = useState(data.currentClass);
@@ -515,7 +517,7 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
             <Button
               variant="primary"
               size="sm"
-              onClick={onNavigateCreateAssignment}
+              onClick={() => navigate('/teacher/assignments/create')}
             >
               Tạo chuyên đề bài tập bổ trợ
             </Button>
@@ -552,7 +554,7 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
             <Button
               variant="secondary"
               size="sm"
-              onClick={onNavigateCreateAssignment}
+              onClick={() => navigate('/teacher/assignments/create')}
             >
               Tạo nhóm bài phụ đạo
             </Button>

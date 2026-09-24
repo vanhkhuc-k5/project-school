@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
-import { teacherApi } from '../../services/api';
+import { teacherApi, attendanceApi } from '../../services/api';
 import { useSync } from '../../context/SyncContext';
 import {
   Users,
@@ -21,15 +21,19 @@ import {
   Check,
   X,
   AlertCircle,
+  Loader2,
+  ChevronDown,
 } from 'lucide-react';
 
 export function TeacherClassesPage() {
   const { lastSync, triggerSync } = useSync();
   const [classData, setClassData] = useState(null);
-  const [selectedClassId, setSelectedClassId] = useState('cls_10A1');
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
   const [activeTab, setActiveTab] = useState('gradebook'); // 'gradebook' | 'attendance'
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Grade edit modal states
   const [selectedStudentForGrade, setSelectedStudentForGrade] = useState(null);
   const [gradeInput, setGradeInput] = useState({
@@ -41,30 +45,78 @@ export function TeacherClassesPage() {
   const [isSubmittingGrade, setIsSubmittingGrade] = useState(false);
   const [gradeSuccessMsg, setGradeSuccessMsg] = useState(false);
 
-  // Attendance states
+  // Attendance states — using canonical uppercase status codes
   const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [attendancePeriod, setAttendancePeriod] = useState(null); // null = "buổi/daily"
+  // Map: studentId → { status: 'PRESENT'|'ABSENT'|'LATE'|'EXCUSED', note: string }
   const [attendanceRecords, setAttendanceRecords] = useState({});
+  const [attendanceRoster, setAttendanceRoster] = useState([]); // full enrolled roster
+  const [existingSession, setExistingSession] = useState(null);
+  const [isLoadingRoster, setIsLoadingRoster] = useState(false);
+  const [rosterError, setRosterError] = useState(null);
   const [isSavingAttendance, setIsSavingAttendance] = useState(false);
-  const [attendanceSuccessMsg, setAttendanceSuccessMsg] = useState(false);
+  const [attendanceSaveResult, setAttendanceSaveResult] = useState(null); // { success, message }
 
   const fetchClass = async (cid) => {
-    const res = await teacherApi.getClasses(cid);
-    if (res) {
-      setClassData(res);
-      // Initialize attendance records default to present if not set
-      setAttendanceRecords((prev) => {
-        const next = { ...prev };
-        res.students?.forEach((st) => {
-          if (!next[st.id]) next[st.id] = 'present';
-        });
-        return next;
-      });
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const res = await teacherApi.getClasses(cid || undefined);
+      if (res) {
+        setClassData(res);
+        if (res.currentClassId && res.currentClassId !== selectedClassId) {
+          setSelectedClassId(res.currentClassId);
+        } else if (!cid && res.classes?.length > 0 && !selectedClassId) {
+          setSelectedClassId(res.classes[0].id);
+        }
+      }
+    } catch (err) {
+      setErrorMessage(err?.message || 'Không thể tải dữ liệu lớp học');
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  // Load roster + existing session from canonical attendance endpoint
+  const loadAttendanceRoster = useCallback(async (classId, date, period) => {
+    if (!classId) return;
+    setIsLoadingRoster(true);
+    setRosterError(null);
+    setAttendanceSaveResult(null);
+    try {
+      const roster = await attendanceApi.getRoster(classId, date, period ?? null);
+      setAttendanceRoster(roster);
+
+      // Initialize attendance records: use existingStatus if present, else default to PRESENT
+      const initialRecords = {};
+      roster.forEach((st) => {
+        initialRecords[st.student_id] = {
+          status: st.existingStatus || 'PRESENT',
+          note: st.existingNote || '',
+        };
+      });
+      setAttendanceRecords(initialRecords);
+
+      // Check if there's an existing session
+      const { session } = await attendanceApi.getSession(classId, date, period ?? null);
+      setExistingSession(session);
+    } catch (err) {
+      setRosterError(err?.message || 'Không thể tải danh sách điểm danh');
+    } finally {
+      setIsLoadingRoster(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchClass(selectedClassId);
   }, [selectedClassId, lastSync]);
+
+  // Reload roster when class, date, or period changes (only when on attendance tab)
+  useEffect(() => {
+    if (activeTab === 'attendance' && selectedClassId) {
+      loadAttendanceRoster(selectedClassId, attendanceDate, attendancePeriod);
+    }
+  }, [selectedClassId, attendanceDate, attendancePeriod, activeTab, loadAttendanceRoster]);
 
   const handleOpenGradeModal = (student) => {
     setSelectedStudentForGrade(student);
@@ -102,34 +154,56 @@ export function TeacherClassesPage() {
 
   const handleMarkAllPresent = () => {
     const next = {};
-    classData?.students?.forEach((st) => {
-      next[st.id] = 'present';
+    attendanceRoster.forEach((st) => {
+      next[st.student_id] = { status: 'PRESENT', note: '' };
     });
     setAttendanceRecords(next);
   };
 
-  const setStudentAttendance = (studentId, status) => {
+  const setStudentStatus = (studentId, status) => {
     setAttendanceRecords((prev) => ({
       ...prev,
-      [studentId]: status,
+      [studentId]: { ...(prev[studentId] || { note: '' }), status },
+    }));
+  };
+
+  const setStudentNote = (studentId, note) => {
+    setAttendanceRecords((prev) => ({
+      ...prev,
+      [studentId]: { ...(prev[studentId] || { status: 'PRESENT' }), note },
     }));
   };
 
   const handleSaveAttendance = async () => {
-    if (!classData?.students) return;
+    if (!selectedClassId || attendanceRoster.length === 0) return;
+
+    const records = attendanceRoster.map((st) => ({
+      studentId: st.student_id,
+      status: (attendanceRecords[st.student_id]?.status || 'PRESENT').toUpperCase(),
+      note: attendanceRecords[st.student_id]?.note || '',
+    }));
+
     setIsSavingAttendance(true);
+    setAttendanceSaveResult(null);
     try {
-      const records = classData.students.map((st) => ({
-        studentId: st.id,
-        status: attendanceRecords[st.id] || 'present',
-        note: '',
-      }));
-      const res = await teacherApi.recordAttendance(selectedClassId, records, attendanceDate);
+      const res = await attendanceApi.saveSession({
+        classId: selectedClassId,
+        date: attendanceDate,
+        period: attendancePeriod,
+        sessionType: attendancePeriod !== null ? 'period' : 'daily',
+        records,
+      });
+
       if (res?.success) {
         await triggerSync();
-        setAttendanceSuccessMsg(true);
-        setTimeout(() => setAttendanceSuccessMsg(false), 2500);
+        setAttendanceSaveResult({ success: true, message: `Đã lưu sổ điểm danh ngày ${attendanceDate} — ${records.length} học sinh.` });
+        // Reload roster to sync saved state
+        await loadAttendanceRoster(selectedClassId, attendanceDate, attendancePeriod);
+      } else {
+        setAttendanceSaveResult({ success: false, message: res?.message || 'Không thể lưu điểm danh' });
       }
+    } catch (err) {
+      setAttendanceSaveResult({ success: false, message: err?.message || 'Lỗi kết nối máy chủ' });
     } finally {
       setIsSavingAttendance(false);
     }
@@ -165,10 +239,10 @@ export function TeacherClassesPage() {
     s.code.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const presentCount = Object.values(attendanceRecords).filter((s) => s === 'present').length;
-  const excusedCount = Object.values(attendanceRecords).filter((s) => s === 'excused').length;
-  const unexcusedCount = Object.values(attendanceRecords).filter((s) => s === 'unexcused').length;
-  const lateCount = Object.values(attendanceRecords).filter((s) => s === 'late').length;
+  const presentCount = Object.values(attendanceRecords).filter((r) => r?.status === 'PRESENT').length;
+  const excusedCount = Object.values(attendanceRecords).filter((r) => r?.status === 'EXCUSED').length;
+  const absentCount = Object.values(attendanceRecords).filter((r) => r?.status === 'ABSENT').length;
+  const lateCount = Object.values(attendanceRecords).filter((r) => r?.status === 'LATE').length;
 
   return (
     <div className="space-y-6">
@@ -187,49 +261,80 @@ export function TeacherClassesPage() {
         </div>
 
         {/* Class switcher buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {classData?.classes?.map((c) => (
             <button
               key={c.id}
               onClick={() => setSelectedClassId(c.id)}
-              className={`px-3.5 py-1.5 rounded text-xs transition-all ${
+              className={`px-3.5 py-1.5 rounded text-xs transition-all flex items-center gap-1.5 ${
                 selectedClassId === c.id
                   ? 'bg-primary text-white font-medium shadow-whisper'
                   : 'bg-white border border-hairline text-text-secondary hover:text-text-primary'
               }`}
             >
-              {c.name}
+              <span>{c.name}</span>
+              {c.isHomeroom && (
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                  selectedClassId === c.id ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-700'
+                }`}>
+                  Chủ nhiệm
+                </span>
+              )}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Main Tab Controller & Search */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-1.5 bg-surface-neutral rounded border border-hairline">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab('gradebook')}
-            className={`px-4 py-2 rounded text-xs transition-all ${
-              activeTab === 'gradebook'
-                ? 'bg-white text-primary font-medium shadow-whisper border border-hairline'
-                : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            Sổ điểm học sinh ({classData?.students?.length || 0})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('attendance')}
-            className={`px-4 py-2 rounded text-xs transition-all ${
-              activeTab === 'attendance'
-                ? 'bg-white text-primary font-medium shadow-whisper border border-hairline'
-                : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            Điểm danh chuyên cần
-          </button>
+      {/* Error state */}
+      {errorMessage && (
+        <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{errorMessage}</span>
         </div>
+      )}
+
+      {/* Empty State when teacher has no assigned classes */}
+      {classData && classData.classes?.length === 0 && !isLoading && (
+        <Card className="p-12 text-center bg-white border border-hairline rounded-xl">
+          <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
+            <Users className="w-6 h-6" />
+          </div>
+          <h3 className="text-base font-medium text-text-primary">Chưa có lớp học được phân công</h3>
+          <p className="text-xs text-text-secondary max-w-md mx-auto mt-1">
+            Bạn chưa được phân công giảng dạy hoặc làm chủ nhiệm lớp học nào trong năm học hiện tại. Vui lòng liên hệ Ban Giám Hiệu hoặc Quản trị viên để được phân công chuyên môn.
+          </p>
+        </Card>
+      )}
+
+      {/* Main Content when classes exist */}
+      {classData && classData.classes?.length > 0 && (
+        <>
+          {/* Main Tab Controller & Search */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-1.5 bg-surface-neutral rounded border border-hairline">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab('gradebook')}
+                className={`px-4 py-2 rounded text-xs transition-all ${
+                  activeTab === 'gradebook'
+                    ? 'bg-white text-primary font-medium shadow-whisper border border-hairline'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                Sổ điểm học sinh ({classData?.students?.length || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('attendance')}
+                className={`px-4 py-2 rounded text-xs transition-all ${
+                  activeTab === 'attendance'
+                    ? 'bg-white text-primary font-medium shadow-whisper border border-hairline'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                Điểm danh chuyên cần
+              </button>
+            </div>
 
         <div className="flex items-center gap-2 px-1">
           <div className="relative">
@@ -272,20 +377,20 @@ export function TeacherClassesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="hairline-b text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
-                  <th className="py-3 px-4">Học sinh</th>
-                  <th className="py-3 px-4">Mã định danh</th>
-                  <th className="py-3 px-4 text-center">Thứ hạng</th>
-                  <th className="py-3 px-4 text-center">Điểm GPA</th>
-                  <th className="py-3 px-4 text-center">Chuyên cần</th>
-                  <th className="py-3 px-4 text-center">Xếp loại</th>
-                  <th className="py-3 px-4 text-right">Thao tác</th>
+                <tr className="border-b border-hairline text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
+                  <th scope="col" className="py-3 px-4">Học sinh</th>
+                  <th scope="col" className="py-3 px-4">Mã định danh</th>
+                  <th scope="col" className="py-3 px-4 text-center">Thứ hạng</th>
+                  <th scope="col" className="py-3 px-4 text-center">Điểm GPA</th>
+                  <th scope="col" className="py-3 px-4 text-center">Chuyên cần</th>
+                  <th scope="col" className="py-3 px-4 text-center">Xếp loại</th>
+                  <th scope="col" className="py-3 px-4 text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-hairline text-xs">
                 {filteredStudents.map((st) => (
                   <tr key={st.id} className="hover:bg-surface-neutral/40 transition-colors">
-                    <td className="py-3.5 px-4">
+                    <th scope="row" className="py-3.5 px-4 text-left font-medium text-text-primary">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-sky text-primary font-bold flex items-center justify-center text-xs">
                           {st.name.substring(0, 2).toUpperCase()}
@@ -295,7 +400,7 @@ export function TeacherClassesPage() {
                           <div className="text-[11px] text-text-secondary">{st.phone || '0988-xxx-xxx'}</div>
                         </div>
                       </div>
-                    </td>
+                    </th>
                     <td className="py-3.5 px-4 font-mono text-text-secondary">
                       {st.code}
                     </td>
@@ -334,22 +439,26 @@ export function TeacherClassesPage() {
       {/* TAB 2: ĐIỂM DANH CHUYÊN CẦN */}
       {activeTab === 'attendance' && (
         <Card padding="p-6" className="space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 hairline-b pb-4">
+          {/* Header row */}
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 hairline-b pb-4">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-base font-semibold text-text-primary">
-                  Điểm danh lớp {selectedClassId === 'cls_10A1' ? '10A1' : '10A2'}
+                  Điểm danh lớp {classData?.classes?.find((c) => c.id === selectedClassId)?.name || selectedClassId}
                 </h2>
-                <Badge variant="info">Buổi sáng</Badge>
+                {existingSession && (
+                  <Badge variant="success">Đã ghi nhận</Badge>
+                )}
               </div>
               <p className="text-xs text-text-secondary mt-0.5">
                 Học sinh vắng không phép sẽ được tự động kích hoạt thông báo gửi đến phụ huynh.
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 text-xs">
-                <Calendar className="w-4 h-4 text-text-secondary" />
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {/* Date picker */}
+              <div className="flex items-center gap-1.5 text-xs">
+                <Calendar className="w-4 h-4 text-text-secondary shrink-0" />
                 <input
                   type="date"
                   value={attendanceDate}
@@ -358,27 +467,46 @@ export function TeacherClassesPage() {
                 />
               </div>
 
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={Check}
-                onClick={handleMarkAllPresent}
+              {/* Period selector */}
+              <select
+                value={attendancePeriod === null ? '' : attendancePeriod}
+                onChange={(e) => setAttendancePeriod(e.target.value === '' ? null : parseInt(e.target.value, 10))}
+                className="h-9 px-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean"
               >
+                <option value="">Buổi học (daily)</option>
+                {[1,2,3,4,5,6,7,8,9,10].map((p) => (
+                  <option key={p} value={p}>Tiết {p}</option>
+                ))}
+              </select>
+
+              <Button variant="secondary" size="sm" icon={Check} onClick={handleMarkAllPresent} disabled={isLoadingRoster}>
                 Tất cả có mặt
               </Button>
 
               <Button
                 variant="primary"
                 size="sm"
-                disabled={isSavingAttendance}
+                disabled={isSavingAttendance || isLoadingRoster || attendanceRoster.length === 0}
                 onClick={handleSaveAttendance}
               >
-                {isSavingAttendance ? 'Đang lưu...' : 'Lưu điểm danh'}
+                {isSavingAttendance ? 'Đang lưu...' : existingSession ? 'Cập nhật điểm danh' : 'Lưu điểm danh'}
               </Button>
             </div>
           </div>
 
-          {/* Attendance KPI Summary Bar */}
+          {/* Existing session banner */}
+          {existingSession && (
+            <div className="p-3 bg-sky/60 border border-ocean/20 rounded text-xs text-primary flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-ocean" />
+              <span>
+                Buổi điểm danh ngày <strong>{existingSession.date}</strong> đã được ghi nhận trước đó.
+                {existingSession.subject_name && ` Môn: ${existingSession.subject_name}.`}
+                {' '}Các thay đổi bên dưới sẽ <strong>cập nhật</strong> bản ghi hiện có.
+              </span>
+            </div>
+          )}
+
+          {/* KPI Summary Bar */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="p-3 bg-emerald-50 border border-emerald-200 rounded text-center">
               <div className="text-xs font-medium text-emerald-800">Có mặt</div>
@@ -390,7 +518,7 @@ export function TeacherClassesPage() {
             </div>
             <div className="p-3 bg-red-50 border border-red-200 rounded text-center">
               <div className="text-xs font-medium text-red-800">Vắng không phép</div>
-              <div className="text-xl font-bold text-red-600 mt-1">{unexcusedCount}</div>
+              <div className="text-xl font-bold text-red-600 mt-1">{absentCount}</div>
             </div>
             <div className="p-3 bg-amber-50 border border-amber-200 rounded text-center">
               <div className="text-xs font-medium text-amber-800">Đi muộn</div>
@@ -398,89 +526,117 @@ export function TeacherClassesPage() {
             </div>
           </div>
 
-          {attendanceSuccessMsg && (
-            <div className="p-3 bg-emerald-50 border border-emerald-300 rounded text-xs text-emerald-800 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
-              <span>Đã lưu sổ điểm danh ngày {attendanceDate} thành công! Hệ thống đã ghi nhận vào cơ sở dữ liệu.</span>
+          {/* Save feedback */}
+          {attendanceSaveResult && (
+            <div className={`p-3 rounded text-xs flex items-center gap-2 ${
+              attendanceSaveResult.success
+                ? 'bg-emerald-50 border border-emerald-300 text-emerald-800'
+                : 'bg-red-50 border border-red-300 text-red-700'
+            }`}>
+              {attendanceSaveResult.success
+                ? <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
+                : <AlertCircle className="w-4 h-4 text-danger shrink-0" />
+              }
+              <span>{attendanceSaveResult.message}</span>
+            </div>
+          )}
+
+          {/* Roster error */}
+          {rosterError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{rosterError}</span>
+            </div>
+          )}
+
+          {/* Loading roster */}
+          {isLoadingRoster && (
+            <div className="py-10 flex flex-col items-center gap-3 text-text-secondary">
+              <Loader2 className="w-6 h-6 animate-spin text-ocean" />
+              <span className="text-xs">Đang tải danh sách học sinh...</span>
+            </div>
+          )}
+
+          {/* Empty roster */}
+          {!isLoadingRoster && !rosterError && attendanceRoster.length === 0 && (
+            <div className="py-10 text-center">
+              <Users className="w-8 h-8 text-text-secondary/40 mx-auto mb-2" />
+              <p className="text-sm text-text-secondary">Không có học sinh nào ghi danh trong lớp này.</p>
             </div>
           )}
 
           {/* Student Attendance List */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="hairline-b text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
-                  <th className="py-3 px-4">Học sinh</th>
-                  <th className="py-3 px-4">Mã số</th>
-                  <th className="py-3 px-4 text-center">Trạng thái điểm danh</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-hairline text-xs">
-                {filteredStudents.map((st) => {
-                  const status = attendanceRecords[st.id] || 'present';
-                  return (
-                    <tr key={st.id} className="hover:bg-surface-neutral/40 transition-colors">
-                      <td className="py-3.5 px-4 font-medium text-text-primary">
-                        {st.name}
-                      </td>
-                      <td className="py-3.5 px-4 font-mono text-text-secondary">
-                        {st.code}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setStudentAttendance(st.id, 'present')}
-                            className={`px-3 py-1 rounded text-xs transition-all ${
-                              status === 'present'
-                                ? 'bg-emerald-600 text-white font-medium shadow-sm'
-                                : 'bg-surface-neutral text-text-secondary hover:text-text-primary'
-                            }`}
-                          >
-                            Có mặt
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setStudentAttendance(st.id, 'excused')}
-                            className={`px-3 py-1 rounded text-xs transition-all ${
-                              status === 'excused'
-                                ? 'bg-ocean text-white font-medium shadow-sm'
-                                : 'bg-surface-neutral text-text-secondary hover:text-text-primary'
-                            }`}
-                          >
-                            Có phép
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setStudentAttendance(st.id, 'unexcused')}
-                            className={`px-3 py-1 rounded text-xs transition-all ${
-                              status === 'unexcused'
-                                ? 'bg-danger text-white font-medium shadow-sm'
-                                : 'bg-surface-neutral text-text-secondary hover:text-text-primary'
-                            }`}
-                          >
-                            Không phép
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setStudentAttendance(st.id, 'late')}
-                            className={`px-3 py-1 rounded text-xs transition-all ${
-                              status === 'late'
-                                ? 'bg-amber-500 text-white font-medium shadow-sm'
-                                : 'bg-surface-neutral text-text-secondary hover:text-text-primary'
-                            }`}
-                          >
-                            Đi muộn
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          {!isLoadingRoster && attendanceRoster.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-hairline text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
+                    <th scope="col" className="py-3 px-4">Học sinh</th>
+                    <th scope="col" className="py-3 px-4">Mã số</th>
+                    <th scope="col" className="py-3 px-4 text-center">Trạng thái điểm danh</th>
+                    <th scope="col" className="py-3 px-4">Ghi chú</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-hairline text-xs">
+                  {attendanceRoster.map((st) => {
+                    const rec = attendanceRecords[st.student_id] || { status: 'PRESENT', note: '' };
+                    const status = rec.status;
+                    return (
+                      <tr key={st.student_id} className="hover:bg-surface-neutral/40 transition-colors">
+                        <th scope="row" className="py-3 px-4 text-left font-medium text-text-primary">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-sky text-primary font-bold flex items-center justify-center text-[10px] shrink-0">
+                              {st.name?.substring(0, 2).toUpperCase()}
+                            </div>
+                            <span className="font-medium text-text-primary">{st.name}</span>
+                          </div>
+                        </th>
+                        <td className="py-3 px-4 font-mono text-text-secondary">{st.student_code || '—'}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap" role="group" aria-label={`Trạng thái điểm danh của ${st.name}`}>
+                            {[
+                              { code: 'PRESENT', label: 'Có mặt', active: 'bg-emerald-600 text-white' },
+                              { code: 'EXCUSED', label: 'Có phép', active: 'bg-ocean text-white' },
+                              { code: 'ABSENT', label: 'Vắng mặt', active: 'bg-danger text-white' },
+                              { code: 'LATE', label: 'Đi muộn', active: 'bg-amber-500 text-white' },
+                            ].map(({ code, label, active }) => (
+                              <button
+                                key={code}
+                                type="button"
+                                onClick={() => setStudentStatus(st.student_id, code)}
+                                aria-pressed={status === code}
+                                className={`px-2.5 py-1 rounded text-[11px] font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50 ${
+                                  status === code
+                                    ? `${active} shadow-sm`
+                                    : 'bg-surface-neutral text-text-secondary hover:text-text-primary hover:bg-slate-100'
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <label className="sr-only" htmlFor={`note-${st.student_id}`}>Ghi chú điểm danh cho {st.name}</label>
+                          <input
+                            id={`note-${st.student_id}`}
+                            type="text"
+                            value={rec.note}
+                            onChange={(e) => setStudentNote(st.student_id, e.target.value)}
+                            placeholder="Ghi chú..."
+                            className="w-full h-7 px-2 bg-white border border-hairline rounded text-[11px] text-text-primary outline-none focus:border-ocean"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
+      )}
+        </>
       )}
 
       {/* Grade Entry / Edit Modal */}

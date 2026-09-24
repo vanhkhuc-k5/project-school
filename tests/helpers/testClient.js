@@ -71,8 +71,8 @@ export function test(testName, testFn) {
 export const it = test;
 
 // Expect assertion library
-export function expect(actual) {
-  return {
+function createExpect(actual) {
+  const matchers = {
     toBe(expected) {
       if (actual !== expected) {
         throw new Error(`Expected ${JSON.stringify(expected)} (${typeof expected}) but got ${JSON.stringify(actual)} (${typeof actual})`);
@@ -100,6 +100,11 @@ export function expect(actual) {
         throw new Error(`Expected defined value, received ${actual}`);
       }
     },
+    toBeUndefined() {
+      if (actual !== undefined) {
+        throw new Error(`Expected undefined, received ${JSON.stringify(actual)}`);
+      }
+    },
     toBeGreaterThan(expected) {
       if (!(actual > expected)) {
         throw new Error(`Expected ${actual} to be greater than ${expected}`);
@@ -108,6 +113,33 @@ export function expect(actual) {
     toBeGreaterThanOrEqual(expected) {
       if (!(actual >= expected)) {
         throw new Error(`Expected ${actual} to be greater than or equal to ${expected}`);
+      }
+    },
+    toBeLessThan(expected) {
+      if (!(actual < expected)) {
+        throw new Error(`Expected ${actual} to be less than ${expected}`);
+      }
+    },
+    toBeOneOf(validValues) {
+      if (!validValues.includes(actual)) {
+        throw new Error(`Expected ${JSON.stringify(actual)} to be one of ${JSON.stringify(validValues)}`);
+      }
+    },
+    toBeNaN() {
+      if (!Number.isNaN(actual)) {
+        throw new Error(`Expected ${actual} to be NaN`);
+      }
+    },
+    toBeNull() {
+      if (actual !== null) {
+        throw new Error(`Expected ${JSON.stringify(actual)} to be null`);
+      }
+    },
+    toMatch(pattern) {
+      const str = String(actual);
+      const regex = pattern instanceof RegExp ? pattern : new RegExp(pattern, 'i');
+      if (!regex.test(str)) {
+        throw new Error(`Expected "${str}" to match ${regex}`);
       }
     },
     toContain(item) {
@@ -124,14 +156,55 @@ export function expect(actual) {
       }
     },
   };
+
+  // Support for .not negation
+  const not = {};
+  for (const [matcher, fn] of Object.entries(matchers)) {
+    not[matcher] = (...args) => {
+      try {
+        fn(...args);
+        // If no error thrown, the assertion passed, so we need to fail
+        throw new Error(`Expected NOT ${matcher}(${args.map(a => JSON.stringify(a)).join(', ')}) but it passed`);
+      } catch (e) {
+        // If error contains our custom message, it failed as expected
+        if (e.message.includes(`Expected NOT ${matcher}`)) {
+          throw e;
+        }
+        // Otherwise, the matcher threw an error which means the negated assertion passed
+        return;
+      }
+    };
+  }
+
+  matchers.not = not;
+  return matchers;
+}
+
+export function expect(actual) {
+  return createExpect(actual);
 }
 
 // HTTP API Request Helper
-export function apiRequest(method, path, body = null, token = null, port = 5000) {
+export function apiRequest(method, path, body = null, tokenOrOptions = null, port = 5000) {
   return new Promise((resolve, reject) => {
+    let token = null;
+    let customHeaders = {};
+
+    if (typeof tokenOrOptions === 'string') {
+      token = tokenOrOptions;
+    } else if (tokenOrOptions && typeof tokenOrOptions === 'object') {
+      token = tokenOrOptions.token || null;
+      customHeaders = tokenOrOptions.headers || {};
+      if (tokenOrOptions.cookie) {
+        customHeaders['Cookie'] = tokenOrOptions.cookie;
+      }
+    }
+
     const dataString = body ? JSON.stringify(body) : null;
     const headers = {
       'Content-Type': 'application/json',
+      'x-test-runner': 'true',
+      ...customHeaders,
     };
 
     if (token) {
@@ -148,7 +221,7 @@ export function apiRequest(method, path, body = null, token = null, port = 5000)
         path: '/api' + path,
         method,
         headers,
-        timeout: 10000,
+        timeout: 15000,
       },
       (res) => {
         let responseBody = '';
@@ -177,7 +250,7 @@ export function apiRequest(method, path, body = null, token = null, port = 5000)
 
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error(`API request timeout [${method} ${path}] after 10000ms`));
+      reject(new Error(`API request timeout [${method} ${path}] after 15000ms`));
     });
 
     if (dataString) {
@@ -190,7 +263,65 @@ export function apiRequest(method, path, body = null, token = null, port = 5000)
 // Convenience helpers
 export const api = {
   get: (path, token, port) => apiRequest('GET', path, null, token, port),
-  post: (path, body, token, port) => apiRequest('POST', path, body, token, port),
+  post: (path, body, tokenOrOptions, portOrHeaders) => {
+    // Detect if 4th argument is headers object or port number
+    let options = tokenOrOptions;
+    let port = portOrHeaders;
+    if (typeof portOrHeaders === 'object' && portOrHeaders !== null) {
+      // 4th arg is headers, merge with token options
+      options = {
+        token: tokenOrOptions,
+        headers: portOrHeaders,
+      };
+      port = undefined; // Use default port
+    }
+    return apiRequest('POST', path, body, options, port);
+  },
   put: (path, body, token, port) => apiRequest('PUT', path, body, token, port),
+  patch: (path, body, token, port) => apiRequest('PATCH', path, body, token, port),
   delete: (path, token, port) => apiRequest('DELETE', path, null, token, port),
+  // Raw POST without JSON serialization
+  postRaw: (path, rawBody, tokenOrOptions) => {
+    return new Promise((resolve, reject) => {
+      let token = null;
+      let customHeaders = {};
+      if (typeof tokenOrOptions === 'string') {
+        token = tokenOrOptions;
+      } else if (tokenOrOptions) {
+        token = tokenOrOptions.token || null;
+        customHeaders = tokenOrOptions.headers || {};
+      }
+      const headers = {
+        'Content-Type': 'text/plain',
+        'x-test-runner': 'true',
+        ...customHeaders,
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: 5000,
+          path: '/api' + path,
+          method: 'POST',
+          headers,
+          timeout: 15000,
+        },
+        (res) => {
+          let responseBody = '';
+          res.on('data', (chunk) => { responseBody += chunk; });
+          res.on('end', () => {
+            let parsed;
+            try { parsed = JSON.parse(responseBody); } catch { parsed = responseBody; }
+            resolve({ status: res.statusCode, headers: res.headers, body: parsed });
+          });
+        }
+      );
+      req.on('error', (err) => reject(new Error(`API request error: ${err.message}`)));
+      req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+      req.write(rawBody);
+      req.end();
+    });
+  },
 };

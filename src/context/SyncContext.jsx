@@ -1,4 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+// =============================================================================
+// SyncContext — Notification polling + Cache invalidation broadcast
+// Decoupled from ServerStateContext but bridges cache invalidation events.
+// =============================================================================
+
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { syncApi } from '../services/api';
 import { useAuth } from './AuthContext';
 
@@ -12,9 +17,10 @@ export function SyncProvider({ children }) {
   const [broadcastAlert, setBroadcastAlert] = useState(null);
   const [isDismissedBroadcast, setIsDismissedBroadcast] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const lastRefreshRef = useRef(0);
 
-  // Fetch status and notifications
   const refreshSync = useCallback(async () => {
+    if (!currentUser) return;
     try {
       const [status, notifs] = await Promise.all([
         syncApi.getStatus(currentRole),
@@ -23,81 +29,71 @@ export function SyncProvider({ children }) {
 
       if (status) {
         setSyncStatus(status);
-        setUnreadCount(status.unreadCount || 0);
-
+        setUnreadCount(status.unreadCount ?? 0);
         if (status.latestBroadcast && !isDismissedBroadcast) {
           setBroadcastAlert(status.latestBroadcast);
         }
       }
-
-      if (notifs) {
-        setNotifications(notifs);
-      }
+      if (notifs) setNotifications(notifs);
     } catch (err) {
-      console.warn('Sync refresh failed:', err);
+      console.warn('[SyncContext] refresh failed:', err);
     }
-  }, [currentRole, isDismissedBroadcast]);
+  }, [currentRole, currentUser, isDismissedBroadcast]);
 
-  // Initial and polling sync (every 4.5s)
+  // Poll every 30 seconds (was 4.5s — too aggressive)
   useEffect(() => {
+    if (!currentUser) return;
     refreshSync();
-    const interval = setInterval(refreshSync, 4500);
+    const interval = setInterval(refreshSync, 30_000);
     return () => clearInterval(interval);
-  }, [refreshSync]);
+  }, [currentUser, refreshSync]);
 
-  // Force trigger sync
-  const triggerSync = async () => {
+  const triggerSync = useCallback(async () => {
     setIsSyncing(true);
     try {
       await refreshSync();
     } finally {
-      setTimeout(() => setIsSyncing(false), 500);
+      setIsSyncing(false);
     }
-  };
+  }, [refreshSync]);
 
-  const markAsRead = async (id) => {
+  const markAsRead = useCallback(async (id) => {
     await syncApi.markAsRead(id);
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-    );
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
     setUnreadCount((prev) => Math.max(0, prev - 1));
-  };
+  }, []);
 
-  const markAllAsRead = async () => {
+  const markAllAsRead = useCallback(async () => {
     await syncApi.markAllAsRead();
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
     setUnreadCount(0);
-  };
+  }, []);
 
-  const dismissBroadcast = () => {
+  const dismissBroadcast = useCallback(() => {
     setIsDismissedBroadcast(true);
     setBroadcastAlert(null);
-  };
+  }, []);
 
   return (
-    <SyncContext.Provider
-      value={{
-        syncStatus,
-        notifications,
-        unreadCount,
-        broadcastAlert,
-        isSyncing,
-        triggerSync,
-        markAsRead,
-        markAllAsRead,
-        dismissBroadcast,
-        refreshSync,
-      }}
-    >
+    <SyncContext.Provider value={{
+      syncStatus,
+      notifications,
+      unreadCount,
+      broadcastAlert,
+      isSyncing,
+      triggerSync,
+      markAsRead,
+      markAllAsRead,
+      dismissBroadcast,
+      refreshSync,
+    }}>
       {children}
     </SyncContext.Provider>
   );
 }
 
 export function useSync() {
-  const context = useContext(SyncContext);
-  if (!context) {
-    throw new Error('useSync must be used within a SyncProvider');
-  }
-  return context;
+  const ctx = useContext(SyncContext);
+  if (!ctx) throw new Error('useSync must be used within SyncProvider');
+  return ctx;
 }

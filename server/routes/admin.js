@@ -1,13 +1,23 @@
+import crypto from 'crypto';
 import express from 'express';
+import bcrypt from 'bcryptjs';
 import { db } from '../db.js';
 import { supabase, isSupabaseConfigured } from '../supabase.js';
 import { isPostgresConfigured, pgQuery } from '../postgres.js';
-import { optionalAuth } from '../middleware/auth.js';
+import { authenticateToken, requireRole, requirePermission, requireAnyPermission } from '../middleware/auth.js';
+import { usersController } from '../modules/users/index.js';
+import { schoolsService } from '../modules/schools/index.js';
+import { academicYearsService } from '../modules/academic-years/index.js';
+import { academicStructureController } from '../modules/academic-structure/index.js';
 
 const router = express.Router();
 
+// Enforce authentication & admin role across all admin endpoints
+router.use(authenticateToken);
+router.use(requireRole('admin', 'school_admin', 'principal', 'vice_principal', 'super_admin'));
+
 // Get Admin overview
-router.get('/overview', async (req, res) => {
+router.get('/overview', requireAnyPermission('school.manage', 'user.read'), async (req, res) => {
   let studentCount = 0;
   let teacherCount = 0;
   let classCount = 0;
@@ -39,12 +49,32 @@ router.get('/overview', async (req, res) => {
     console.error('Error fetching admin overview:', err);
   }
 
+  const currentSchoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+  let schoolInfo = null;
+  let academicCycle = null;
+  try {
+    schoolInfo = await schoolsService.getProfile(currentSchoolId);
+  } catch {}
+  try {
+    academicCycle = await academicYearsService.getCurrentAcademicCycle(currentSchoolId);
+  } catch {}
+
+  const academicYearName = academicCycle?.academicYear?.name
+    ? `Năm học ${academicCycle.academicYear.name}`
+    : 'Năm học 2024 - 2025';
+  const semesterName = academicCycle?.currentSemester?.name
+    ? `${academicCycle.currentSemester.name} (Hiện tại)`
+    : 'Học kỳ I (Hiện tại)';
+  const schoolName = schoolInfo?.name || 'Trường THPT Chuyên Bắc Âu';
+
   res.json({
     success: true,
     data: {
-      academicYear: 'Năm học 2024 - 2025',
-      currentSemester: 'Học kỳ II (Hiện tại)',
-      schoolName: 'Trường THPT Chuyên Bắc Âu',
+      academicYear: academicYearName,
+      currentSemester: semesterName,
+      schoolName,
+      academicYearId: academicCycle?.academicYear?.id || null,
+      currentSemesterId: academicCycle?.currentSemester?.id || null,
       lastSync: 'Cập nhật tự động thời gian thực từ Database',
       kpis: {
         students: {
@@ -118,263 +148,65 @@ router.get('/overview', async (req, res) => {
   });
 });
 
-// Broadcast notice
-router.post('/broadcast', optionalAuth, async (req, res) => {
+// Broadcast notification across entire school
+router.post('/broadcast', requirePermission('announcement.publish'), async (req, res) => {
   const { title, content } = req.body;
   if (!title) return res.status(400).json({ success: false, message: 'Tiêu đề không được để trống' });
 
   const nId = `notif_${Date.now()}`;
   const logId = `log_${Date.now()}`;
 
-  if (isSupabaseConfigured()) {
-    await supabase.from('school_notices').insert({
-      id: nId,
-      title,
-      content: content || '',
-      category: 'school',
-      tag: 'Toàn trường',
-      tag_type: 'info',
-      sender: 'Ban Giám Hiệu',
-      can_confirm: false,
-    });
-    await supabase.from('audit_logs').insert({
-      id: logId,
-      actor_name: 'Ban Giám Hiệu',
-      role: 'admin',
-      action: `Đã phát thông báo toàn trường: ${title}`,
-      badge: 'Phát thông báo',
-      badge_type: 'warning',
-    });
-  } else {
-    db.prepare(`
-      INSERT INTO school_notices (id, title, content, category, tag, tag_type, sender, can_confirm)
-      VALUES (?, ?, ?, 'school', 'Toàn trường', 'info', 'Ban Giám Hiệu', 0)
-    `).run(nId, title, content || '');
+  try {
+    if (isPostgresConfigured()) {
+      await pgQuery(`
+        INSERT INTO school_notices (id, title, content, category, tag, tag_type, sender, can_confirm)
+        VALUES ($1, $2, $3, 'school', 'BGH', 'warning', 'Ban Giám Hiệu', true)
+      `, [nId, title, content || 'Thông báo từ Ban Giám Hiệu']);
 
-    db.prepare(`
-      INSERT INTO audit_logs (id, actor_name, role, action, badge, badge_type)
-      VALUES (?, 'Ban Giám Hiệu', 'admin', ?, 'Phát thông báo', 'warning')
-    `).run(logId, `Đã phát thông báo toàn trường: ${title}`);
-  }
-
-  res.json({ success: true, message: 'Đã phát thông báo toàn trường thành công!' });
-});
-
-// User Management Endpoints
-router.get('/users', optionalAuth, async (req, res) => {
-  const { role, search } = req.query;
-
-  if (isSupabaseConfigured()) {
-    let query = supabase.from('users').select(`
-      id, username, email, role, name, code, phone, avatar, created_at
-    `).order('created_at', { ascending: false });
-
-    if (role && role !== 'all') {
-      query = query.eq('role', role);
-    }
-    if (search) {
-      query = query.or(`name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%,code.ilike.%${search}%`);
-    }
-
-    const { data: users, error } = await query;
-    if (error) {
-      console.error('Supabase error fetching users:', error);
-      return res.status(500).json({ success: false, message: 'Lỗi truy vấn người dùng' });
-    }
-    return res.json({ success: true, users: users || [] });
-  }
-
-  let query = `
-    SELECT u.id, u.username, u.email, u.role, u.name, u.code, u.phone, u.avatar, u.created_at,
-           c.name as class_name, s.gpa
-    FROM users u
-    LEFT JOIN students s ON s.user_id = u.id
-    LEFT JOIN classes c ON s.class_id = c.id
-    WHERE 1=1
-  `;
-  const params = [];
-
-  if (role && role !== 'all') {
-    query += ' AND u.role = ?';
-    params.push(role);
-  }
-
-  if (search) {
-    query += ' AND (u.name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR u.code LIKE ?)';
-    const s = `%${search}%`;
-    params.push(s, s, s, s);
-  }
-
-  query += ' ORDER BY u.created_at DESC';
-
-  const users = db.prepare(query).all(...params);
-  res.json({ success: true, users });
-});
-
-router.post('/users', optionalAuth, async (req, res) => {
-  const { username, email, password, role, name, code, phone, classId } = req.body;
-  if (!username || !role || !name) {
-    return res.status(400).json({ success: false, message: 'Vui lòng điền đủ tên, tên đăng nhập và vai trò' });
-  }
-
-  const userId = `usr_${Date.now()}`;
-  const passwordHash = password || '123456';
-  const avatar = `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=120&h=120`;
-
-  if (isSupabaseConfigured()) {
-    const { error: insErr } = await supabase.from('users').insert({
-      id: userId,
-      username,
-      email: email || `${username}@school.edu.vn`,
-      password_hash: passwordHash,
-      role,
-      name,
-      code: code || `NV-${Date.now().toString().slice(-4)}`,
-      phone: phone || '',
-      avatar,
-    });
-    if (insErr) {
-      return res.status(400).json({ success: false, message: insErr.message });
-    }
-
-    if (role === 'student') {
-      const studentId = `std_${Date.now().toString().slice(-4)}`;
-      await supabase.from('students').insert({
-        id: studentId,
-        user_id: userId,
-        class_id: classId || 'cls_10A1',
-        gpa: 8.0,
-        class_rank: '15/38',
-        attendance_rate: 100,
-      });
-    }
-
-    await supabase.from('audit_logs').insert({
-      id: `log_${Date.now()}`,
-      actor_name: 'Quản trị viên',
-      role: 'admin',
-      action: `Đã tạo tài khoản mới: ${name} (${role})`,
-      badge: 'Tạo tài khoản',
-      badge_type: 'info',
-    });
-  } else {
-    const existing = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email || '');
-    if (existing) {
-      return res.status(400).json({ success: false, message: 'Tên đăng nhập hoặc email đã tồn tại trên hệ thống' });
-    }
-
-    db.prepare(`
-      INSERT INTO users (id, username, email, password_hash, role, name, code, phone, avatar)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(userId, username, email || `${username}@school.edu.vn`, passwordHash, role, name, code || `NV-${Date.now().toString().slice(-4)}`, phone || '', avatar);
-
-    if (role === 'student') {
-      const studentId = `std_${Date.now().toString().slice(-4)}`;
+      await pgQuery(`
+        INSERT INTO audit_logs (id, actor_id, actor_name, role, action, entity_type, entity_id, details, badge, badge_type, ip_address)
+        VALUES ($1, $2, $3, $4, 'Phát thông báo khẩn cấp', 'school_notices', $5, $6, 'Khẩn cấp', 'warning', $7)
+      `, [logId, req.user.id, req.user.name || 'Ban Giám Hiệu', req.user.role, nId, `Tiêu đề: ${title}`, req.ip || '127.0.0.1']);
+    } else {
       db.prepare(`
-        INSERT INTO students (id, user_id, class_id, gpa, class_rank, attendance_rate)
-        VALUES (?, ?, ?, 8.0, '15/38', 100)
-      `).run(studentId, userId, classId || 'cls_10A1');
+        INSERT INTO school_notices (id, title, content, category, tag, tag_type, sender, can_confirm)
+        VALUES (?, ?, ?, 'school', 'BGH', 'warning', 'Ban Giám Hiệu', 1)
+      `).run(nId, title, content || 'Thông báo từ Ban Giám Hiệu');
+
+      db.prepare(`
+        INSERT INTO audit_logs (id, actor_id, actor_name, role, action, entity_type, entity_id, details, badge, badge_type, ip_address, created_at)
+        VALUES (?, ?, ?, ?, 'Phát thông báo khẩn cấp', 'school_notices', ?, ?, 'Khẩn cấp', 'warning', ?, CURRENT_TIMESTAMP)
+      `).run(logId, req.user.id, req.user.name || 'Ban Giám Hiệu', req.user.role, nId, `Tiêu đề: ${title}`, req.ip || '127.0.0.1');
     }
 
-    db.prepare(`
-      INSERT INTO audit_logs (id, actor_name, role, action, badge, badge_type)
-      VALUES (?, 'Quản trị viên', 'admin', ?, 'Tạo tài khoản', 'info')
-    `).run(`log_${Date.now()}`, `Đã tạo tài khoản mới: ${name} (${role})`);
+    res.json({ success: true, message: 'Đã phát thông báo toàn trường thành công!' });
+  } catch (err) {
+    console.error('Error broadcasting notification:', err);
+    res.status(500).json({ success: false, message: 'Lỗi khi phát thông báo', error: err.message });
   }
-
-  res.json({ success: true, message: 'Tạo tài khoản người dùng thành công!', userId });
 });
 
-router.put('/users/:id', optionalAuth, async (req, res) => {
-  const { id } = req.params;
-  const { name, email, phone, role, code } = req.body;
+// ============================================================
+// User Management Endpoints (Delegated to modular usersController)
+// ============================================================
+router.get('/users', requirePermission('user.read'), usersController.listUsers);
+router.get('/users/:id', requirePermission('user.read'), usersController.getUserById);
+router.post('/users', requirePermission('user.create'), usersController.createUser);
+router.put('/users/:id', requirePermission('user.update'), usersController.updateUser);
+router.patch('/users/:id/status', requirePermission('user.disable'), usersController.updateStatus);
+router.put('/users/:id/roles', requirePermission('user.update'), usersController.assignRoles);
+router.post('/users/:id/reset-password', requirePermission('user.update'), usersController.resetPassword);
+router.delete('/users/:id', requirePermission('user.disable'), usersController.deleteUser);
 
-  if (isPostgresConfigured()) {
-    await pgQuery(`
-      UPDATE users
-      SET name = COALESCE($1, name),
-          email = COALESCE($2, email),
-          phone = COALESCE($3, phone),
-          role = COALESCE($4, role),
-          code = COALESCE($5, code)
-      WHERE id = $6
-    `, [name || null, email || null, phone || null, role || null, code || null, id]);
-  } else if (isSupabaseConfigured()) {
-    const updates = {};
-    if (name) updates.name = name;
-    if (email) updates.email = email;
-    if (phone) updates.phone = phone;
-    if (role) updates.role = role;
-    if (code) updates.code = code;
-    await supabase.from('users').update(updates).eq('id', id);
-  } else {
-    db.prepare(`
-      UPDATE users
-      SET name = COALESCE(?, name),
-          email = COALESCE(?, email),
-          phone = COALESCE(?, phone),
-          role = COALESCE(?, role),
-          code = COALESCE(?, code)
-      WHERE id = ?
-    `).run(name, email, phone, role, code, id);
-  }
+// Institutional Classes Endpoints (delegated to modular academic-structure domain)
+router.get('/classes', requirePermission('class.read'), academicStructureController.listClasses);
+router.post('/classes', requirePermission('class.manage'), academicStructureController.createClass);
+router.put('/classes/:id', requirePermission('class.manage'), academicStructureController.updateClass);
+router.delete('/classes/:id', requirePermission('class.manage'), academicStructureController.deleteClass);
 
-  res.json({ success: true, message: 'Cập nhật tài khoản thành công!' });
-});
-
-router.delete('/users/:id', optionalAuth, async (req, res) => {
-  const { id } = req.params;
-
-  if (isSupabaseConfigured()) {
-    await supabase.from('users').delete().eq('id', id);
-    await supabase.from('audit_logs').insert({
-      id: `log_${Date.now()}`,
-      actor_name: 'Quản trị viên',
-      role: 'admin',
-      action: `Đã xóa tài khoản: ${id}`,
-      badge: 'Xóa tài khoản',
-      badge_type: 'danger',
-    });
-  } else {
-    const user = db.prepare('SELECT name, role FROM users WHERE id = ?').get(id);
-    db.prepare('DELETE FROM users WHERE id = ?').run(id);
-
-    db.prepare(`
-      INSERT INTO audit_logs (id, actor_name, role, action, badge, badge_type)
-      VALUES (?, 'Quản trị viên', 'admin', ?, 'Xóa tài khoản', 'danger')
-    `).run(`log_${Date.now()}`, `Đã xóa tài khoản: ${user?.name || id}`);
-  }
-
-  res.json({ success: true, message: 'Đã xóa tài khoản khỏi hệ thống!' });
-});
-
-// Institutional Classes Endpoints
-router.get('/classes', optionalAuth, async (req, res) => {
-  if (isSupabaseConfigured()) {
-    const { data: classes, error } = await supabase.from('classes').select(`
-      id, name, grade_level, academic_year, homeroom_teacher_id
-    `).order('grade_level', { ascending: true });
-
-    if (error) {
-      return res.status(500).json({ success: false, message: error.message });
-    }
-    return res.json({ success: true, classes: classes || [] });
-  }
-
-  const classes = db.prepare(`
-    SELECT c.*, u.name as homeroom_teacher_name,
-           (SELECT COUNT(*) FROM students s WHERE s.class_id = c.id) as student_count,
-           (SELECT ROUND(AVG(gpa), 2) FROM students s WHERE s.class_id = c.id) as avg_gpa
-    FROM classes c
-    LEFT JOIN users u ON c.homeroom_teacher_id = u.id
-    ORDER BY c.grade_level ASC, c.name ASC
-  `).all();
-
-  res.json({ success: true, classes });
-});
 
 // Faculty & Teachers
-router.get('/teachers', optionalAuth, async (req, res) => {
+router.get('/teachers', requirePermission('teacher.read'), async (req, res) => {
   let teachers = [];
 
   if (isSupabaseConfigured()) {
@@ -412,9 +244,9 @@ router.get('/teachers', optionalAuth, async (req, res) => {
 });
 
 // Institutional Financial Overview
-router.get('/financials', optionalAuth, (req, res) => {
-  const totalInvoices = db.prepare('SELECT COUNT(*) as count, SUM(total_amount) as total FROM tuition_invoices').get();
-  const paidInvoices = db.prepare("SELECT COUNT(*) as count, SUM(total_amount) as total FROM tuition_invoices WHERE status = 'paid'").get();
+router.get('/financials', requirePermission('tuition.manage'), (req, res) => {
+  const totalInvoices = db.prepare('SELECT COUNT(*) as count, SUM(total) as total FROM tuition_invoices').get();
+  const paidInvoices = db.prepare("SELECT COUNT(*) as count, SUM(total) as total FROM tuition_invoices WHERE status = 'paid'").get();
 
   const totalBilled = totalInvoices?.total || 3250000;
   const totalCollected = paidInvoices?.total || 0;
@@ -434,7 +266,7 @@ router.get('/financials', optionalAuth, (req, res) => {
 });
 
 // Audit Logs
-router.get('/audit-logs', optionalAuth, async (req, res) => {
+router.get('/audit-logs', requirePermission('audit.read'), async (req, res) => {
   if (isSupabaseConfigured()) {
     const { data: logs } = await supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(50);
     return res.json({ success: true, logs: logs || [] });
@@ -444,13 +276,6 @@ router.get('/audit-logs', optionalAuth, async (req, res) => {
 });
 
 // Subjects (danh sách môn học)
-router.get('/subjects', optionalAuth, async (req, res) => {
-  if (isSupabaseConfigured()) {
-    const { data: subjects } = await supabase.from('subjects').select('*').order('department, name');
-    return res.json({ success: true, subjects: subjects || [] });
-  }
-  const subjects = db.prepare('SELECT * FROM subjects ORDER BY department, name').all();
-  res.json({ success: true, subjects });
-});
+router.get('/subjects', requirePermission('class.read'), academicStructureController.listSubjects);
 
 export default router;

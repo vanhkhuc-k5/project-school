@@ -1,233 +1,43 @@
-import React, { useState, useEffect } from 'react';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { SyncProvider } from './context/SyncContext';
+// =============================================================================
+// App.jsx — G39 Real Routing
+// Bridges legacy stateful navigation callbacks into router navigation.
+// All routing is handled by AppRouter in main.jsx; this module is kept minimal.
+// =============================================================================
 
-// Layouts
-import { StudentLayout } from './layouts/StudentLayout';
-import { TeacherLayout } from './layouts/TeacherLayout';
-import { ParentLayout } from './layouts/ParentLayout';
-import { AdminLayout } from './layouts/AdminLayout';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
-// Pages
-import { LoginPage } from './pages/auth/LoginPage';
-import { StudentDashboard } from './pages/student/StudentDashboard';
-import { StudentAssignmentsPage } from './pages/student/StudentAssignmentsPage';
-import { StudentResourcesPage } from './pages/student/StudentResourcesPage';
-import { StudentGradesPage } from './pages/student/StudentGradesPage';
-import { StudentTimetablePage } from './pages/student/StudentTimetablePage';
-import { StudentAttendancePage } from './pages/student/StudentAttendancePage';
-import { AiTutorPage } from './pages/student/AiTutorPage';
+/**
+ * Legacy navigation bridge — maps old callback-driven navigation to router navigation.
+ * Used by pages that still receive `onNavigateXxx` props from the old App state machine.
+ * Pages should migrate to useNavigate() directly instead of these.
+ */
+export function useLegacyNavigation() {
+  const navigate = useNavigate();
+  return React.useMemo(() => ({
+    navigateToStudentAiTutor: () => navigate('/student/ai-tutor'),
+    navigateToStudentTimetable: () => navigate('/student/timetable'),
+    navigateToStudentAssignments: () => navigate('/student/assignments'),
+    navigateToStudentGrades: () => navigate('/student/grades'),
+    navigateToStudentAttendance: () => navigate('/student/attendance'),
+    navigateToStudentResources: () => navigate('/student/resources'),
+    navigateToStudentAnnouncements: () => navigate('/student/announcements'),
 
-import { TeacherDashboard } from './pages/teacher/TeacherDashboard';
-import { TeacherClassesPage } from './pages/teacher/TeacherClassesPage';
-import { TeacherAssignmentsPage } from './pages/teacher/TeacherAssignmentsPage';
-import { TeacherAnalytics } from './pages/teacher/TeacherAnalytics';
-import { TeacherReportsPage } from './pages/teacher/TeacherReportsPage';
-import { CreateAssignment } from './pages/teacher/CreateAssignment';
+    navigateToTeacherDashboard: () => navigate('/teacher/dashboard'),
+    navigateToTeacherSchedule: () => navigate('/teacher/schedule'),
+    navigateToTeacherClasses: () => navigate('/teacher/classes'),
+    navigateToTeacherAssignments: () => navigate('/teacher/assignments'),
+    navigateToTeacherCreateAssignment: () => navigate('/teacher/assignments/create'),
+    navigateToTeacherAnalytics: () => navigate('/teacher/analytics'),
+    navigateToTeacherReports: () => navigate('/teacher/reports'),
 
-import { ParentDashboard } from './pages/parent/ParentDashboard';
-import { AdminDashboard } from './pages/admin/AdminDashboard';
+    navigateToParentDashboard: () => navigate('/parent/dashboard'),
 
-function AppContent() {
-  const { currentRole } = useAuth();
-  const [currentView, setCurrentView] = useState(() => {
-    if (currentRole === 'teacher') return 'teacher-dashboard';
-    if (currentRole === 'parent') return 'parent-dashboard';
-    if (currentRole === 'admin') return 'admin-dashboard';
-    if (currentRole === 'student') return 'student-dashboard';
-    return 'login';
-  });
-  const [parentTab, setParentTab] = useState('home');
-  const [parentSelectedChildId, setParentSelectedChildId] = useState('std_khoi');
-  const [parentChildrenList, setParentChildrenList] = useState([]);
-  const [adminTab, setAdminTab] = useState('overview');
-
-  // Sync view when authentication role changes
-  useEffect(() => {
-    if (currentRole === 'guest') {
-      setCurrentView('login');
-    } else if (currentRole === 'teacher' && !currentView.startsWith('teacher-')) {
-      setCurrentView('teacher-dashboard');
-    } else if (currentRole === 'student' && !currentView.startsWith('student-')) {
-      setCurrentView('student-dashboard');
-    } else if (currentRole === 'parent') {
-      setCurrentView('parent-dashboard');
-    } else if (currentRole === 'admin') {
-      setCurrentView('admin-dashboard');
-    }
-  }, [currentRole]);
-
-  const handleLoginSuccess = (role) => {
-    switch (role) {
-      case 'student':
-        setCurrentView('student-dashboard');
-        break;
-      case 'teacher':
-        setCurrentView('teacher-dashboard');
-        break;
-      case 'parent':
-        setCurrentView('parent-dashboard');
-        setParentTab('home');
-        break;
-      case 'admin':
-        setCurrentView('admin-dashboard');
-        setAdminTab('overview');
-        break;
-      default:
-        setCurrentView('student-dashboard');
-    }
-  };
-
-  // Render official views
-  const renderCurrentView = () => {
-    if (currentRole === 'guest' || currentView === 'login') {
-      return <LoginPage onLoginSuccess={handleLoginSuccess} />;
-    }
-
-    // Student views
-    if (currentRole === 'student') {
-      let studentTab = 'home';
-      if (currentView === 'student-timetable') studentTab = 'timetable';
-      else if (currentView === 'student-assignments') studentTab = 'assignments';
-      else if (currentView === 'student-attendance') studentTab = 'attendance';
-      else if (currentView === 'student-resources') studentTab = 'resources';
-      else if (currentView === 'student-grades') studentTab = 'grades';
-      else if (currentView === 'student-ai-tutor') studentTab = 'ai-tutor';
-
-      return (
-        <StudentLayout
-          currentTab={studentTab}
-          onTabChange={(tabId) => {
-            if (tabId === 'ai-tutor') setCurrentView('student-ai-tutor');
-            else if (tabId === 'timetable') setCurrentView('student-timetable');
-            else if (tabId === 'assignments') setCurrentView('student-assignments');
-            else if (tabId === 'attendance') setCurrentView('student-attendance');
-            else if (tabId === 'resources') setCurrentView('student-resources');
-            else if (tabId === 'grades') setCurrentView('student-grades');
-            else setCurrentView('student-dashboard');
-          }}
-        >
-          {studentTab === 'ai-tutor' ? (
-            <AiTutorPage />
-          ) : studentTab === 'timetable' ? (
-            <StudentTimetablePage />
-          ) : studentTab === 'assignments' ? (
-            <StudentAssignmentsPage />
-          ) : studentTab === 'attendance' ? (
-            <StudentAttendancePage />
-          ) : studentTab === 'resources' ? (
-            <StudentResourcesPage />
-          ) : studentTab === 'grades' ? (
-            <StudentGradesPage />
-          ) : (
-            <StudentDashboard
-              onNavigateToAiTutor={() => setCurrentView('student-ai-tutor')}
-              onNavigateToTimetable={() => setCurrentView('student-timetable')}
-            />
-          )}
-        </StudentLayout>
-      );
-    }
-
-    // Teacher views
-    if (currentRole === 'teacher') {
-      let teacherTab = 'overview';
-      if (currentView === 'teacher-classes') teacherTab = 'classes';
-      else if (currentView === 'teacher-assignments' || currentView === 'teacher-create-assignment') teacherTab = 'assignments';
-      else if (currentView === 'teacher-analytics') teacherTab = 'analytics';
-      else if (currentView === 'teacher-reports') teacherTab = 'reports';
-
-      return (
-        <TeacherLayout
-          currentTab={teacherTab}
-          onTabChange={(tabId) => {
-            if (tabId === 'overview') setCurrentView('teacher-dashboard');
-            else if (tabId === 'classes') setCurrentView('teacher-classes');
-            else if (tabId === 'assignments') setCurrentView('teacher-assignments');
-            else if (tabId === 'analytics') setCurrentView('teacher-analytics');
-            else if (tabId === 'reports') setCurrentView('teacher-reports');
-          }}
-        >
-          {currentView === 'teacher-create-assignment' ? (
-            <CreateAssignment
-              onBackToDashboard={() => setCurrentView('teacher-assignments')}
-            />
-          ) : teacherTab === 'classes' ? (
-            <TeacherClassesPage />
-          ) : teacherTab === 'assignments' ? (
-            <TeacherAssignmentsPage
-              onNavigateCreateAssignment={() => setCurrentView('teacher-create-assignment')}
-            />
-          ) : teacherTab === 'analytics' ? (
-            <TeacherAnalytics
-              onNavigateCreateAssignment={() => setCurrentView('teacher-create-assignment')}
-            />
-          ) : teacherTab === 'reports' ? (
-            <TeacherReportsPage />
-          ) : (
-            <TeacherDashboard
-              onNavigateAnalytics={() => setCurrentView('teacher-analytics')}
-              onNavigateCreateAssignment={() => setCurrentView('teacher-create-assignment')}
-              onNavigateClasses={() => setCurrentView('teacher-classes')}
-              onNavigateAssignments={() => setCurrentView('teacher-assignments')}
-            />
-          )}
-        </TeacherLayout>
-      );
-    }
-
-    // Parent views
-    if (currentRole === 'parent') {
-      const activeChild = parentChildrenList.find((c) => c.id === parentSelectedChildId) || parentChildrenList[0];
-      return (
-        <ParentLayout
-          currentTab={parentTab}
-          onTabChange={setParentTab}
-          activeChild={activeChild}
-          onSelectChild={setParentSelectedChildId}
-          childrenList={parentChildrenList}
-        >
-          <ParentDashboard
-            activeTab={parentTab}
-            onTabChange={setParentTab}
-            selectedChildId={parentSelectedChildId}
-            onSelectChild={setParentSelectedChildId}
-            onChildrenLoaded={(children) => {
-              setParentChildrenList(children);
-              if (children?.length && !children.find((c) => c.id === parentSelectedChildId)) {
-                setParentSelectedChildId(children[0].id);
-              }
-            }}
-          />
-        </ParentLayout>
-      );
-    }
-
-    // Admin views
-    if (currentRole === 'admin') {
-      return (
-        <AdminLayout currentTab={adminTab} onTabChange={setAdminTab}>
-          <AdminDashboard activeTab={adminTab} onTabChange={setAdminTab} />
-        </AdminLayout>
-      );
-    }
-
-    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
-  };
-
-  return (
-    <div className="min-h-screen relative font-sans">
-      {renderCurrentView()}
-    </div>
-  );
+    navigateToAdminDashboard: () => navigate('/admin/dashboard'),
+    navigateToAdminAnnouncements: () => navigate('/admin/announcements'),
+  }), [navigate]);
 }
 
-export default function App() {
-  return (
-    <AuthProvider>
-      <SyncProvider>
-        <AppContent />
-      </SyncProvider>
-    </AuthProvider>
-  );
-}
+// Re-export everything from AppRouter for backward compatibility
+export { AppRouter } from './router/AppRouter';
+export { ProtectedRoute } from './router/AppRouter';

@@ -1,13 +1,16 @@
 import express from 'express';
 import { db } from '../db.js';
-import { optionalAuth } from '../middleware/auth.js';
+import { authenticateToken, requirePermission } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Enforce authentication across sync and notification endpoints
+router.use(authenticateToken);
+
 // Get system heartbeat and sync status
-router.get('/status', optionalAuth, (req, res) => {
-  const role = req.user?.role || req.query.role || 'student';
-  const userId = req.user?.id || 'usr_student_1';
+router.get('/status', requirePermission('announcement.read'), (req, res) => {
+  const _role = req.user.role || req.query.role || 'student';
+  const userId = req.user.id;
 
   // Get total unread notices
   const notices = db.prepare('SELECT * FROM school_notices ORDER BY created_at DESC').all();
@@ -96,8 +99,8 @@ router.get('/status', optionalAuth, (req, res) => {
 });
 
 // Get detailed notifications list for user
-router.get('/notifications', optionalAuth, (req, res) => {
-  const userId = req.user?.id || req.query.userId || 'usr_student_1';
+router.get('/notifications', requirePermission('announcement.read'), (req, res) => {
+  const userId = req.user.id;
 
   const notices = db.prepare('SELECT * FROM school_notices ORDER BY created_at DESC LIMIT 30').all();
 
@@ -127,9 +130,9 @@ router.get('/notifications', optionalAuth, (req, res) => {
 });
 
 // Mark single notification as read / confirmed
-router.post('/notifications/:id/read', optionalAuth, (req, res) => {
+router.post('/notifications/:id/read', requirePermission('announcement.read'), (req, res) => {
   const noticeId = req.params.id;
-  const userId = req.user?.id || req.body.userId || 'usr_student_1';
+  const userId = req.user.id;
 
   const notice = db.prepare('SELECT confirmed_by_users FROM school_notices WHERE id = ?').get(noticeId);
   if (!notice) {
@@ -151,8 +154,8 @@ router.post('/notifications/:id/read', optionalAuth, (req, res) => {
 });
 
 // Mark all notifications as read
-router.post('/notifications/read-all', optionalAuth, (req, res) => {
-  const userId = req.user?.id || req.body.userId || 'usr_student_1';
+router.post('/notifications/read-all', requirePermission('announcement.read'), (req, res) => {
+  const userId = req.user.id;
 
   const notices = db.prepare('SELECT id, confirmed_by_users FROM school_notices').all();
   const updateStmt = db.prepare('UPDATE school_notices SET confirmed_by_users = ? WHERE id = ?');
@@ -172,7 +175,7 @@ router.post('/notifications/read-all', optionalAuth, (req, res) => {
 });
 
 // Trigger a system-wide broadcast event
-router.post('/trigger', optionalAuth, (req, res) => {
+router.post('/trigger', requirePermission('announcement.publish'), (req, res) => {
   const { title, content, tag, tagType, category, sender } = req.body;
 
   const noticeId = `notif_${Date.now()}`;

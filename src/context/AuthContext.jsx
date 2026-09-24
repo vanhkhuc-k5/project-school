@@ -4,56 +4,41 @@ import { authApi } from '../services/api';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  // Session hydration from localStorage
-  const [currentUser, setCurrentUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem('eduportal_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  const [currentRole, setCurrentRole] = useState(() => {
-    try {
-      const saved = localStorage.getItem('eduportal_user');
-      return saved ? (JSON.parse(saved)?.role || 'guest') : 'guest';
-    } catch {
-      return 'guest';
-    }
-  });
-
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentRole, setCurrentRole] = useState('guest');
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     const initAuth = async () => {
       try {
-        const token = localStorage.getItem('edunordic_token');
-        if (token) {
-          const user = await authApi.getMe();
+        // Attempt session recovery via HttpOnly refresh cookie + getMe
+        const user = await authApi.getMe();
+        if (isMounted) {
           if (user) {
             setCurrentUser(user);
             setCurrentRole(user.role);
-            localStorage.setItem('eduportal_user', JSON.stringify(user));
           } else {
-            // Token expired or invalid — clear session
             setCurrentUser(null);
             setCurrentRole('guest');
-            localStorage.removeItem('eduportal_user');
-            localStorage.removeItem('edunordic_token');
           }
-        } else {
+        }
+      } catch {
+        if (isMounted) {
           setCurrentUser(null);
           setCurrentRole('guest');
         }
-      } catch {
-        setCurrentUser(null);
-        setCurrentRole('guest');
       } finally {
-        setIsLoadingAuth(false);
+        if (isMounted) {
+          setIsLoadingAuth(false);
+        }
       }
     };
+
     initAuth();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const login = async (role, identifier, password) => {
@@ -63,27 +48,43 @@ export function AuthProvider({ children }) {
       if (res.success && res.user) {
         setCurrentUser(res.user);
         setCurrentRole(res.user.role || role);
-        localStorage.setItem('eduportal_user', JSON.stringify(res.user));
         return { success: true, user: res.user };
       }
       return { success: false, message: res.message || 'Đăng nhập không thành công' };
-    } catch (err) {
+    } catch {
       return { success: false, message: 'Lỗi kết nối đến hệ thống xác thực' };
     } finally {
       setIsLoadingAuth(false);
     }
   };
 
-  const logout = () => {
-    authApi.logout();
-    setCurrentRole('guest');
-    setCurrentUser(null);
-    localStorage.removeItem('eduportal_user');
-    localStorage.removeItem('edunordic_token');
+  const logout = async () => {
+    try {
+      await authApi.logout();
+    } finally {
+      setCurrentRole('guest');
+      setCurrentUser(null);
+    }
   };
 
+  // Check if user is authenticated
+  const isAuthenticated = () => {
+    return currentUser !== null && currentRole !== 'guest';
+  };
+
+  // Get user object
+  const getUser = () => currentUser;
+
   return (
-    <AuthContext.Provider value={{ currentUser, currentRole, login, logout, isLoadingAuth }}>
+    <AuthContext.Provider value={{ 
+      currentUser, 
+      currentRole, 
+      login, 
+      logout, 
+      isLoadingAuth,
+      isAuthenticated,
+      user: currentUser,
+    }}>
       {children}
     </AuthContext.Provider>
   );

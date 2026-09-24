@@ -1,37 +1,166 @@
 import express from 'express';
 import { db } from '../db.js';
-import { optionalAuth } from '../middleware/auth.js';
+import { authenticateToken, requireRole, requirePermission, requireAnyPermission } from '../middleware/auth.js';
+import { isPostgresConfigured, pgQuery } from '../shared/database/index.js';
+import { teacherAssignmentsRepository } from '../modules/teacher-assignments/teacher-assignments.repository.js';
+import { timetableService } from '../modules/timetable/index.js';
+import { attendanceController } from '../modules/attendance/index.js';
 
 const router = express.Router();
 
+
+// Enforce authentication & role across all teacher endpoints
+router.use(authenticateToken);
+router.use(requireRole('teacher', 'admin', 'school_admin', 'principal', 'vice_principal', 'department_head'));
+
 // Get Teacher Dashboard Overview Data
-router.get('/dashboard', optionalAuth, (req, res) => {
+router.get('/dashboard', requirePermission('teacher.read'), async (req, res) => {
+  const userId = req.user?.id;
+  const currentSchoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+
+  let teacher = null;
+  let activeAssignmentsCount = 0;
+  let pendingReviewCount = 0;
+  let submittedTodayCount = 0;
+  let totalStudents = 0;
+
+  if (isPostgresConfigured()) {
+    const tchRes = await pgQuery(`
+      SELECT t.*, u.name, u.email, u.phone, u.code,
+             d.name as department_name,
+             c.name as homeroom_class_name,
+             (SELECT COUNT(*) FROM students s WHERE s.class_id = t.homeroom_class_id OR s.current_class_id = t.homeroom_class_id) as homeroom_students_count
+      FROM users u
+      LEFT JOIN teachers t ON t.user_id = u.id
+      LEFT JOIN departments d ON t.department_id = d.id
+      LEFT JOIN classes c ON t.homeroom_class_id = c.id
+      WHERE u.id = $1
+    `, [userId]);
+
+    teacher = tchRes.rows[0];
+
+    const asgRes = await pgQuery(`
+      SELECT COUNT(*) as count FROM assignments WHERE created_by = $1
+    `, [userId]);
+    activeAssignmentsCount = parseInt(asgRes.rows[0]?.count || 0, 10);
+
+    const subRes = await pgQuery(`
+      SELECT 
+        COUNT(*) FILTER (WHERE status = 'submitted') as pending,
+        COUNT(*) FILTER (WHERE status IN ('submitted', 'graded')) as submitted
+      FROM assignment_submissions
+      WHERE assignment_id IN (SELECT id FROM assignments WHERE created_by = $1)
+    `, [userId]);
+    pendingReviewCount = parseInt(subRes.rows[0]?.pending || 0, 10);
+    submittedTodayCount = parseInt(subRes.rows[0]?.submitted || 0, 10);
+  } else {
+    teacher = db.prepare(`
+      SELECT t.*, u.name, u.email, u.phone, u.code,
+             d.name as department_name,
+             c.name as homeroom_class_name,
+             (SELECT COUNT(*) FROM students s WHERE s.class_id = t.homeroom_class_id OR s.current_class_id = t.homeroom_class_id) as homeroom_students_count
+      FROM users u
+      LEFT JOIN teachers t ON t.user_id = u.id
+      LEFT JOIN departments d ON t.department_id = d.id
+      LEFT JOIN classes c ON t.homeroom_class_id = c.id
+      WHERE u.id = ?
+    `).get(userId);
+
+    const asg = db.prepare('SELECT COUNT(*) as count FROM assignments WHERE created_by = ?').get(userId);
+    activeAssignmentsCount = asg?.count || 0;
+
+    const sub = db.prepare(`
+      SELECT 
+        SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END) as pending,
+        COUNT(*) as submitted
+      FROM assignment_submissions
+      WHERE assignment_id IN (SELECT id FROM assignments WHERE created_by = ?)
+    `).get(userId);
+    pendingReviewCount = sub?.pending || 0;
+    submittedTodayCount = sub?.submitted || 0;
+  }
+
+  const homeroomClass = teacher?.homeroom_class_name || (teacher?.homeroom_class_id ? '10A1' : 'Bộ môn');
+  totalStudents = Number(teacher?.homeroom_students_count) || 42;
+
   res.json({
     success: true,
     data: {
-      teacherName: 'Cô Mai Lan',
-      department: 'Tổ Toán - Tin học',
-      homeroomClass: '10A1',
+      teacherName: teacher?.name || 'Giáo viên',
+      department: teacher?.department_name || 'Tổ Toán - Tin học',
+      homeroomClass,
+      employeeId: teacher?.employee_id || teacher?.code || 'GV-2024',
+      qualification: teacher?.qualification || 'Cử nhân Sư phạm',
       stats: {
-        totalStudents: 42,
-        activeAssignments: 5,
-        submittedToday: 18,
-        pendingReview: 4,
+        totalStudents,
+        activeAssignments: activeAssignmentsCount || 5,
+        submittedToday: submittedTodayCount || 18,
+        pendingReview: pendingReviewCount || 4,
       },
     },
   });
 });
 
 // Get Teacher Analytics Data
-router.get('/analytics', (req, res) => {
-  // Query all students in Class 10A1
-  const students = db.prepare(`
-    SELECT s.*, u.name, u.code, u.avatar
-    FROM students s
-    JOIN users u ON s.user_id = u.id
-    WHERE s.class_id = 'cls_10A1'
-    ORDER BY s.gpa ASC
-  `).all();
+router.get('/analytics', requirePermission('grade.read'), async (req, res) => {
+  const currentSchoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+  const targetClassId = req.query.classId || (currentSchoolId === 'sch_hoasen' ? 'cls_hoasen_10A1' : 'cls_10A1');
+
+  if (isPostgresConfigured()) {
+    const clsRes = await pgQuery('SELECT id, school_id FROM classes WHERE id = $1', [targetClassId]);
+    if (clsRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy lớp học' });
+    }
+    if (clsRes.rows[0].school_id && clsRes.rows[0].school_id !== currentSchoolId && req.user?.role !== 'super_admin') {
+      return res.status(403).json({ success: false, code: 'TENANT_FORBIDDEN', message: 'Bạn không có quyền truy cập dữ liệu lớp học thuộc trường khác' });
+    }
+  } else {
+    const cls = db.prepare('SELECT id, school_id FROM classes WHERE id = ?').get(targetClassId);
+    if (!cls) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy lớp học' });
+    }
+    if (cls.school_id && cls.school_id !== currentSchoolId && req.user?.role !== 'super_admin') {
+      return res.status(403).json({ success: false, code: 'TENANT_FORBIDDEN', message: 'Bạn không có quyền truy cập dữ liệu lớp học thuộc trường khác' });
+    }
+  }
+
+  // Server-side Assignment Authorization
+  if (req.user?.role === 'teacher') {
+    const isAssigned = await teacherAssignmentsRepository.isTeacherAssignedToClass(req.user.id, targetClassId, {
+      schoolId: currentSchoolId,
+    });
+    if (!isAssigned) {
+      return res.status(403).json({
+        success: false,
+        code: 'TEACHER_NOT_ASSIGNED_TO_CLASS',
+        error: {
+          code: 'TEACHER_NOT_ASSIGNED_TO_CLASS',
+          message: 'Bạn không được phân công giảng dạy hoặc làm chủ nhiệm lớp học này',
+        },
+        message: 'Bạn không được phân công giảng dạy hoặc làm chủ nhiệm lớp học này',
+      });
+    }
+  }
+
+  let students = [];
+  if (isPostgresConfigured()) {
+    const stdRes = await pgQuery(`
+      SELECT s.*, u.name, u.code, u.avatar
+      FROM students s
+      JOIN users u ON s.user_id = u.id
+      WHERE s.class_id = $1
+      ORDER BY s.gpa ASC
+    `, [targetClassId]);
+    students = stdRes.rows;
+  } else {
+    students = db.prepare(`
+      SELECT s.*, u.name, u.code, u.avatar
+      FROM students s
+      JOIN users u ON s.user_id = u.id
+      WHERE s.class_id = ?
+      ORDER BY s.gpa ASC
+    `).all(targetClassId);
+  }
 
   const formattedStudents = students.map((s) => {
     let riskLevel = 'good';
@@ -124,7 +253,7 @@ router.get('/analytics', (req, res) => {
 });
 
 // Create new assignment
-router.post('/assignments', optionalAuth, (req, res) => {
+router.post('/assignments', requirePermission('assignment.create'), async (req, res) => {
   const { title, subject, type, instructions, targetClasses, deadlineDate, deadlineTime, durationMinutes, questions } = req.body;
 
   if (!title) {
@@ -132,9 +261,81 @@ router.post('/assignments', optionalAuth, (req, res) => {
   }
 
   const asgId = `asg_${Date.now()}`;
+  const currentSchoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+  const teacherId = req.user.id;
+
+  // Server-side Assignment Authorization: teacher may only create assignments for assigned classes
+  if (req.user?.role === 'teacher') {
+    const rawTargets = targetClasses || (req.body.targetClass ? [req.body.targetClass] : []);
+    const classesToCheck = Array.isArray(rawTargets) ? rawTargets : [rawTargets];
+
+    for (const targetClass of classesToCheck) {
+      if (!targetClass) continue;
+      const cls = isPostgresConfigured()
+        ? (await pgQuery('SELECT id FROM classes WHERE (id = $1 OR name = $1) AND (school_id = $2 OR school_id IS NULL)', [targetClass, currentSchoolId])).rows[0]
+        : db.prepare('SELECT id FROM classes WHERE (id = ? OR name = ?) AND (school_id = ? OR school_id IS NULL)').get(targetClass, targetClass, currentSchoolId);
+      
+      if (cls) {
+        const isAssigned = await teacherAssignmentsRepository.isTeacherAssignedToClass(req.user.id, cls.id, {
+          schoolId: currentSchoolId,
+        });
+        if (!isAssigned) {
+          return res.status(403).json({
+            success: false,
+            code: 'TEACHER_NOT_ASSIGNED_TO_CLASS',
+            error: {
+              code: 'TEACHER_NOT_ASSIGNED_TO_CLASS',
+              message: `Bạn không được phân công giảng dạy tại lớp ${targetClass}`,
+            },
+            message: `Bạn không được phân công giảng dạy tại lớp ${targetClass}`,
+          });
+        }
+      }
+    }
+  }
+
+  if (isPostgresConfigured()) {
+    await pgQuery(`
+      INSERT INTO assignments (id, title, subject, type, instructions, target_classes, due_date, due_time, duration_minutes, created_by, school_id, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'published')
+    `, [
+      asgId,
+      title,
+      subject || 'Toán học',
+      type || 'quiz',
+      instructions || '',
+      JSON.stringify(targetClasses || ['10A1', '10A2']),
+      deadlineDate || '2024-10-30',
+      deadlineTime || '23:59',
+      durationMinutes || 45,
+      teacherId,
+      currentSchoolId,
+    ]);
+
+    if (Array.isArray(questions)) {
+      for (let idx = 0; idx < questions.length; idx++) {
+        const q = questions[idx];
+        await pgQuery(`
+          INSERT INTO assignment_questions (id, assignment_id, question_order, prompt, points, has_plot, plot_data, options, explanation)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [
+          `q_${asgId}_${idx + 1}`,
+          asgId,
+          idx + 1,
+          q.prompt || `Câu hỏi số ${idx + 1}`,
+          q.points || 1.0,
+          q.hasPlot ? true : false,
+          q.plotData || null,
+          JSON.stringify(q.options || []),
+          q.explanation || '',
+        ]);
+      }
+    }
+  }
+
   db.prepare(`
-    INSERT INTO assignments (id, title, subject, type, instructions, target_classes, due_date, due_time, duration_minutes, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'usr_teacher_1')
+    INSERT INTO assignments (id, title, subject, type, instructions, target_classes, due_date, due_time, duration_minutes, created_by, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published')
   `).run(
     asgId,
     title,
@@ -144,7 +345,8 @@ router.post('/assignments', optionalAuth, (req, res) => {
     JSON.stringify(targetClasses || ['10A1', '10A2']),
     deadlineDate || '2024-10-30',
     deadlineTime || '23:59',
-    durationMinutes || 45
+    durationMinutes || 45,
+    teacherId
   );
 
   // Insert questions if provided
@@ -178,7 +380,7 @@ router.post('/assignments', optionalAuth, (req, res) => {
 });
 
 // Dispatch 1-click notification to parents
-router.post('/intervene-notify', optionalAuth, (req, res) => {
+router.post('/intervene-notify', requirePermission('announcement.publish'), (req, res) => {
   const noticeId = `notif_${Date.now()}`;
   db.prepare(`
     INSERT INTO school_notices (id, title, content, category, tag, tag_type, sender, can_confirm)
@@ -198,21 +400,190 @@ router.post('/intervene-notify', optionalAuth, (req, res) => {
   res.json({ success: true, message: 'Đã gửi thông báo thành công đến phụ huynh!' });
 });
 
-// Get Classes and Student Roster with live gradebook
-router.get('/classes', optionalAuth, (req, res) => {
-  const classId = req.query.classId || 'cls_10A1';
+// Get Classes and Student Roster with live gradebook derived from assignments
+router.get('/classes', requirePermission('class.read'), async (req, res) => {
+  const currentSchoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+  const isTeacherRole = req.user?.role === 'teacher';
 
-  const classes = db.prepare('SELECT * FROM classes ORDER BY grade_level, name').all();
+  let assignedClasses = [];
+  if (isTeacherRole) {
+    assignedClasses = await teacherAssignmentsRepository.findTeacherAssignedClasses(req.user.id, {
+      schoolId: currentSchoolId,
+    });
+  }
 
-  const students = db.prepare(`
+  let classId = req.query.classId;
+
+  // If no classId provided
+  if (!classId) {
+    if (isTeacherRole) {
+      if (assignedClasses.length === 0) {
+        return res.json({
+          success: true,
+          currentClassId: null,
+          classes: [],
+          students: [],
+        });
+      }
+      classId = assignedClasses[0].id;
+    } else {
+      classId = (currentSchoolId === 'sch_hoasen' ? 'cls_hoasen_10A1' : 'cls_10A1');
+    }
+  }
+
+  if (isPostgresConfigured()) {
+    // Check class existence and tenant
+    const clsCheck = await pgQuery('SELECT id, school_id FROM classes WHERE id = $1', [classId]);
+    if (clsCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy lớp học' });
+    }
+    if (clsCheck.rows[0].school_id && clsCheck.rows[0].school_id !== currentSchoolId && req.user?.role !== 'super_admin') {
+      return res.status(403).json({ success: false, code: 'TENANT_FORBIDDEN', message: 'Bạn không có quyền truy cập danh sách lớp học thuộc trường khác' });
+    }
+
+    // Server-side Authorization: Check if teacher is assigned to this class
+    if (isTeacherRole) {
+      const isAssigned = await teacherAssignmentsRepository.isTeacherAssignedToClass(req.user.id, classId, {
+        schoolId: currentSchoolId,
+      });
+      if (!isAssigned) {
+        return res.status(403).json({
+          success: false,
+          code: 'TEACHER_NOT_ASSIGNED_TO_CLASS',
+          error: {
+            code: 'TEACHER_NOT_ASSIGNED_TO_CLASS',
+            message: 'Bạn không được phân công giảng dạy hoặc làm chủ nhiệm lớp học này',
+          },
+          message: 'Bạn không được phân công giảng dạy hoặc làm chủ nhiệm lớp học này',
+        });
+      }
+    }
+
+    let classes = [];
+    if (isTeacherRole) {
+      classes = assignedClasses.map(c => ({
+        id: c.id,
+        name: c.name,
+        grade: c.grade_level,
+        count: Number(c.student_count) || 0,
+        isHomeroom: c.is_homeroom,
+        subjects: c.teaching_subjects || [],
+      }));
+    } else {
+      const classesRes = await pgQuery('SELECT * FROM classes WHERE school_id = $1 ORDER BY grade_level, name', [currentSchoolId]);
+      const rawClasses = classesRes.rows.length > 0 ? classesRes.rows : (await pgQuery('SELECT * FROM classes ORDER BY grade_level, name')).rows;
+      classes = rawClasses.map(c => ({ id: c.id, name: c.name, grade: c.grade_level, count: 42 }));
+    }
+
+    // Student Roster derived from active class_enrollments
+    let stdRes = await pgQuery(`
+      SELECT s.*, u.name, u.code, u.phone, u.avatar
+      FROM class_enrollments ce
+      JOIN students s ON ce.student_id = s.id
+      JOIN users u ON s.user_id = u.id
+      WHERE ce.class_id = $1 AND ce.is_current = TRUE AND ce.status = 'enrolled'
+      ORDER BY s.class_rank ASC, s.gpa DESC
+    `, [classId]);
+
+    // Fallback if no enrollments yet
+    if (stdRes.rows.length === 0) {
+      stdRes = await pgQuery(`
+        SELECT s.*, u.name, u.code, u.phone, u.avatar
+        FROM students s
+        JOIN users u ON s.user_id = u.id
+        WHERE s.class_id = $1
+        ORDER BY s.class_rank ASC, s.gpa DESC
+      `, [classId]);
+    }
+
+    const formattedStudents = await Promise.all(stdRes.rows.map(async (s) => {
+      const gradesRes = await pgQuery(`
+        SELECT subject, test_name, score
+        FROM grades
+        WHERE student_id = $1
+        ORDER BY id DESC
+        LIMIT 3
+      `, [s.id]);
+
+      return {
+        id: s.id,
+        code: s.code || 'HS-10-001',
+        name: s.name,
+        phone: s.phone,
+        avatar: s.avatar,
+        gpa: parseFloat(s.gpa) || 8.0,
+        rank: s.class_rank || '12',
+        attendance: `${s.attendance_rate || 96}%`,
+        status: (parseFloat(s.gpa) || 8.0) >= 8.0 ? 'Giỏi / Xuất sắc' : 'Khá',
+        statusType: (parseFloat(s.gpa) || 8.0) >= 8.0 ? 'success' : 'info',
+        recentGrades: gradesRes.rows,
+      };
+    }));
+
+    return res.json({
+      success: true,
+      currentClassId: classId,
+      classes,
+      students: formattedStudents,
+    });
+  }
+
+  // SQLite fallback
+  const cls = db.prepare('SELECT id, school_id FROM classes WHERE id = ?').get(classId);
+  if (!cls) {
+    return res.status(404).json({ success: false, message: 'Không tìm thấy lớp học' });
+  }
+  if (cls.school_id && cls.school_id !== currentSchoolId && req.user?.role !== 'super_admin') {
+    return res.status(403).json({ success: false, code: 'TENANT_FORBIDDEN', message: 'Bạn không có quyền truy cập danh sách lớp học thuộc trường khác' });
+  }
+
+  if (isTeacherRole) {
+    const isAssigned = await teacherAssignmentsRepository.isTeacherAssignedToClass(req.user.id, classId, {
+      schoolId: currentSchoolId,
+    });
+    if (!isAssigned) {
+      return res.status(403).json({
+        success: false,
+        code: 'TEACHER_NOT_ASSIGNED_TO_CLASS',
+        message: 'Bạn không được phân công giảng dạy hoặc làm chủ nhiệm lớp học này',
+      });
+    }
+  }
+
+  let classes = [];
+  if (isTeacherRole) {
+    classes = assignedClasses.map(c => ({
+      id: c.id,
+      name: c.name,
+      grade: c.grade_level,
+      count: Number(c.student_count) || 0,
+      isHomeroom: c.is_homeroom,
+      subjects: c.teaching_subjects || [],
+    }));
+  } else {
+    const rawClasses = db.prepare('SELECT * FROM classes WHERE school_id = ? OR school_id IS NULL ORDER BY grade_level, name').all(currentSchoolId);
+    classes = rawClasses.map(c => ({ id: c.id, name: c.name, grade: c.grade_level, count: 42 }));
+  }
+
+  let students = db.prepare(`
     SELECT s.*, u.name, u.code, u.phone, u.avatar
-    FROM students s
+    FROM class_enrollments ce
+    JOIN students s ON ce.student_id = s.id
     JOIN users u ON s.user_id = u.id
-    WHERE s.class_id = ?
+    WHERE ce.class_id = ? AND ce.is_current = 1 AND ce.status = 'enrolled'
     ORDER BY s.class_rank ASC, s.gpa DESC
   `).all(classId);
 
-  // Attach recent grades
+  if (students.length === 0) {
+    students = db.prepare(`
+      SELECT s.*, u.name, u.code, u.phone, u.avatar
+      FROM students s
+      JOIN users u ON s.user_id = u.id
+      WHERE s.class_id = ?
+      ORDER BY s.class_rank ASC, s.gpa DESC
+    `).all(classId);
+  }
+
   const formattedStudents = students.map((s) => {
     const recentGrades = db.prepare(`
       SELECT subject, test_name, score, graded_at
@@ -240,88 +611,20 @@ router.get('/classes', optionalAuth, (req, res) => {
   res.json({
     success: true,
     currentClassId: classId,
-    classes: classes.map((c) => ({ id: c.id, name: c.name, grade: c.grade_level, count: 42 })),
+    classes,
     students: formattedStudents,
   });
 });
 
-// Record daily class attendance
-router.post('/attendance', optionalAuth, (req, res) => {
-  const { classId, date, records } = req.body;
-  if (!classId || !Array.isArray(records)) {
-    return res.status(400).json({ success: false, message: 'Dữ liệu điểm danh không hợp lệ' });
-  }
+// Record daily class attendance (delegated to canonical attendance module)
+router.post('/attendance', requirePermission('attendance.take'), attendanceController.takeAttendance);
 
-  const attDate = date || new Date().toISOString().split('T')[0];
+// Get attendance for a class on a date (delegated to canonical attendance module)
+router.get('/attendance', requirePermission('attendance.read'), attendanceController.getSession);
 
-  // Ensure attendance table exists
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS class_attendance (
-      id TEXT PRIMARY KEY,
-      class_id TEXT NOT NULL,
-      student_id TEXT NOT NULL,
-      date TEXT NOT NULL,
-      status TEXT NOT NULL,
-      note TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(class_id, student_id, date)
-    );
-  `);
-
-  const insertStmt = db.prepare(`
-    INSERT INTO class_attendance (id, class_id, student_id, date, status, note)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(class_id, student_id, date) DO UPDATE SET
-      status = excluded.status,
-      note = excluded.note
-  `);
-
-  let unexcusedCount = 0;
-  for (const rec of records) {
-    const recId = `att_${classId}_${rec.studentId}_${attDate}`;
-    insertStmt.run(recId, classId, rec.studentId, attDate, rec.status || 'present', rec.note || '');
-    if (rec.status === 'unexcused') {
-      unexcusedCount++;
-      const student = db.prepare('SELECT u.name FROM students s JOIN users u ON s.user_id = u.id WHERE s.id = ?').get(rec.studentId);
-      db.prepare(`
-        INSERT INTO school_notices (id, title, content, category, tag, tag_type, sender, can_confirm)
-        VALUES (?, ?, ?, 'parent', 'Vắng mặt', 'danger', 'Giáo viên chủ nhiệm', 1)
-      `).run(
-        `notif_abs_${Date.now()}_${rec.studentId}`,
-        `Cảnh báo chuyên cần: Em ${student?.name || 'học sinh'} vắng mặt không phép`,
-        `Nhà trường thông báo em ${student?.name || 'học sinh'} vắng mặt không có phép trong buổi học ngày ${attDate}. Kính đề nghị phụ huynh liên hệ gấp với giáo viên chủ nhiệm.`
-      );
-    }
-  }
-
-  // Audit log
-  db.prepare(`
-    INSERT INTO audit_logs (id, actor_name, role, action, badge, badge_type)
-    VALUES (?, 'Cô Mai Lan', 'teacher', ?, 'Điểm danh', 'info')
-  `).run(`log_${Date.now()}`, `Đã hoàn tất điểm danh ngày ${attDate} cho lớp ${classId} (${records.length} học sinh).`);
-
-  res.json({
-    success: true,
-    message: `Đã lưu điểm danh ngày ${attDate} thành công!`,
-    unexcusedAlerts: unexcusedCount,
-  });
-});
-
-// Get attendance for a class on a date
-router.get('/attendance', optionalAuth, (req, res) => {
-  const classId = req.query.classId || 'cls_10A1';
-  const date = req.query.date || new Date().toISOString().split('T')[0];
-
-  try {
-    const rows = db.prepare('SELECT * FROM class_attendance WHERE class_id = ? AND date = ?').all(classId, date);
-    res.json({ success: true, date, classId, records: rows });
-  } catch {
-    res.json({ success: true, date, classId, records: [] });
-  }
-});
 
 // Teacher enters or edits a student's grade
-router.post('/grades', optionalAuth, (req, res) => {
+router.post('/grades', requirePermission('grade.create'), (req, res) => {
   const { studentId, subject, testName, score, maxScore, comment } = req.body;
 
   if (!studentId || score === undefined) {
@@ -352,7 +655,7 @@ router.post('/grades', optionalAuth, (req, res) => {
 });
 
 // Get Assignments with grading queue & submissions
-router.get('/assignments', optionalAuth, (req, res) => {
+router.get('/assignments', requirePermission('assignment.read'), (req, res) => {
   const assignments = db.prepare(`
     SELECT a.*,
       (SELECT COUNT(*) FROM assignment_questions q WHERE q.assignment_id = a.id) as question_count,
@@ -409,7 +712,7 @@ router.get('/assignments', optionalAuth, (req, res) => {
 });
 
 // Grade student submission
-router.post('/submissions/:id/grade', optionalAuth, (req, res) => {
+router.post('/submissions/:id/grade', requirePermission('assignment.grade'), (req, res) => {
   const submissionId = req.params.id;
   const { score, feedback } = req.body;
 
@@ -423,7 +726,7 @@ router.post('/submissions/:id/grade', optionalAuth, (req, res) => {
 });
 
 // Teacher pedagogical summary report
-router.get('/reports', optionalAuth, (req, res) => {
+router.get('/reports', requireAnyPermission('teacher.read', 'grade.read'), (req, res) => {
   const avgScoresByTopic = [
     { topic: 'Khảo sát hàm số bậc hai', avg: 8.6, passRate: '95%', target: '90%' },
     { topic: 'Bất phương trình & Dấu tam thức', avg: 7.8, passRate: '88%', target: '85%' },
@@ -452,7 +755,7 @@ router.get('/reports', optionalAuth, (req, res) => {
 });
 
 // Teacher sends risk intervention notification to parents
-router.post(['/intervene-notify', '/analytics/notify'], optionalAuth, (req, res) => {
+router.post(['/intervene-notify', '/analytics/notify'], requirePermission('announcement.publish'), (req, res) => {
   const notifId = `notif_${Date.now()}`;
   db.prepare(`
     INSERT INTO school_notices (id, title, content, category, tag, tag_type, sender, can_confirm, confirmed_by_users)
@@ -473,6 +776,32 @@ router.post(['/intervene-notify', '/analytics/notify'], optionalAuth, (req, res)
     message: 'Đã gửi thông báo can thiệp tới phụ huynh thành công!',
     noticeId: notifId,
   });
+});
+
+// Get Teacher Timetable (Canonical Source)
+router.get('/timetable', requirePermission('class.read'), async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    const schoolId = req.user.school_id || 'sch_bacau';
+    const semesterId = req.query.semesterId || null;
+
+    const result = await timetableService.getTeacherTimetable({
+      teacherId,
+      schoolId,
+      semesterId,
+    });
+
+    return res.json(result);
+  } catch (err) {
+    return res.status(err.status || 500).json({
+      success: false,
+      code: err.code || 'SERVER_ERROR',
+      error: {
+        code: err.code || 'SERVER_ERROR',
+        message: err.message,
+      },
+    });
+  }
 });
 
 export default router;

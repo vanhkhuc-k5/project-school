@@ -34,33 +34,33 @@ export function LoginPage({ onLoginSuccess }) {
       id: 'student',
       label: 'Học sinh',
       icon: GraduationCap,
-      placeholder: 'VD: HS-2024-889 hoặc email học sinh',
-      tip: 'Dành cho học sinh: Sử dụng mã định danh học sinh (VD: HS-2024-889) hoặc email trường cấp.',
-      testAccount: { code: 'HS-2024-889', pass: '123456', name: 'Nguyễn Minh Khang (Lớp 10A1)' },
+      placeholder: 'VD: teststudent1 hoặc email học sinh',
+      tip: 'Dành cho học sinh: Sử dụng mã định danh học sinh (VD: teststudent1) hoặc email trường cấp.',
+      testAccount: { code: 'teststudent1', pass: 'devpassword123', name: 'Em Nguyễn Văn Test (Lớp 10A)' },
     },
     {
       id: 'teacher',
       label: 'Giáo viên',
       icon: Briefcase,
-      placeholder: 'VD: mailan@school.edu.vn hoặc mã giáo viên',
-      tip: 'Dành cho giáo viên: Sử dụng email nội bộ do phòng CNTT nhà trường cấp (VD: mailan@school.edu.vn).',
-      testAccount: { code: 'mailan@school.edu.vn', pass: '123456', name: 'Cô Mai Lan (Tổ Toán học)' },
+      placeholder: 'VD: testteacher1 hoặc email giáo viên',
+      tip: 'Dành cho giáo viên: Sử dụng email nội bộ do phòng CNTT nhà trường cấp (VD: testteacher1).',
+      testAccount: { code: 'testteacher1', pass: 'devpassword123', name: 'Thầy Đỗ Văn Test (Tổ Toán học)' },
     },
     {
       id: 'parent',
       label: 'Phụ huynh',
       icon: Users,
-      placeholder: 'VD: PH-10A1-042 hoặc số điện thoại',
-      tip: 'Dành cho phụ huynh: Sử dụng mã định danh liên lạc học sinh (VD: PH-10A1-042) hoặc số điện thoại đã đăng ký.',
-      testAccount: { code: 'PH-10A1-042', pass: '123456', name: 'Nguyễn Văn Hồi (PH em Khang)' },
+      placeholder: 'VD: testparent1 hoặc email phụ huynh',
+      tip: 'Dành cho phụ huynh: Sử dụng mã định danh liên lạc học sinh (VD: testparent1) hoặc email đã đăng ký.',
+      testAccount: { code: 'testparent1', pass: 'devpassword123', name: 'Ông Nguyễn Văn Phụ Huynh (PH em Test)' },
     },
     {
       id: 'admin',
       label: 'Quản trị',
       icon: Shield,
-      placeholder: 'VD: bgh.hoainam@school.edu.vn',
+      placeholder: 'VD: testadmin hoặc email quản trị',
       tip: 'Dành cho Ban Giám Hiệu & Quản trị viên hệ thống có chữ ký số và phân quyền quản lý cấp cao.',
-      testAccount: { code: 'bgh.hoainam@school.edu.vn', pass: '123456', name: 'GS.TS Vũ Hoài Nam (Hiệu trưởng)' },
+      testAccount: { code: 'testadmin', pass: 'devpassword123', name: 'Admin Test Dev (Quản trị)' },
     },
   ];
 
@@ -187,14 +187,16 @@ export function LoginPage({ onLoginSuccess }) {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4" noValidate>
               <div>
-                <label className="block text-xs font-medium text-text-primary mb-1.5">
+                <label htmlFor="login-identifier" className="block text-xs font-medium text-text-primary mb-1.5">
                   Email hoặc Mã định danh
                 </label>
                 <input
+                  id="login-identifier"
                   type="text"
                   value={identifier}
+                  autoComplete={selectedRole === 'parent' ? 'tel' : selectedRole === 'teacher' ? 'email' : 'username'}
                   onChange={(e) => {
                     setIdentifier(e.target.value);
                     if (errorMessage) setErrorMessage('');
@@ -207,27 +209,32 @@ export function LoginPage({ onLoginSuccess }) {
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-medium text-text-primary">Mật khẩu</label>
-                  <a href="#forgot" onClick={(e) => e.preventDefault()} className="text-xs text-ocean hover:underline">
+                  <label htmlFor="login-password" className="text-xs font-medium text-text-primary">
+                    Mật khẩu
+                  </label>
+                  <a href="#forgot" onClick={(e) => e.preventDefault()} className="text-xs text-ocean hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50 focus-visible:ring-offset-1 rounded">
                     Quên mật khẩu?
                   </a>
                 </div>
                 <div className="relative">
                   <input
+                    id="login-password"
                     type={showPassword ? 'text' : 'password'}
                     value={password}
+                    autoComplete="current-password"
                     onChange={(e) => {
                       setPassword(e.target.value);
                       if (errorMessage) setErrorMessage('');
                     }}
                     placeholder="Nhập mật khẩu"
-                    className="w-full h-11 pl-3.5 pr-10 bg-white border border-hairline rounded text-sm text-text-primary focus:border-ocean focus:ring-2 focus:ring-ocean/15 outline-none transition-all"
+                    className="w-full h-11 pl-3.5 pr-10 bg-white border border-hairline rounded text-sm text-text-primary placeholder:text-text-secondary focus:border-ocean focus:ring-2 focus:ring-ocean/15 outline-none transition-all"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary p-1"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary p-1 min-w-[44px] min-h-[44px] flex items-center justify-center -mr-1 rounded transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50"
+                    aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -235,8 +242,9 @@ export function LoginPage({ onLoginSuccess }) {
               </div>
 
               <div className="flex items-center justify-between pt-1">
-                <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-text-secondary">
+                <label htmlFor="login-remember" className="flex items-center gap-2 cursor-pointer select-none text-xs text-text-secondary">
                   <input
+                    id="login-remember"
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}

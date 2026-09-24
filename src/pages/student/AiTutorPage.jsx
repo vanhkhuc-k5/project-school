@@ -1,14 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
-import { AI_TUTOR_INITIAL_DATA } from '../../mock/aiTutorData';
 import { aiTutorApi } from '../../services/api';
 import {
   Sparkles,
   History,
   RotateCcw,
-  BookOpen,
   Send,
   Image as ImageIcon,
   Paperclip,
@@ -20,109 +18,221 @@ import {
   CheckCircle2,
   AlertTriangle,
   FileCheck,
+  Wifi,
+  WifiOff,
+  Loader2,
 } from 'lucide-react';
 
+// ── Default topic list for unauthenticated/demo mode ───────────────────────────
+const DEFAULT_TOPICS = [
+  'Toán 10 - Phương trình bậc 2 & Định lý Vi-ét',
+  'Toán 10 - Bất phương trình bậc hai một ẩn',
+  'Toán 10 - Dấu của tam thức bậc hai',
+  'Vật lý 11 - Định luật Ôm cho toàn mạch',
+  'Hóa học 11 - Cân bằng phản ứng Oxi hóa - Khử',
+];
+
+const DEFAULT_QUICK_CHIPS = [
+  '💡 Gợi ý tiếp',
+  '⚡ Giải thích lại dễ hiểu hơn',
+  '✍️ Cho ví dụ tương tự tự luyện',
+  '🔍 Kiểm tra đáp án câu 1.1b',
+  '📋 Tóm tắt sơ đồ tư duy Định lý Vi-ét',
+];
+
+// ── Normalize a backend message to the shape the UI expects ───────────────────
+function normalizeMessage(msg, fallbackName = 'Học sinh') {
+  if (!msg) return null;
+  return {
+    id: msg.id || `msg_${Date.now()}`,
+    sender: msg.sender || 'user',
+    text: msg.text || msg.content?.intro || '',
+    time: msg.time || formatTime(msg.createdAt || new Date().toISOString()),
+    studentName: msg.studentName || fallbackName,
+    topic: msg.topic || '',
+    hasImage: Boolean(msg.hasImage || msg.has_image),
+    imageCaption: msg.imageCaption || msg.image_caption || '',
+    imageNote: msg.imageNote || '',
+    badge: msg.badge || undefined,
+    ocrStatus: msg.ocrStatus || msg.ocr_status || undefined,
+    content: msg.content || (msg.aiContent ? { intro: msg.text } : { intro: msg.text }),
+  };
+}
+
+function formatTime(isoString) {
+  try {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'Vừa xong';
+    if (diffMins < 60) return `${diffMins} phút trước`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)} giờ trước`;
+    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return 'Vừa xong';
+  }
+}
+
+function ErrorBanner({ message, onRetry }) {
+  return (
+    <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+      <AlertTriangle className="w-4 h-4 shrink-0" />
+      <span className="flex-1">{message}</span>
+      {onRetry && (
+        <Button variant="secondary" size="sm" onClick={onRetry}>
+          Thử lại
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function LoadingIndicator() {
+  return (
+    <div className="flex items-center gap-2 text-xs text-text-secondary">
+      <Loader2 className="w-3.5 h-3.5 animate-spin text-ocean" />
+      <span>AI đang suy nghĩ…</span>
+    </div>
+  );
+}
+
 export function AiTutorPage() {
-  const [data, setData] = useState(AI_TUTOR_INITIAL_DATA);
-  const [selectedTopic, setSelectedTopic] = useState(data.currentTopic);
+  const [messages, setMessages] = useState([]);
+  const [topics, setTopics] = useState(DEFAULT_TOPICS);
+  const [selectedTopic, setSelectedTopic] = useState(DEFAULT_TOPICS[0]);
   const [inputText, setInputText] = useState('');
-  const [selectedOption, setSelectedOption] = useState(null);
-  const [quizFeedback, setQuizFeedback] = useState(null);
+  const [isAiTyping, setIsAiTyping] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isAiTyping, setIsAiTyping] = useState(false);
+  const [selectedOption, setSelectedOption] = useState(null);
+  const [quizFeedback, setQuizFeedback] = useState(null);
+
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // ── Load initial conversation history ─────────────────────────────────────
+  const loadHistory = useCallback(async () => {
+    setLoadError(null);
+    try {
+      const history = await aiTutorApi.getMessages({ topic: selectedTopic });
+      if (history && history.length > 0) {
+        setMessages(history.map(m => normalizeMessage(m)));
+      }
+    } catch (err) {
+      console.warn('[AiTutor] Could not load history:', err.message);
+      setIsOnline(false);
+    }
+  }, [selectedTopic]);
 
   useEffect(() => {
-    let mounted = true;
-    aiTutorApi.getMessages().then((msgs) => {
-      if (mounted && msgs && msgs.length > 0) {
-        setData((prev) => ({ ...prev, messages: msgs }));
-      }
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    loadHistory();
+  }, [loadHistory]);
 
+  // ── Auto-scroll to bottom when new messages arrive ───────────────────────
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isAiTyping]);
+
+  // ── Send message to AI Tutor backend ────────────────────────────────────
   const handleSend = async () => {
-    if (!inputText.trim()) return;
-    const text = inputText;
-    const newMsg = {
+    const text = inputText.trim();
+    if (!text) return;
+
+    const userMsg = {
       id: `user_${Date.now()}`,
       sender: 'user',
+      text,
       time: 'Vừa xong',
-      studentName: 'Khoa Lê',
-      text: text,
+      studentName: 'Học sinh',
+      topic: selectedTopic,
+      content: { intro: text },
     };
-    setData((prev) => ({
-      ...prev,
-      messages: [...prev.messages, newMsg],
-    }));
+
+    // Optimistically append user message
+    setMessages(prev => [...prev, userMsg]);
     setInputText('');
     setIsAiTyping(true);
+    setLoadError(null);
 
     try {
       const reply = await aiTutorApi.sendMessage(text, selectedTopic);
+
       if (reply) {
-        setData((prev) => ({
-          ...prev,
-          messages: [...prev.messages, reply],
-        }));
+        const normalizedReply = normalizeMessage(reply);
+        setMessages(prev => [...prev, normalizedReply]);
+      } else {
+        // Backend returned failure — show error banner
+        setLoadError('Gia sư AI không phản hồi. Vui lòng thử lại.');
+        setMessages(prev => prev.slice(0, -1)); // rollback optimistic user msg
       }
+    } catch (err) {
+      console.error('[AiTutor] Chat error:', err);
+      setLoadError(`Lỗi: ${err.message || 'Không thể kết nối Gia sư AI.'}`);
+      setMessages(prev => prev.slice(0, -1)); // rollback optimistic user msg
     } finally {
       setIsAiTyping(false);
+      inputRef.current?.focus();
     }
   };
 
+  // ── Clear conversation ────────────────────────────────────────────────────
+  const handleClear = async () => {
+    try {
+      await aiTutorApi.clearMessages(selectedTopic);
+      setMessages([]);
+    } catch (err) {
+      console.warn('[AiTutor] Clear failed:', err.message);
+    }
+  };
+
+  // ── Quick suggestion chip click ─────────────────────────────────────────
+  const handleQuickChip = (chip) => {
+    // Strip emoji prefix to get the actual prompt text
+    const text = chip.replace(/^[^\w\s]+\s*/, '').trim();
+    setInputText(text);
+    inputRef.current?.focus();
+  };
+
+  // ── Quiz option click ───────────────────────────────────────────────────
   const handleOptionClick = (opt) => {
     setSelectedOption(opt.id);
     setQuizFeedback(opt.feedback);
   };
 
-  const handleGeneratePracticeQuiz = () => {
-    setIsAiTyping(true);
-    setTimeout(() => {
-      const quizMsg = {
-        id: `ai_quiz_${Date.now()}`,
-        sender: 'ai',
-        time: 'Vừa xong',
-        badge: 'Bộ đề luyện tập thông minh',
-        content: {
-          intro: `Gia sư AI đã tổng hợp bộ 3 câu hỏi trắc nghiệm trọng tâm về chuyên đề "${selectedTopic}". Hãy chọn câu trả lời đúng bên dưới để hệ thống đánh giá mức độ hiểu bài nhé:`,
-          interactiveTask: {
-            title: `Câu hỏi củng cố: ${selectedTopic}`,
-            prompt: 'Điều kiện cần và đủ để tam thức bậc hai f(x) = ax² + bx + c luôn dương với mọi x thuộc R là:',
-            options: [
-              { id: 'A', text: 'a > 0 và Δ < 0', isCorrect: true, feedback: 'Chính xác! Khi a > 0 và Δ < 0 thì đồ thị parabol nằm hoàn toàn phía trên trục hoành.' },
-              { id: 'B', text: 'a > 0 và Δ > 0', isCorrect: false, feedback: 'Chưa đúng. Khi Δ > 0 thì tam thức có 2 nghiệm phân biệt và đổi dấu qua 2 nghiệm đó.' },
-              { id: 'C', text: 'a < 0 và Δ < 0', isCorrect: false, feedback: 'Chưa đúng. Khi a < 0 và Δ < 0 thì f(x) luôn âm với mọi x.' },
-              { id: 'D', text: 'a > 0 và Δ = 0', isCorrect: false, feedback: 'Chưa đủ. Khi Δ = 0 thì f(x) ≥ 0, có 1 điểm tại x = -b/2a bằng 0 chứ không dương hẳn.' },
-            ],
-          },
-        },
-      };
-      setData((prev) => ({
-        ...prev,
-        messages: [...prev.messages, quizMsg],
-      }));
-      setIsAiTyping(false);
-    }, 600);
-  };
-
-  const handleCopyFormula = () => {
-    navigator.clipboard?.writeText?.('x = (-b ± √Δ) / 2a');
+  // ── Copy / speak actions ────────────────────────────────────────────────
+  const handleCopy = () => {
+    const lastAiMsg = [...messages].reverse().find(m => m.sender === 'ai');
+    const text = lastAiMsg?.content?.intro || lastAiMsg?.text || '';
+    navigator.clipboard?.writeText?.(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleSpeak = () => {
-    setIsSpeaking(!isSpeaking);
-    setTimeout(() => setIsSpeaking(false), 3000);
+    const lastAiMsg = [...messages].reverse().find(m => m.sender === 'ai');
+    const text = lastAiMsg?.content?.intro || lastAiMsg?.text || '';
+    if (!text) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'vi-VN';
+    speechSynthesis.speak(utterance);
+    setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Top Banner & Control */}
+      {/* ── Top Banner ──────────────────────────────────────────────── */}
       <Card padding="p-5" className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -131,14 +241,14 @@ export function AiTutorPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-medium text-text-primary">Gia sư AI EduNordic</h1>
-                <Badge variant="success" size="sm">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span>Sẵn sàng 24/7</span>
+                <h1 className="text-base font-medium text-text-primary">Gia sư AI EduPortal</h1>
+                <Badge variant={isOnline ? 'success' : 'warning'} size="sm">
+                  <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'} animate-pulse`} />
+                  <span>{isOnline ? 'Trực tuyến' : 'Chế độ offline'}</span>
                 </Badge>
               </div>
               <p className="text-xs text-text-secondary">
-                Trợ lý sư phạm cá nhân hóa phương pháp Socratic (dẫn dắt tư duy tự học)
+                Trợ lý sư phạm cá nhân hóa — phương pháp Socratic (dẫn dắt tư duy tự học)
               </p>
             </div>
           </div>
@@ -147,26 +257,21 @@ export function AiTutorPage() {
             <Button
               variant="secondary"
               size="sm"
-              icon={Sparkles}
-              onClick={handleGeneratePracticeQuiz}
+              icon={isOnline ? Wifi : WifiOff}
+              onClick={() => setIsOnline(prev => !prev)}
             >
-              Luyện tập nhanh
+              {isOnline ? 'Online' : 'Offline'}
             </Button>
-            <Button variant="secondary" size="sm" icon={History}>
+            <Button variant="secondary" size="sm" icon={History} onClick={loadHistory}>
               Lịch sử
             </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              icon={RotateCcw}
-              onClick={() => setData(AI_TUTOR_INITIAL_DATA)}
-            >
-              Làm mới
+            <Button variant="primary" size="sm" icon={RotateCcw} onClick={handleClear}>
+              Xóa đoạn chat
             </Button>
           </div>
         </div>
 
-        {/* Topic dropdown selector */}
+        {/* Topic selector */}
         <div className="flex items-center gap-3 pt-3 hairline-t">
           <span className="text-xs font-medium text-text-secondary whitespace-nowrap">
             Chủ đề hiện tại:
@@ -177,10 +282,8 @@ export function AiTutorPage() {
               onChange={(e) => setSelectedTopic(e.target.value)}
               className="w-full h-9 pl-3 pr-8 bg-surface-neutral border border-hairline rounded text-xs text-text-primary font-medium focus:border-ocean outline-none appearance-none"
             >
-              {data.topics.map((t, idx) => (
-                <option key={idx} value={t}>
-                  {t}
-                </option>
+              {topics.map((t, idx) => (
+                <option key={idx} value={t}>{t}</option>
               ))}
             </select>
             <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
@@ -188,9 +291,37 @@ export function AiTutorPage() {
         </div>
       </Card>
 
-      {/* Chat Messages Stream */}
-      <div className="space-y-6">
-        {data.messages.map((msg) => {
+      {/* ── Error Banner ────────────────────────────────────────────── */}
+      {loadError && (
+        <ErrorBanner message={loadError} onRetry={handleSend} />
+      )}
+
+      {/* ── Message Stream ──────────────────────────────────────────── */}
+      <div className="space-y-6 min-h-[300px]">
+        {messages.length === 0 && !isAiTyping && (
+          <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
+            <div className="w-14 h-14 rounded-full bg-sky/20 flex items-center justify-center">
+              <Sparkles className="w-7 h-7 text-ocean" />
+            </div>
+            <p className="text-sm text-text-secondary max-w-sm">
+              Chào em! Em có thể đặt câu hỏi về bài tập, giải thích khái niệm,
+              hoặc nhờ thầy hướng dẫn từng bước giải bài toán nhé.
+            </p>
+            <div className="flex flex-wrap justify-center gap-2 max-w-md">
+              {DEFAULT_QUICK_CHIPS.map((chip, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleQuickChip(chip)}
+                  className="whitespace-nowrap px-3 py-1.5 rounded-pill bg-surface-neutral hover:bg-sky text-xs text-text-secondary hover:text-primary transition-colors border border-hairline"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map((msg) => {
           if (msg.sender === 'ai') {
             return (
               <div key={msg.id} className="flex gap-3 max-w-4xl">
@@ -207,12 +338,13 @@ export function AiTutorPage() {
                   </div>
 
                   <div className="bg-white rounded-card border border-hairline p-5 shadow-whisper space-y-4">
+                    {/* Main text content */}
                     <p className="text-sm text-text-primary leading-relaxed whitespace-pre-line">
-                      {msg.content.intro}
+                      {msg.content?.intro || msg.text}
                     </p>
 
-                    {/* Formula standard box if present */}
-                    {msg.content.formula && (
+                    {/* Formula box */}
+                    {msg.content?.formula && (
                       <div className="p-4 bg-surface-neutral rounded border border-hairline flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
                           <span className="text-[10px] font-medium text-text-secondary uppercase tracking-wider block">
@@ -229,7 +361,7 @@ export function AiTutorPage() {
                     )}
 
                     {/* Step 1 */}
-                    {msg.content.step1Title && (
+                    {msg.content?.step1Title && (
                       <div className="space-y-1 text-xs">
                         <div className="font-medium text-text-primary flex items-center gap-1.5">
                           <span className="w-4 h-4 rounded-full bg-primary text-white text-[10px] flex items-center justify-center">1</span>
@@ -242,25 +374,29 @@ export function AiTutorPage() {
                     )}
 
                     {/* Step 2 */}
-                    {msg.content.step2Title && (
+                    {msg.content?.step2Title && (
                       <div className="space-y-2 text-xs">
                         <div className="font-medium text-text-primary flex items-center gap-1.5">
                           <span className="w-4 h-4 rounded-full bg-primary text-white text-[10px] flex items-center justify-center">2</span>
                           <span>{msg.content.step2Title}</span>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-5">
-                          <div className="p-2.5 bg-sky/40 border border-ocean/20 rounded font-medium text-primary">
-                            {msg.content.root1}
-                          </div>
-                          <div className="p-2.5 bg-sky/40 border border-ocean/20 rounded font-medium text-primary">
-                            {msg.content.root2}
-                          </div>
+                          {msg.content.root1 && (
+                            <div className="p-2.5 bg-sky/40 border border-ocean/20 rounded font-medium text-primary">
+                              {msg.content.root1}
+                            </div>
+                          )}
+                          {msg.content.root2 && (
+                            <div className="p-2.5 bg-sky/40 border border-ocean/20 rounded font-medium text-primary">
+                              {msg.content.root2}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
 
                     {/* Tip box */}
-                    {msg.content.tipTitle && (
+                    {msg.content?.tipTitle && (
                       <div className="p-3.5 bg-sky/50 border border-ocean/20 rounded text-xs space-y-1">
                         <div className="font-medium text-primary flex items-center gap-1.5">
                           <Sparkles className="w-3.5 h-3.5 text-ocean" />
@@ -272,8 +408,8 @@ export function AiTutorPage() {
                       </div>
                     )}
 
-                    {/* Fast box & Timewaste box in OCR response */}
-                    {msg.content.fastBox && (
+                    {/* Fast box */}
+                    {msg.content?.fastBox && (
                       <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded space-y-1.5">
                         <div className="text-xs font-medium text-emerald-800 flex items-center gap-1.5">
                           <CheckCircle2 className="w-4 h-4 text-success" />
@@ -285,7 +421,8 @@ export function AiTutorPage() {
                       </div>
                     )}
 
-                    {msg.content.timeWasteBox && (
+                    {/* Timewaste box */}
+                    {msg.content?.timeWasteBox && (
                       <div className="p-4 bg-amber-50/70 border border-amber-200 rounded space-y-1.5">
                         <div className="text-xs font-medium text-amber-800 flex items-center gap-1.5">
                           <AlertTriangle className="w-4 h-4 text-warning-dark" />
@@ -298,7 +435,7 @@ export function AiTutorPage() {
                     )}
 
                     {/* Interactive Quiz Task */}
-                    {msg.content.interactiveTask && (
+                    {msg.content?.interactiveTask && (
                       <div className="p-4 bg-white border-2 border-dashed border-ocean/40 rounded-card space-y-3">
                         <div className="text-xs font-medium text-primary flex items-center gap-1.5">
                           <Sparkles className="w-4 h-4 text-ocean" />
@@ -308,7 +445,7 @@ export function AiTutorPage() {
                           {msg.content.interactiveTask.prompt}
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {msg.content.interactiveTask.options.map((opt) => {
+                          {(msg.content.interactiveTask.options || []).map((opt) => {
                             const isChosen = selectedOption === opt.id;
                             return (
                               <button
@@ -337,22 +474,16 @@ export function AiTutorPage() {
                     )}
                   </div>
 
-                  {/* AI Message Action Buttons */}
+                  {/* AI message actions */}
                   <div className="flex items-center gap-3 text-xs text-text-secondary pl-1">
-                    <button
-                      onClick={handleCopyFormula}
-                      className="hover:text-primary flex items-center gap-1"
-                    >
+                    <button onClick={handleCopy} className="hover:text-primary flex items-center gap-1">
                       <Copy className="w-3.5 h-3.5" />
                       <span>{copied ? 'Đã sao chép!' : 'Tóm chép'}</span>
                     </button>
                     <span>•</span>
-                    <button
-                      onClick={handleSpeak}
-                      className="hover:text-primary flex items-center gap-1"
-                    >
+                    <button onClick={handleSpeak} className="hover:text-primary flex items-center gap-1">
                       <Volume2 className={`w-3.5 h-3.5 ${isSpeaking ? 'text-ocean animate-bounce' : ''}`} />
-                      <span>{isSpeaking ? 'Đang đọc...' : 'Nghe giảng'}</span>
+                      <span>{isSpeaking ? 'Đang đọc…' : 'Nghe giảng'}</span>
                     </button>
                     <span>•</span>
                     <button className="hover:text-primary flex items-center gap-1">
@@ -364,19 +495,17 @@ export function AiTutorPage() {
               </div>
             );
           } else {
-            // Student Message
+            // Student message
             return (
               <div key={msg.id} className="flex justify-end gap-3">
                 <div className="max-w-2xl space-y-2 text-right">
                   <div className="flex items-center justify-end gap-2 text-xs text-text-secondary">
-                    <span className="font-medium text-text-primary">{msg.studentName || 'Khoa Lê'}</span>
+                    <span className="font-medium text-text-primary">{msg.studentName}</span>
                     <span>{msg.time}</span>
                   </div>
-
                   <div className="bg-[#0F3D5C] text-white rounded-card p-5 shadow-whisper text-left space-y-3">
-                    <p className="text-sm leading-relaxed">{msg.text}</p>
+                    <p className="text-sm leading-relaxed whitespace-pre-line">{msg.text}</p>
 
-                    {/* Handwriting Notebook Simulation Photo */}
                     {msg.hasImage && (
                       <div className="rounded border border-white/20 overflow-hidden bg-amber-50/95 text-slate-800 p-3 shadow-inner">
                         <div className="flex items-center justify-between text-[11px] text-slate-500 hairline-b pb-1.5 mb-2 font-mono">
@@ -388,10 +517,7 @@ export function AiTutorPage() {
                         <div className="font-serif italic text-xs leading-relaxed space-y-1 bg-white/70 p-2.5 rounded border border-amber-200/60">
                           <div>2. Bài tập:</div>
                           <div>Cho pt: x² - 2(m-1)x + 2m - 5 = 0</div>
-                          <div>Tìm m để pt có 2 nghiệm x₁, x₂ trái dấu...</div>
-                          <div className="text-ocean font-mono not-italic text-[11px]">
-                            👉 Xét: P = c/a &lt; 0 &hArr; (2m - 5) / 1 &lt; 0 ???
-                          </div>
+                          <div>Tìm m để pt có 2 nghiệm x₁, x₂ trái dấu…</div>
                         </div>
                       </div>
                     )}
@@ -412,16 +538,43 @@ export function AiTutorPage() {
             );
           }
         })}
+
+        {/* ── AI Typing Indicator ────────────────────────────────────── */}
+        {isAiTyping && (
+          <div className="flex gap-3 max-w-4xl">
+            <div className="w-8 h-8 rounded-full bg-sky text-primary flex items-center justify-center shrink-0 border border-ocean/30">
+              <Sparkles className="w-4 h-4 text-ocean" />
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-text-primary">Gia sư AI</span>
+                <LoadingIndicator />
+              </div>
+              <div className="bg-white rounded-card border border-hairline p-5 shadow-whisper">
+                <div className="flex items-center gap-2 text-xs text-text-secondary">
+                  <div className="flex gap-1">
+                    <span className="w-2 h-2 rounded-full bg-ocean animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-2 h-2 rounded-full bg-ocean animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-2 h-2 rounded-full bg-ocean animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                  <span>AI đang soạn câu trả lời…</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Box with quick suggestion chips */}
+      {/* ── Input Box ────────────────────────────────────────────────── */}
       <Card padding="p-4" className="sticky bottom-4 z-20 shadow-popover">
-        {/* Quick Chips */}
+        {/* Quick suggestion chips */}
         <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-2 hairline-b">
-          {data.quickChips.map((chip, idx) => (
+          {DEFAULT_QUICK_CHIPS.map((chip, idx) => (
             <button
               key={idx}
-              onClick={() => setInputText(chip.replace(/^[^\w\s]+\s*/, ''))}
+              onClick={() => handleQuickChip(chip)}
               className="whitespace-nowrap px-3 py-1.5 rounded-pill bg-surface-neutral hover:bg-sky text-xs text-text-secondary hover:text-primary transition-colors border border-hairline"
             >
               {chip}
@@ -429,24 +582,21 @@ export function AiTutorPage() {
           ))}
         </div>
 
-        {/* Text Area */}
+        {/* Text area */}
         <div className="relative">
           <textarea
+            ref={inputRef}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder="Đặt câu hỏi cho Gia sư AI hoặc dán nội dung bài tập vào đây (Shift + Enter để xuống dòng)..."
+            onKeyDown={handleKeyDown}
+            placeholder="Đặt câu hỏi cho Gia sư AI hoặc dán nội dung bài tập vào đây (Shift + Enter để xuống dòng)…"
             rows={3}
             className="w-full bg-transparent text-sm text-text-primary placeholder:text-text-secondary focus:outline-none resize-none"
+            disabled={isAiTyping}
           />
         </div>
 
-        {/* Toolbar & Send button */}
+        {/* Toolbar & send */}
         <div className="flex items-center justify-between pt-2 hairline-t">
           <div className="flex items-center gap-1">
             <button
@@ -482,6 +632,7 @@ export function AiTutorPage() {
               icon={Send}
               iconPosition="right"
               onClick={handleSend}
+              disabled={isAiTyping || !inputText.trim()}
             >
               Gửi câu hỏi
             </Button>

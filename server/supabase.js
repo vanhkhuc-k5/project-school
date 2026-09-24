@@ -1,13 +1,21 @@
+/**
+ * Supabase Client (Deprecated / Transitional Stub)
+ * Preserved for legacy routes until remaining domains are migrated to PostgreSQL.
+ */
+
 import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
+import { config } from './config/env.js';
 
-dotenv.config();
-
-const supabaseUrl = process.env.SUPABASE_URL?.trim();
-const supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)?.trim();
+const supabaseUrl = config.SUPABASE_URL;
+const supabaseKey = config.SUPABASE_KEY;
 
 export const isSupabaseConfigured = () => {
-  return Boolean(supabaseUrl && supabaseKey && supabaseUrl.startsWith('https://') && !supabaseUrl.includes('your-project-id'));
+  return Boolean(
+    supabaseUrl &&
+      supabaseKey &&
+      supabaseUrl.startsWith('https://') &&
+      !supabaseUrl.includes('your-project-id')
+  );
 };
 
 export const supabase = isSupabaseConfigured()
@@ -18,9 +26,3 @@ export const supabase = isSupabaseConfigured()
       },
     })
   : null;
-
-if (isSupabaseConfigured()) {
-  console.log('⚡ [Supabase] Đã cấu hình và kết nối tới Supabase Cloud:', supabaseUrl);
-} else {
-  console.log('ℹ️ [Supabase] Chưa phát hiện cấu hình Supabase URL/Key trong .env. Sử dụng cơ sở dữ liệu SQLite cục bộ.');
-}

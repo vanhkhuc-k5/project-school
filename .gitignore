@@ -1,36 +1,190 @@
-# Logs
-logs
-*.log
+# =============================================================================
+# EduPortal — Comprehensive .gitignore
+# =============================================================================
+
+# =============================================================================
+# NODE MODULES & DEPENDENCIES
+# =============================================================================
+node_modules/
+.pnp
+.pnp.js
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Node modules
-node_modules
-dist
-dist-ssr
+# =============================================================================
+# BUILD OUTPUTS
+# =============================================================================
+dist/
+dist-ssr/
+build/
 *.local
+*.production
+*.staging
 
-# Editor directories and files
-.vscode/*
+# =============================================================================
+# TEST & COVERAGE
+# =============================================================================
+coverage/
+test-results/
+playwright-report/
+playwright-results/
+*.test.js.snap
+
+# =============================================================================
+# LOGS
+# =============================================================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =============================================================================
+# ENVIRONMENT VARIABLES — CRITICAL SECURITY
+# =============================================================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.staging.local
+.env.production.local
+.env.*.local
+
+# EXCEPTIONS — Allow these template files
+!.env.example
+!.env.test
+!.env.development.example
+!.env.staging.example
+!.env.production.example
+
+# =============================================================================
+# DATABASES
+# =============================================================================
+# SQLite (development/test only — never for production)
+*.sqlite
+*.sqlite3
+*.db
+database.sqlite
+database.sqlite3
+
+# =============================================================================
+# EDITORS & IDE
+# =============================================================================
+.vscode/
 !.vscode/extensions.json
-.idea
-.DS_Store
+!.vscode/settings.json
+!.vscode/launch.json
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.vsix
 
-# Environment variables
-.env
-.env.*
-!.env.example
+# =============================================================================
+# OS FILES
+# =============================================================================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# SQLite Database
-database.sqlite*
+# =============================================================================
+# SECRETS & CREDENTIALS
+# =============================================================================
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+credentials*.json
+secret*.json
+secrets.yaml
+*.secret
 
-# Archives
+# =============================================================================
+# ARCHIVES & TEMPORARY FILES
+# =============================================================================
 *.zip
+*.tar.gz
+*.rar
+*.7z
+*.bak
+*.backup
+*.tmp
+*.temp
+tmp/
+temp/
+
+# =============================================================================
+# DATA EXPORTS — May contain PII, review before committing
+# =============================================================================
+migration-data-export.json
+data-export*.json
+*.sql.dump
+*.backup.sql
+
+# =============================================================================
+# PLAYWRIGHT & E2E
+# =============================================================================
+playwright/.cache/
+test-results/
+videos/
+screenshots/
+
+# =============================================================================
+# VITE & FRONTEND
+# =============================================================================
+node_modules/
+*.tsbuildinfo
+
+# =============================================================================
+# MISC
+# =============================================================================
+.npm
+.eslintcache
+.stylelintcache
+*.pid
+*.seed
+*.pid.lock
+
+# =============================================================================
+# IMPORTANT: DO NOT IGNORE
+# =============================================================================
+# Source code
+!src/
+!server/
+!tests/
+
+# Migrations (critical for deployment)
+!server/shared/database/migrations/
+!server/database/migration/
+
+# Configuration templates
+!.env.example
+!.env.test
+!.env.development.example
+!.env.staging.example
+!.env.production.example
+
+# Documentation
+!docs/
+!*.md
+
+# Scripts
+!scripts/
+
+# GitHub templates
+!.github/
+
+# =============================================================================
+# PRODUCTION EXCLUSIONS
+# =============================================================================
+# Exclude production config from being accidentally committed
+# Copy to .env.production and fill in real values
+.env.production
