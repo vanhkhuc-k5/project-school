@@ -1868,6 +1868,141 @@ export const adminApi = {
     return null;
   },
 
+  // ── Report Center ─────────────────────────────────────────────────────────────
+  async getReportTypes(): Promise<Array<{
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+    category: string;
+    hasData: boolean;
+    exportFormats: string[];
+  }>> {
+    const res = await request<{ reportTypes: Array<{
+      id: string;
+      name: string;
+      description: string;
+      icon: string;
+      category: string;
+      hasData: boolean;
+      exportFormats: string[];
+    }> }>('/admin/reports/types');
+    return res?.success ? (res as unknown as { reportTypes: Array<{
+      id: string;
+      name: string;
+      description: string;
+      icon: string;
+      category: string;
+      hasData: boolean;
+      exportFormats: string[];
+    }> }).reportTypes || [] : [];
+  },
+
+  async getReportData(reportType: string, params?: {
+    academicYearId?: string;
+    semesterId?: string;
+    gradeLevel?: number;
+    classId?: string;
+    subjectId?: string;
+    teacherId?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    records: Record<string, unknown>[];
+    pagination: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const stringParams: Record<string, string> = {};
+    if (params?.academicYearId) stringParams.academicYearId = params.academicYearId;
+    if (params?.semesterId) stringParams.semesterId = params.semesterId;
+    if (params?.gradeLevel) stringParams.gradeLevel = String(params.gradeLevel);
+    if (params?.classId) stringParams.classId = params.classId;
+    if (params?.subjectId) stringParams.subjectId = params.subjectId;
+    if (params?.teacherId) stringParams.teacherId = params.teacherId;
+    if (params?.startDate) stringParams.startDate = params.startDate;
+    if (params?.endDate) stringParams.endDate = params.endDate;
+    if (params?.page) stringParams.page = String(params.page);
+    if (params?.limit) stringParams.limit = String(params.limit);
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{
+      records: Record<string, unknown>[];
+      pagination: { page: number; limit: number; total: number; totalPages: number };
+    }>(`/admin/reports/${reportType}${query ? `?${query}` : ''}`);
+    if (res?.success) {
+      return {
+        records: (res as unknown as { records: Record<string, unknown>[] }).records || [],
+        pagination: (res as unknown as { pagination: { page: number; limit: number; total: number; totalPages: number } }).pagination || { page: 1, limit: 100, total: 0, totalPages: 0 },
+      };
+    }
+    return { records: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 0 } };
+  },
+
+  async getReportFilters(): Promise<{
+    academicYears: Array<{ id: string; name: string }>;
+    semesters: Array<{ id: string; name: string; academic_year_id: string }>;
+    classes: Array<{ id: string; name: string; grade_level: number }>;
+    subjects: Array<{ id: string; name: string; code: string }>;
+    teachers: Array<{ id: string; name: string; email: string }>;
+  }> {
+    const res = await request<{
+      data: {
+        academicYears: Array<{ id: string; name: string }>;
+        semesters: Array<{ id: string; name: string; academic_year_id: string }>;
+        classes: Array<{ id: string; name: string; grade_level: number }>;
+        subjects: Array<{ id: string; name: string; code: string }>;
+        teachers: Array<{ id: string; name: string; email: string }>;
+      };
+    }>('/admin/reports/filters');
+    if (res?.success) {
+      return (res as unknown as { data: {
+        academicYears: Array<{ id: string; name: string }>;
+        semesters: Array<{ id: string; name: string; academic_year_id: string }>;
+        classes: Array<{ id: string; name: string; grade_level: number }>;
+        subjects: Array<{ id: string; name: string; code: string }>;
+        teachers: Array<{ id: string; name: string; email: string }>;
+      } }).data;
+    }
+    return { academicYears: [], semesters: [], classes: [], subjects: [], teachers: [] };
+  },
+
+  async exportReport(reportType: string, params?: {
+    academicYearId?: string;
+    semesterId?: string;
+    gradeLevel?: number;
+    classId?: string;
+    subjectId?: string;
+    teacherId?: string;
+    startDate?: string;
+    endDate?: string;
+    format?: string;
+  }): Promise<Blob | null> {
+    const stringParams: Record<string, string> = {};
+    if (params?.academicYearId) stringParams.academicYearId = params.academicYearId;
+    if (params?.semesterId) stringParams.semesterId = params.semesterId;
+    if (params?.gradeLevel) stringParams.gradeLevel = String(params.gradeLevel);
+    if (params?.classId) stringParams.classId = params.classId;
+    if (params?.subjectId) stringParams.subjectId = params.subjectId;
+    if (params?.teacherId) stringParams.teacherId = params.teacherId;
+    if (params?.startDate) stringParams.startDate = params.startDate;
+    if (params?.endDate) stringParams.endDate = params.endDate;
+    if (params?.format) stringParams.format = params.format;
+    const query = new URLSearchParams(stringParams).toString();
+    try {
+      const response = await fetch(`/api/admin/reports/${reportType}/export${query ? `?${query}` : ''}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+      });
+      if (response.ok) {
+        return await response.blob();
+      }
+    } catch {
+      // Export failed
+    }
+    return null;
+  },
+
   // ── Announcements (G25) ──────────────────────────────────────────────────
   async getAnnouncements(params: {
     page?: number; limit?: number;

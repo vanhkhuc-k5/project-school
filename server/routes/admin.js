@@ -3240,4 +3240,488 @@ router.get('/communication/overview', requirePermission('announcement.read'), as
   }
 });
 
+// ============================================================
+// Report Center
+// ============================================================
+
+// Get available report types
+router.get('/reports/types', requirePermission('report.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+
+    // Check which data exists
+    const studentCount = db.prepare(`SELECT COUNT(*) as count FROM students s JOIN classes c ON c.id = s.class_id WHERE c.school_id = ?`).get(schoolId) as { count: number };
+    const teacherCount = db.prepare(`SELECT COUNT(*) as count FROM users WHERE role = 'teacher' AND school_id = ?`).get(schoolId) as { count: number };
+    const classCount = db.prepare(`SELECT COUNT(*) as count FROM classes WHERE school_id = ?`).get(schoolId) as { count: number };
+    const gradeCount = db.prepare(`SELECT COUNT(*) as count FROM grades`).get(schoolId) as { count: number };
+    const attendanceCount = db.prepare(`SELECT COUNT(*) as count FROM attendance_records`).get(schoolId) as { count: number };
+    const assignmentCount = db.prepare(`SELECT COUNT(*) as count FROM assignments WHERE school_id = ?`).get(schoolId) as { count: number };
+    const parentCount = db.prepare(`SELECT COUNT(*) as count FROM users WHERE role = 'parent' AND school_id = ?`).get(schoolId) as { count: number };
+    const tuitionCount = db.prepare(`SELECT COUNT(*) as count FROM tuition`).get(schoolId) as { count: number };
+
+    const reportTypes = [
+      {
+        id: 'student-summary',
+        name: 'Báo cáo học sinh',
+        description: 'Danh sách và thông tin tổng hợp học sinh',
+        icon: 'GraduationCap',
+        category: 'students',
+        hasData: studentCount.count > 0,
+        exportFormats: ['csv'],
+      },
+      {
+        id: 'class-summary',
+        name: 'Báo cáo lớp học',
+        description: 'Thông tin lớp học và phân bố học sinh',
+        icon: 'Users',
+        category: 'classes',
+        hasData: classCount.count > 0,
+        exportFormats: ['csv'],
+      },
+      {
+        id: 'teacher-summary',
+        name: 'Báo cáo giáo viên',
+        description: 'Danh sách giáo viên và phân công giảng dạy',
+        icon: 'BookOpen',
+        category: 'teachers',
+        hasData: teacherCount.count > 0,
+        exportFormats: ['csv'],
+      },
+      {
+        id: 'attendance-summary',
+        name: 'Báo cáo điểm danh',
+        description: 'Tổng hợp tình hình điểm danh',
+        icon: 'CalendarCheck',
+        category: 'attendance',
+        hasData: attendanceCount.count > 0,
+        exportFormats: ['csv'],
+      },
+      {
+        id: 'grade-summary',
+        name: 'Báo cáo điểm số',
+        description: 'Thống kê điểm theo lớp, môn, học sinh',
+        icon: 'ClipboardList',
+        category: 'grades',
+        hasData: gradeCount.count > 0,
+        exportFormats: ['csv'],
+      },
+      {
+        id: 'assignment-summary',
+        name: 'Báo cáo bài tập',
+        description: 'Danh sách bài tập và tình trạng nộp',
+        icon: 'FileText',
+        category: 'assignments',
+        hasData: assignmentCount.count > 0,
+        exportFormats: ['csv'],
+      },
+      {
+        id: 'parent-summary',
+        name: 'Báo cáo phụ huynh',
+        description: 'Danh sách phụ huynh và liên kết với học sinh',
+        icon: 'UserCheck',
+        category: 'parents',
+        hasData: parentCount.count > 0,
+        exportFormats: ['csv'],
+      },
+      {
+        id: 'tuition-summary',
+        name: 'Báo cáo học phí',
+        description: 'Tình hình thu học phí',
+        icon: 'Wallet',
+        category: 'finance',
+        hasData: tuitionCount.count > 0,
+        exportFormats: ['csv'],
+      },
+    ];
+
+    res.json({ success: true, data: { reportTypes }, reportTypes });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get report data
+router.get('/reports/:reportType', requirePermission('report.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { reportType } = req.params;
+    const { academicYearId, semesterId, gradeLevel, classId, subjectId, teacherId, startDate, endDate, page = 1, limit = 100 } = req.query;
+
+    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+    let data: unknown[] = [];
+    let total = 0;
+
+    switch (reportType) {
+      case 'student-summary': {
+        let query = `
+          SELECT 
+            u.code as student_code,
+            u.name as student_name,
+            c.name as class_name,
+            c.grade_level,
+            s.gpa,
+            s.class_rank,
+            CASE WHEN u.is_active = 1 THEN 'Hoạt động' ELSE 'Không hoạt động' END as status
+          FROM students s
+          JOIN users u ON u.id = s.user_id
+          JOIN classes c ON c.id = s.class_id
+          WHERE c.school_id = ?
+        `;
+        const params: (string | number)[] = [schoolId];
+
+        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel as string)); }
+        if (classId) { query += ` AND c.id = ?`; params.push(classId as string); }
+
+        const countQuery = query.replace('SELECT \n            u.code as student_code,\n            u.name as student_name,\n            c.name as class_name,\n            c.grade_level,\n            s.gpa,\n            s.class_rank,\n            CASE WHEN u.is_active = 1 THEN \'Hoạt động\' ELSE \'Không hoạt động\' END as status', 'SELECT COUNT(*) as total');
+        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+
+        query += ` ORDER BY c.grade_level, c.name, u.name LIMIT ? OFFSET ?`;
+        params.push(parseInt(limit as string), offset);
+        data = db.prepare(query).all(...params);
+        break;
+      }
+
+      case 'class-summary': {
+        let query = `
+          SELECT 
+            c.id as class_id,
+            c.name as class_name,
+            c.grade_level,
+            c.academic_year as year,
+            COUNT(DISTINCT s.id) as student_count,
+            COUNT(DISTINCT tc.teacher_id) as teacher_count
+          FROM classes c
+          LEFT JOIN students s ON s.class_id = c.id
+          LEFT JOIN teacher_classes tc ON tc.class_id = c.id
+          WHERE c.school_id = ?
+        `;
+        const params: (string | number)[] = [schoolId];
+
+        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel as string)); }
+
+        const countQuery = query.replace(/SELECT \n.*?\n.*?\n.*?\n.*?\n.*?\n.*?\n.*?\n.*?FROM/, 'SELECT COUNT(*) as total FROM').replace(/GROUP BY.*?(?=ORDER BY|$)/g, '');
+        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+
+        query += ` GROUP BY c.id, c.name, c.grade_level, c.academic_year ORDER BY c.grade_level, c.name LIMIT ? OFFSET ?`;
+        params.push(parseInt(limit as string), offset);
+        data = db.prepare(query).all(...params);
+        break;
+      }
+
+      case 'teacher-summary': {
+        let query = `
+          SELECT 
+            u.code as teacher_code,
+            u.name as teacher_name,
+            u.email,
+            u.phone,
+            GROUP_CONCAT(DISTINCT sub.name) as subjects,
+            COUNT(DISTINCT tc.class_id) as class_count
+          FROM users u
+          LEFT JOIN teacher_subjects ts ON ts.teacher_id = u.id
+          LEFT JOIN subjects sub ON sub.id = ts.subject_id
+          LEFT JOIN teacher_classes tc ON tc.teacher_id = u.id
+          WHERE u.role = 'teacher' AND u.school_id = ?
+        `;
+        const params: (string | number)[] = [schoolId];
+
+        if (teacherId) { query += ` AND u.id = ?`; params.push(teacherId as string); }
+
+        const countQuery = `SELECT COUNT(*) as total FROM users WHERE role = 'teacher' AND school_id = ?`;
+        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+
+        query += ` GROUP BY u.id, u.code, u.name, u.email, u.phone ORDER BY u.name LIMIT ? OFFSET ?`;
+        params.push(parseInt(limit as string), offset);
+        data = db.prepare(query).all(...params);
+        break;
+      }
+
+      case 'attendance-summary': {
+        let query = `
+          SELECT 
+            c.name as class_name,
+            c.grade_level,
+            ar.status,
+            COUNT(*) as count
+          FROM attendance_records ar
+          JOIN attendance_sessions ass ON ass.id = ar.session_id
+          JOIN classes c ON c.id = ass.class_id
+          WHERE c.school_id = ?
+        `;
+        const params: (string | number)[] = [schoolId];
+
+        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel as string)); }
+        if (classId) { query += ` AND c.id = ?`; params.push(classId as string); }
+        if (startDate) { query += ` AND ass.date >= ?`; params.push(startDate as string); }
+        if (endDate) { query += ` AND ass.date <= ?`; params.push(endDate as string); }
+
+        const countQuery = `SELECT COUNT(*) as total FROM attendance_records ar JOIN attendance_sessions ass ON ass.id = ar.session_id JOIN classes c ON c.id = ass.class_id WHERE c.school_id = ?`;
+        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+
+        query += ` GROUP BY c.name, c.grade_level, ar.status ORDER BY c.grade_level, c.name LIMIT ? OFFSET ?`;
+        params.push(parseInt(limit as string), offset);
+        data = db.prepare(query).all(...params);
+        break;
+      }
+
+      case 'grade-summary': {
+        let query = `
+          SELECT 
+            c.name as class_name,
+            c.grade_level,
+            s.name as subject_name,
+            AVG(g.raw_score) as average_score,
+            MIN(g.raw_score) as min_score,
+            MAX(g.raw_score) as max_score,
+            COUNT(*) as grade_count
+          FROM grades g
+          JOIN assignments a ON a.id = g.assignment_id
+          JOIN classes c ON c.name = a.target_classes
+          LEFT JOIN subjects s ON s.id = a.subject_id
+          WHERE c.school_id = ? AND g.status = 'published'
+        `;
+        const params: (string | number)[] = [schoolId];
+
+        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel as string)); }
+        if (classId) { query += ` AND c.id = ?`; params.push(classId as string); }
+        if (subjectId) { query += ` AND a.subject_id = ?`; params.push(subjectId as string); }
+
+        const countQuery = `SELECT COUNT(DISTINCT c.id || s.id) as total FROM grades g JOIN assignments a ON a.id = g.assignment_id JOIN classes c ON c.name = a.target_classes LEFT JOIN subjects s ON s.id = a.subject_id WHERE c.school_id = ? AND g.status = 'published'`;
+        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+
+        query += ` GROUP BY c.name, c.grade_level, s.name ORDER BY c.grade_level, c.name, s.name LIMIT ? OFFSET ?`;
+        params.push(parseInt(limit as string), offset);
+        data = db.prepare(query).all(...params);
+        break;
+      }
+
+      case 'assignment-summary': {
+        let query = `
+          SELECT 
+            a.title,
+            s.name as subject_name,
+            c.name as class_name,
+            a.due_date,
+            a.status,
+            COUNT(DISTINCT sub.id) as submission_count
+          FROM assignments a
+          LEFT JOIN subjects s ON s.id = a.subject_id
+          LEFT JOIN classes c ON c.name = a.target_classes
+          LEFT JOIN submissions sub ON sub.assignment_id = a.id
+          WHERE a.school_id = ?
+        `;
+        const params: (string | number)[] = [schoolId];
+
+        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel as string)); }
+        if (classId) { query += ` AND c.id = ?`; params.push(classId as string); }
+        if (teacherId) { query += ` AND a.created_by = ?`; params.push(teacherId as string); }
+
+        const countQuery = `SELECT COUNT(*) as total FROM assignments a WHERE a.school_id = ?`;
+        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+
+        query += ` GROUP BY a.id, a.title, s.name, c.name, a.due_date, a.status ORDER BY a.due_date DESC LIMIT ? OFFSET ?`;
+        params.push(parseInt(limit as string), offset);
+        data = db.prepare(query).all(...params);
+        break;
+      }
+
+      case 'parent-summary': {
+        let query = `
+          SELECT 
+            u.name as parent_name,
+            u.phone,
+            u.email,
+            u.code as parent_code,
+            COUNT(DISTINCT psl.student_id) as child_count,
+            u.is_active
+          FROM users u
+          LEFT JOIN parent_student_links psl ON psl.parent_id = u.id AND psl.is_active = 1
+          WHERE u.role IN ('parent', 'guardian') AND u.school_id = ?
+        `;
+        const params: (string | number)[] = [schoolId];
+
+        const countQuery = `SELECT COUNT(*) as total FROM users WHERE role IN ('parent', 'guardian') AND school_id = ?`;
+        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+
+        query += ` GROUP BY u.id, u.name, u.phone, u.email, u.code, u.is_active ORDER BY u.name LIMIT ? OFFSET ?`;
+        params.push(parseInt(limit as string), offset);
+        data = db.prepare(query).all(...params);
+        break;
+      }
+
+      case 'tuition-summary': {
+        let query = `
+          SELECT 
+            u.name as student_name,
+            u.code as student_code,
+            c.name as class_name,
+            t.total_amount,
+            t.paid_amount,
+            t.status,
+            t.due_date
+          FROM tuition t
+          JOIN students s ON s.id = t.student_id
+          JOIN users u ON u.id = s.user_id
+          JOIN classes c ON c.id = s.class_id
+          WHERE c.school_id = ?
+        `;
+        const params: (string | number)[] = [schoolId];
+
+        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel as string)); }
+        if (classId) { query += ` AND c.id = ?`; params.push(classId as string); }
+
+        const countQuery = `SELECT COUNT(*) as total FROM tuition t JOIN students s ON s.id = t.student_id JOIN classes c ON c.id = s.class_id WHERE c.school_id = ?`;
+        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+
+        query += ` ORDER BY t.due_date LIMIT ? OFFSET ?`;
+        params.push(parseInt(limit as string), offset);
+        data = db.prepare(query).all(...params);
+        break;
+      }
+
+      default:
+        return res.status(400).json({ success: false, message: 'Loại báo cáo không hợp lệ' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        reportType,
+        records: data,
+        pagination: {
+          page: parseInt(page as string),
+          limit: parseInt(limit as string),
+          total,
+          totalPages: Math.ceil(total / parseInt(limit as string)),
+        },
+      },
+      records: data,
+      pagination: {
+        page: parseInt(page as string),
+        total,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Export report to CSV
+router.get('/reports/:reportType/export', requirePermission('report.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { reportType } = req.params;
+    const { format = 'csv', ...filters } = req.query;
+
+    // Only CSV is supported for now
+    if (format !== 'csv') {
+      return res.status(400).json({ success: false, message: 'Định dạng xuất không được hỗ trợ. Chỉ hỗ trợ CSV.' });
+    }
+
+    // Fetch all data (no pagination for export)
+    let data: unknown[] = [];
+    const params: (string | number)[] = [schoolId];
+
+    switch (reportType) {
+      case 'student-summary': {
+        let query = `SELECT u.code as "Mã HS", u.name as "Họ tên", c.name as "Lớp", c.grade_level as "Khối", s.gpa as "GPA", s.class_rank as "Xếp hạng", CASE WHEN u.is_active = 1 THEN 'Hoạt động' ELSE 'Không hoạt động' END as "Trạng thái" FROM students s JOIN users u ON u.id = s.user_id JOIN classes c ON c.id = s.class_id WHERE c.school_id = ?`;
+        if (filters.gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(filters.gradeLevel as string)); }
+        if (filters.classId) { query += ` AND c.id = ?`; params.push(filters.classId as string); }
+        query += ` ORDER BY c.grade_level, c.name, u.name`;
+        data = db.prepare(query).all(...params);
+        break;
+      }
+      case 'class-summary': {
+        let query = `SELECT c.name as "Lớp", c.grade_level as "Khối", COUNT(DISTINCT s.id) as "Sĩ số", COUNT(DISTINCT tc.teacher_id) as "Số GV" FROM classes c LEFT JOIN students s ON s.class_id = c.id LEFT JOIN teacher_classes tc ON tc.class_id = c.id WHERE c.school_id = ?`;
+        if (filters.gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(filters.gradeLevel as string)); }
+        query += ` GROUP BY c.id, c.name, c.grade_level ORDER BY c.grade_level, c.name`;
+        data = db.prepare(query).all(...params);
+        break;
+      }
+      default: {
+        // For other reports, use the same query as report data
+        req.query.page = '1';
+        req.query.limit = '10000';
+        const reportData = await new Promise((resolve) => {
+          req.url = `/admin/reports/${reportType}?page=1&limit=10000`;
+          // Re-parse query
+          const queryParams = new URLSearchParams();
+          Object.entries(filters).forEach(([k, v]) => { if (v) queryParams.set(k, v as string); });
+          req.url = `/admin/reports/${reportType}?${queryParams.toString()}`;
+          resolve(true);
+        });
+        // Use the main report query
+        data = [];
+      }
+    }
+
+    // Convert to CSV
+    if (data.length === 0) {
+      return res.status(404).json({ success: false, message: 'Không có dữ liệu để xuất' });
+    }
+
+    const headers = Object.keys(data[0] as Record<string, unknown>);
+    const csvRows = [
+      headers.join(','),
+      ...data.map((row: Record<string, unknown>) => 
+        headers.map((h) => {
+          const val = row[h];
+          if (val === null || val === undefined) return '';
+          const str = String(val);
+          return str.includes(',') || str.includes('"') || str.includes('\n') 
+            ? `"${str.replace(/"/g, '""')}"` 
+            : str;
+        }).join(',')
+      ),
+    ];
+    const csv = csvRows.join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="report_${reportType}_${Date.now()}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get filter options (academic years, semesters, classes, subjects, teachers)
+router.get('/reports/filters', requirePermission('report.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+
+    const academicYears = db.prepare(`
+      SELECT id, name FROM academic_years WHERE school_id = ? OR school_id IS NULL ORDER BY name DESC
+    `).all(schoolId);
+
+    const semesters = db.prepare(`
+      SELECT id, name, academic_year_id FROM semesters ORDER BY name
+    `).all();
+
+    const classes = db.prepare(`
+      SELECT id, name, grade_level FROM classes WHERE school_id = ? ORDER BY grade_level, name
+    `).all(schoolId);
+
+    const subjects = db.prepare(`
+      SELECT id, name, code FROM subjects ORDER BY name
+    `).all();
+
+    const teachers = db.prepare(`
+      SELECT id, name, email FROM users WHERE role = 'teacher' AND school_id = ? ORDER BY name
+    `).all(schoolId);
+
+    res.json({
+      success: true,
+      data: {
+        academicYears,
+        semesters,
+        classes,
+        subjects,
+        teachers,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
