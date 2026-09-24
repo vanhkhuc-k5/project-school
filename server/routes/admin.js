@@ -2830,4 +2830,414 @@ router.get('/parents/:parentId/available-students', requirePermission('user.mana
   }
 });
 
+// ============================================================
+// Communication Center (Announcements Management)
+// ============================================================
+
+// Get announcements list with filters
+router.get('/communication/announcements', requirePermission('announcement.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { search, status, categoryId, priority, scope, page = 1, limit = 20 } = req.query;
+
+    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+
+    // Build filters
+    const filters = [];
+    const params: (string | number)[] = [schoolId];
+
+    if (search) {
+      filters.push(`(title LIKE ? OR content LIKE ?)`);
+      const pattern = `%${search}%`;
+      params.push(pattern, pattern);
+    }
+    if (status) {
+      filters.push('a.status = ?');
+      params.push(status as string);
+    }
+    if (categoryId) {
+      filters.push('a.category_id = ?');
+      params.push(categoryId as string);
+    }
+    if (priority) {
+      filters.push('a.priority = ?');
+      params.push(priority as string);
+    }
+    if (scope) {
+      filters.push('a.scope = ?');
+      params.push(scope as string);
+    }
+
+    const whereClause = filters.length > 0 ? ` AND ${filters.join(' AND ')}` : '';
+
+    // Count total
+    const countResult = db.prepare(`
+      SELECT COUNT(*) as total
+      FROM announcements a
+      WHERE (a.school_id = ? OR a.school_id IS NULL) ${whereClause}
+    `).get(...params) as { total: number };
+
+    // Get announcements
+    const announcements = db.prepare(`
+      SELECT 
+        a.id,
+        a.title,
+        a.content,
+        a.summary,
+        a.status,
+        a.priority,
+        a.scope,
+        a.author_id,
+        a.author_name,
+        a.category_id,
+        ac.name as category_name,
+        ac.color as category_color,
+        a.created_at,
+        a.published_at,
+        a.scheduled_publish_at,
+        a.archived_at
+      FROM announcements a
+      LEFT JOIN announcement_categories ac ON ac.id = a.category_id
+      WHERE (a.school_id = ? OR a.school_id IS NULL) ${whereClause}
+      ORDER BY 
+        CASE a.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 ELSE 3 END,
+        a.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, parseInt(limit as string), offset);
+
+    // Get read stats for each announcement
+    const announcementsWithStats = await Promise.all(announcements.map(async (ann: Record<string, unknown>) => {
+      const stats = db.prepare(`
+        SELECT 
+          COUNT(*) as total_recipients,
+          COUNT(ar.id) as read_count
+        FROM announcement_reads ar
+        WHERE ar.announcement_id = ?
+      `).get(ann.id) as { total_recipients: number; read_count: number };
+
+      return {
+        ...ann,
+        total_recipients: stats.total_recipients,
+        read_count: stats.read_count,
+        unread_count: Math.max(0, stats.total_recipients - stats.read_count),
+      };
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        announcements: announcementsWithStats,
+        pagination: {
+          page: parseInt(page as string),
+          limit: parseInt(limit as string),
+          total: countResult.total,
+          totalPages: Math.ceil(countResult.total / parseInt(limit as string)),
+        },
+      },
+      announcements: announcementsWithStats,
+      pagination: {
+        page: parseInt(page as string),
+        total: countResult.total,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get announcement detail
+router.get('/communication/announcements/:id', requirePermission('announcement.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { id } = req.params;
+
+    const announcement = db.prepare(`
+      SELECT 
+        a.*,
+        ac.name as category_name,
+        ac.color as category_color
+      FROM announcements a
+      LEFT JOIN announcement_categories ac ON ac.id = a.category_id
+      WHERE a.id = ? AND (a.school_id = ? OR a.school_id IS NULL)
+    `).get(id, schoolId);
+
+    if (!announcement) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy thông báo' });
+    }
+
+    // Get delivery stats
+    const stats = db.prepare(`
+      SELECT 
+        COUNT(*) as total_recipients,
+        COUNT(ar.id) as read_count
+      FROM announcement_reads ar
+      WHERE ar.announcement_id = ?
+    `).get(id) as { total_recipients: number; read_count: number };
+
+    // Get recent readers (last 10)
+    const recentReaders = db.prepare(`
+      SELECT 
+        ar.user_id,
+        u.name as user_name,
+        u.role,
+        ar.read_at
+      FROM announcement_reads ar
+      JOIN users u ON u.id = ar.user_id
+      WHERE ar.announcement_id = ?
+      ORDER BY ar.read_at DESC
+      LIMIT 10
+    `).all(id);
+
+    res.json({
+      success: true,
+      data: {
+        announcement: { ...announcement, ...stats },
+        recentReaders,
+      },
+      announcement,
+      stats,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Create announcement
+router.post('/communication/announcements', requirePermission('announcement.create'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { title, content, summary, status, priority, scope, categoryId, scheduledPublishAt, targetRoles, targetClassIds } = req.body;
+
+    if (!title || !content) {
+      return res.status(400).json({ success: false, message: 'Tiêu đề và nội dung không được trống' });
+    }
+
+    const id = `ann_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO announcements (
+        id, school_id, title, content, summary, status, priority, scope,
+        category_id, author_id, author_name, scheduled_publish_at, published_by, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      schoolId,
+      title,
+      content,
+      summary || content.substring(0, 200),
+      status || 'draft',
+      priority || 'normal',
+      scope || 'all',
+      categoryId || null,
+      req.user.id,
+      req.user.name || 'Admin',
+      scheduledPublishAt || null,
+      status === 'published' ? req.user.id : null,
+      now
+    );
+
+    // Create audit log
+    db.prepare(`
+      INSERT INTO audit_logs (id, actor_id, actor_name, role, action, entity_type, entity_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      `log_${Date.now()}`,
+      req.user.id,
+      req.user.name || 'Admin',
+      req.user.role,
+      'Tạo thông báo',
+      'announcements',
+      id,
+      JSON.stringify({ title, status: status || 'draft', scope })
+    );
+
+    res.json({ success: true, message: 'Đã tạo thông báo', data: { id } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update announcement
+router.patch('/communication/announcements/:id', requirePermission('announcement.update'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { id } = req.params;
+    const { title, content, summary, priority, scope, categoryId } = req.body;
+
+    const existing = db.prepare(`
+      SELECT * FROM announcements WHERE id = ? AND (school_id = ? OR school_id IS NULL)
+    `).get(id, schoolId);
+
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy thông báo' });
+    }
+
+    const updates = [];
+    const params: (string | unknown)[] = [];
+
+    if (title !== undefined) { updates.push('title = ?'); params.push(title); }
+    if (content !== undefined) { updates.push('content = ?'); params.push(content); }
+    if (summary !== undefined) { updates.push('summary = ?'); params.push(summary); }
+    if (priority !== undefined) { updates.push('priority = ?'); params.push(priority); }
+    if (scope !== undefined) { updates.push('scope = ?'); params.push(scope); }
+    if (categoryId !== undefined) { updates.push('category_id = ?'); params.push(categoryId); }
+
+    if (updates.length > 0) {
+      params.push(id);
+      db.prepare(`UPDATE announcements SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    }
+
+    res.json({ success: true, message: 'Đã cập nhật thông báo' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Publish announcement
+router.post('/communication/announcements/:id/publish', requirePermission('announcement.publish'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { id } = req.params;
+
+    const existing = db.prepare(`
+      SELECT * FROM announcements WHERE id = ? AND (school_id = ? OR school_id IS NULL)
+    `).get(id, schoolId);
+
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy thông báo' });
+    }
+
+    db.prepare(`
+      UPDATE announcements 
+      SET status = 'published', published_at = datetime('now'), published_by = ?
+      WHERE id = ?
+    `).run(req.user.id, id);
+
+    // Audit log
+    db.prepare(`
+      INSERT INTO audit_logs (id, actor_id, actor_name, role, action, entity_type, entity_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      `log_${Date.now()}`,
+      req.user.id,
+      req.user.name || 'Admin',
+      req.user.role,
+      'Xuất bản thông báo',
+      'announcements',
+      id,
+      JSON.stringify({ title: (existing as { title: string }).title })
+    );
+
+    res.json({ success: true, message: 'Đã xuất bản thông báo' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Archive announcement
+router.post('/communication/announcements/:id/archive', requirePermission('announcement.update'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { id } = req.params;
+
+    const existing = db.prepare(`
+      SELECT * FROM announcements WHERE id = ? AND (school_id = ? OR school_id IS NULL)
+    `).get(id, schoolId);
+
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy thông báo' });
+    }
+
+    db.prepare(`
+      UPDATE announcements 
+      SET status = 'archived', archived_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+
+    res.json({ success: true, message: 'Đã lưu trữ thông báo' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete announcement
+router.delete('/communication/announcements/:id', requirePermission('announcement.delete'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { id } = req.params;
+
+    const existing = db.prepare(`
+      SELECT * FROM announcements WHERE id = ? AND school_id = ?
+    `).get(id, schoolId);
+
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy thông báo' });
+    }
+
+    db.prepare('DELETE FROM announcements WHERE id = ?').run(id);
+
+    res.json({ success: true, message: 'Đã xóa thông báo' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get announcement categories
+router.get('/communication/categories', requirePermission('announcement.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+
+    const categories = db.prepare(`
+      SELECT * FROM announcement_categories
+      WHERE school_id = ? OR school_id IS NULL
+      ORDER BY sort_order, name
+    `).all(schoolId);
+
+    res.json({ success: true, data: { categories }, categories });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get communication overview/stats
+router.get('/communication/overview', requirePermission('announcement.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+
+    // Announcement stats
+    const announcementStats = db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(CASE WHEN status = 'draft' THEN 1 END) as drafts,
+        COUNT(CASE WHEN status = 'published' THEN 1 END) as published,
+        COUNT(CASE WHEN status = 'archived' THEN 1 END) as archived
+      FROM announcements
+      WHERE school_id = ? OR school_id IS NULL
+    `).get(schoolId) as { total: number; drafts: number; published: number; archived: number };
+
+    // Total recipients and reads
+    const readStats = db.prepare(`
+      SELECT 
+        COUNT(DISTINCT ar.announcement_id) as announcements_with_reads,
+        COUNT(ar.id) as total_reads
+      FROM announcement_reads ar
+      JOIN announcements a ON a.id = ar.announcement_id
+      WHERE a.school_id = ? OR a.school_id IS NULL
+    `).get(schoolId) as { announcements_with_reads: number; total_reads: number };
+
+    res.json({
+      success: true,
+      data: {
+        announcements: announcementStats,
+        reads: readStats,
+      },
+      announcements: announcementStats,
+      reads: readStats,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

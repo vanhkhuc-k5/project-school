@@ -1668,6 +1668,206 @@ export const adminApi = {
     }> }).students || [] : [];
   },
 
+  // ── Admin Communication Center ────────────────────────────────────────────────
+  async getAdminAnnouncements(params?: {
+    search?: string;
+    status?: string;
+    categoryId?: string;
+    priority?: string;
+    scope?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    announcements: Array<{
+      id: string;
+      title: string;
+      content: string;
+      summary?: string;
+      status: string;
+      priority: string;
+      scope: string;
+      author_id: string;
+      author_name: string;
+      category_id?: string;
+      category_name?: string;
+      category_color?: string;
+      created_at: string;
+      published_at?: string;
+      scheduled_publish_at?: string;
+      archived_at?: string;
+      total_recipients: number;
+      read_count: number;
+      unread_count: number;
+    }>;
+    pagination: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const stringParams: Record<string, string> = {};
+    if (params?.search) stringParams.search = params.search;
+    if (params?.status) stringParams.status = params.status;
+    if (params?.categoryId) stringParams.categoryId = params.categoryId;
+    if (params?.priority) stringParams.priority = params.priority;
+    if (params?.scope) stringParams.scope = params.scope;
+    if (params?.page) stringParams.page = String(params.page);
+    if (params?.limit) stringParams.limit = String(params.limit);
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{
+      announcements: Array<{
+        id: string;
+        title: string;
+        content: string;
+        summary?: string;
+        status: string;
+        priority: string;
+        scope: string;
+        author_id: string;
+        author_name: string;
+        category_id?: string;
+        category_name?: string;
+        category_color?: string;
+        created_at: string;
+        published_at?: string;
+        scheduled_publish_at?: string;
+        archived_at?: string;
+        total_recipients: number;
+        read_count: number;
+        unread_count: number;
+      }>;
+      pagination: { page: number; limit: number; total: number; totalPages: number };
+    }>(`/admin/communication/announcements${query ? `?${query}` : ''}`);
+    if (res?.success) {
+      return {
+        announcements: (res as unknown as { announcements: Array<{
+          id: string;
+          title: string;
+          content: string;
+          summary?: string;
+          status: string;
+          priority: string;
+          scope: string;
+          author_id: string;
+          author_name: string;
+          category_id?: string;
+          category_name?: string;
+          category_color?: string;
+          created_at: string;
+          published_at?: string;
+          scheduled_publish_at?: string;
+          archived_at?: string;
+          total_recipients: number;
+          read_count: number;
+          unread_count: number;
+        }> }).announcements || [],
+        pagination: (res as unknown as { pagination: { page: number; limit: number; total: number; totalPages: number } }).pagination || { page: 1, limit: 20, total: 0, totalPages: 0 },
+      };
+    }
+    return { announcements: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } };
+  },
+
+  async getAdminAnnouncementDetail(id: string): Promise<{
+    announcement: Record<string, unknown>;
+    recentReaders: Array<{ user_id: string; user_name: string; role: string; read_at: string }>;
+  } | null> {
+    const res = await request<{
+      announcement: Record<string, unknown>;
+      recentReaders: Array<{ user_id: string; user_name: string; role: string; read_at: string }>;
+    }>(`/admin/communication/announcements/${id}`);
+    if (res?.success) {
+      return {
+        announcement: (res as unknown as { announcement: Record<string, unknown> }).announcement,
+        recentReaders: (res as unknown as { recentReaders: Array<{ user_id: string; user_name: string; role: string; read_at: string }> }).recentReaders || [],
+      };
+    }
+    return null;
+  },
+
+  async adminCreateAnnouncement(data: {
+    title: string;
+    content: string;
+    summary?: string;
+    status?: string;
+    priority?: string;
+    scope?: string;
+    categoryId?: string;
+    scheduledPublishAt?: string;
+  }): Promise<StandardResponse> {
+    return request('/admin/communication/announcements', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async adminUpdateAnnouncement(id: string, data: {
+    title?: string;
+    content?: string;
+    summary?: string;
+    priority?: string;
+    scope?: string;
+    categoryId?: string;
+  }): Promise<StandardResponse> {
+    return request(`/admin/communication/announcements/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async adminPublishAnnouncement(id: string): Promise<StandardResponse> {
+    return request(`/admin/communication/announcements/${id}/publish`, {
+      method: 'POST',
+    });
+  },
+
+  async adminArchiveAnnouncement(id: string): Promise<StandardResponse> {
+    return request(`/admin/communication/announcements/${id}/archive`, {
+      method: 'POST',
+    });
+  },
+
+  async adminDeleteAnnouncement(id: string): Promise<StandardResponse> {
+    return request(`/admin/communication/announcements/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async getAdminAnnouncementCategories(): Promise<Array<{
+    id: string;
+    name: string;
+    color: string;
+    icon?: string;
+    sort_order: number;
+  }>> {
+    const res = await request<{ categories: Array<{
+      id: string;
+      name: string;
+      color: string;
+      icon?: string;
+      sort_order: number;
+    }> }>('/admin/communication/categories');
+    return res?.success ? (res as unknown as { categories: Array<{
+      id: string;
+      name: string;
+      color: string;
+      icon?: string;
+      sort_order: number;
+    }> }).categories || [] : [];
+  },
+
+  async getCommunicationOverview(): Promise<{
+    announcements: { total: number; drafts: number; published: number; archived: number };
+    reads: { announcements_with_reads: number; total_reads: number };
+  } | null> {
+    const res = await request<{
+      announcements: { total: number; drafts: number; published: number; archived: number };
+      reads: { announcements_with_reads: number; total_reads: number };
+    }>('/admin/communication/overview');
+    if (res?.success) {
+      return {
+        announcements: (res as unknown as { announcements: { total: number; drafts: number; published: number; archived: number } }).announcements,
+        reads: (res as unknown as { reads: { announcements_with_reads: number; total_reads: number } }).reads,
+      };
+    }
+    return null;
+  },
+
   // ── Announcements (G25) ──────────────────────────────────────────────────
   async getAnnouncements(params: {
     page?: number; limit?: number;
