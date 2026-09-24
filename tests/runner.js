@@ -146,7 +146,16 @@ async function startServer() {
 
 async function stopServer() {
   if (server) {
-    await new Promise((resolve) => server.close(resolve));
+    // First attempt: graceful close
+    await new Promise((resolve) => {
+      server.close(() => resolve());
+    });
+
+    // Force-close any remaining connections (e.g., from HTTP clients left open)
+    if (server.closeAllConnections) {
+      server.closeAllConnections();
+    }
+
     console.log(`\n${colors.dim}🛑 Test server stopped${colors.reset}`);
   }
 }
@@ -276,7 +285,12 @@ async function main() {
       console.error(`${colors.dim}${err.stack.split('\n').slice(1, 4).join('\n')}${colors.reset}`);
     }
   } finally {
-    await stopServer();
+    // Bounded shutdown: 5 second timeout to prevent CI from hanging
+    await Promise.race([
+      stopServer(),
+      new Promise(resolve => setTimeout(resolve, 5000)),
+    ]);
+    console.log(`${colors.dim}🛑 Test runner shutdown complete${colors.reset}`);
   }
 
   const duration = Date.now() - overallStart;

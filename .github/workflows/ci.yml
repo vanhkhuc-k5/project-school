@@ -54,6 +54,7 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # Safety net: tests must complete in 15 min or fail
     
     steps:
     - name: Checkout code
