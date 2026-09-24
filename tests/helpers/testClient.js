@@ -44,22 +44,62 @@ export async function describe(suiteName, fn) {
   for (const t of suite.tests) {
     testState.total++;
     const testStart = Date.now();
+
+    // Safety: verify t.fn is actually a function before calling
+    if (typeof t.fn !== 'function') {
+      console.error(`  ${colors.red}✖ SKIP${colors.reset} ${t.name} ${colors.gray}(invalid test function)${colors.reset}`);
+      testState.failed++;
+      suite.failed++;
+      continue;
+    }
+
+    // Immediate flush to ensure [TEST START] appears in CI output before anything else
     console.log(`[TEST START] ${suite.name} :: ${t.name}`);
-    let timedOut = false;
+    if (typeof process.stdout.flush === 'function') process.stdout.flush();
+
+    let heartbeat = null;
+    const HEARTBEAT_INTERVAL_MS = 5000;
+
     try {
       // Bounded test execution - prevents hanging tests from blocking CI
       await Promise.race([
         t.fn(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`TEST_TIMEOUT: "${t.name}" exceeded ${TEST_TIMEOUT_MS}ms`)), TEST_TIMEOUT_MS)
-        ),
+        // Heartbeat: log every 5s to prove test is still running
+        new Promise((_, reject) => {
+          let count = 0;
+          heartbeat = setInterval(() => {
+            count++;
+            const elapsed = count * HEARTBEAT_INTERVAL_MS;
+            console.log(`[HEARTBEAT ${count}x${HEARTBEAT_INTERVAL_MS}ms] Still running: ${suite.name} :: ${t.name} (${elapsed}ms elapsed)`);
+            if (typeof process.stdout.flush === 'function') process.stdout.flush();
+          }, HEARTBEAT_INTERVAL_MS);
+          // Timeout after 20s
+          setTimeout(() => {
+            // Clear heartbeat FIRST to stop the interval
+            if (heartbeat !== null) {
+              clearInterval(heartbeat);
+              heartbeat = null;
+            }
+            reject(new Error(`TEST_TIMEOUT: "${t.name}" exceeded ${TEST_TIMEOUT_MS}ms`));
+          }, TEST_TIMEOUT_MS);
+        }),
       ]);
+      // Clean up heartbeat if test passed
+      if (heartbeat !== null) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+      }
       const duration = Date.now() - testStart;
       testState.passed++;
       suite.passed++;
       console.log(`[TEST END] ${suite.name} :: ${t.name} → PASS (${duration}ms)`);
       console.log(`  ${colors.green}✔ PASS${colors.reset} ${t.name} ${colors.gray}(${duration}ms)${colors.reset}`);
     } catch (err) {
+      // Clear heartbeat on error/timeout
+      if (heartbeat !== null) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+      }
       const duration = Date.now() - testStart;
       testState.failed++;
       suite.failed++;
