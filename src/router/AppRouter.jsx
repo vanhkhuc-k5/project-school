@@ -65,6 +65,8 @@ import { AdminAnnouncementsPage } from '../pages/admin/AdminAnnouncementsPage';
 import { AdminAcademicPage } from '../pages/admin/AdminAcademicPage';
 import { AdminStudentListPage } from '../pages/admin/AdminStudentListPage';
 import { AdminStudent360Page } from '../pages/admin/AdminStudent360Page';
+import { AdminTeacherListPage } from '../pages/admin/AdminTeacherListPage';
+import { AdminTeacher360Page } from '../pages/admin/AdminTeacher360Page';
 
 // =============================================================================
 // Role Constants
@@ -250,7 +252,9 @@ export function AppRouter() {
           <Route path="academic" element={<AdminAcademicPage />} />
           <Route path="students" element={<AdminStudentListPage />} />
           <Route path="students/:studentId" element={<AdminStudent360Page />} />
-          {/* Future: /admin/teachers, /admin/classes, /admin/settings */}
+          <Route path="teachers" element={<AdminTeacherListPage />} />
+          <Route path="teachers/:teacherId" element={<AdminTeacher360Page />} />
+          {/* Future: /admin/classes, /admin/settings */}
         </Route>
 
         {/* ── Leadership Routes (Admin+) ───────────────────────────────── */}

@@ -206,42 +206,360 @@ router.put('/classes/:id', requirePermission('class.manage'), academicStructureC
 router.delete('/classes/:id', requirePermission('class.manage'), academicStructureController.deleteClass);
 
 
+// ============================================================
 // Faculty & Teachers
-router.get('/teachers', requirePermission('teacher.read'), async (req, res) => {
-  let teachers = [];
+// ============================================================
 
-  if (isSupabaseConfigured()) {
-    const { data, error } = await supabase
-      .from('users')
-      .select('id, name, email, phone, code, avatar')
-      .eq('role', 'teacher')
-      .order('name', { ascending: true });
-    if (!error && data) teachers = data;
-  } else {
-    teachers = db.prepare(`
-      SELECT u.id, u.name, u.email, u.phone, u.code, u.avatar,
-             c.name as homeroom_class
+// List teachers with search and filters
+router.get('/teachers', requirePermission('teacher.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { search, department, status, page = 1, limit = 50 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    let whereClause = 'WHERE u.school_id = ? AND u.role = ?';
+    const params = [schoolId, 'teacher'];
+
+    if (search) {
+      whereClause += ` AND (u.name LIKE ? OR u.code LIKE ?)`;
+      const searchTerm = `%${search}%`;
+      params.push(searchTerm, searchTerm);
+    }
+
+    // Status filter
+    if (status === 'active') {
+      whereClause += ` AND u.is_active = 1`;
+    } else if (status === 'inactive') {
+      whereClause += ` AND u.is_active = 0`;
+    }
+
+    // Department filter (join with teacher_assignments and subjects)
+    if (department) {
+      whereClause += ` AND sub.department = ?`;
+      params.push(department);
+    }
+
+    const countQuery = `
+      SELECT COUNT(DISTINCT u.id) as total
+      FROM users u
+      LEFT JOIN teacher_assignments ta ON ta.teacher_id = u.id
+      LEFT JOIN subjects sub ON sub.id = ta.subject_id
+      ${whereClause}
+    `;
+
+    const listQuery = `
+      SELECT 
+        u.id,
+        u.name,
+        u.email,
+        u.phone,
+        u.code,
+        u.avatar,
+        u.is_active,
+        u.created_at,
+        c.id as homeroom_class_id,
+        c.name as homeroom_class_name,
+        sub.department as primary_department
       FROM users u
       LEFT JOIN classes c ON c.homeroom_teacher_id = u.id
-      WHERE u.role = 'teacher'
+      LEFT JOIN teacher_assignments ta ON ta.teacher_id = u.id
+      LEFT JOIN subjects sub ON sub.id = ta.subject_id
+      ${whereClause}
+      GROUP BY u.id, u.name, u.email, u.phone, u.code, u.avatar, u.is_active, u.created_at, c.id, c.name, sub.department
       ORDER BY u.name ASC
-    `).all();
+      LIMIT ? OFFSET ?
+    `;
+
+    const countResult = db.prepare(countQuery).get(...params);
+    const teachers = db.prepare(listQuery).all(...params, parseInt(limit), offset);
+
+    // Calculate workload for each teacher
+    const teachersWithWorkload = teachers.map(teacher => {
+      const assignments = db.prepare(`
+        SELECT COUNT(DISTINCT ta.class_id) as class_count,
+               COUNT(DISTINCT ta.subject_id) as subject_count,
+               COUNT(*) as total_periods
+        FROM teacher_assignments ta
+        WHERE ta.teacher_id = ?
+      `).get(teacher.id);
+
+      return {
+        ...teacher,
+        is_active: teacher.is_active !== 0,
+        department: teacher.primary_department || null,
+        homeroomClassId: teacher.homeroom_class_id,
+        homeroomClassName: teacher.homeroom_class_name,
+        workload: {
+          classes: assignments?.class_count || 0,
+          subjects: assignments?.subject_count || 0,
+          periods: assignments?.total_periods || 0,
+          isHomeroom: !!teacher.homeroom_class_id,
+        },
+      };
+    });
+
+    res.json({
+      success: true,
+      data: { teachers: teachersWithWorkload },
+      teachers: teachersWithWorkload,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: countResult.total,
+        totalPages: Math.ceil(countResult.total / parseInt(limit)),
+      },
+    });
+  } catch (err) {
+    next(err);
   }
+});
 
-  const formatted = teachers.map((t, idx) => ({
-    id: t.id,
-    name: t.name,
-    email: t.email,
-    phone: t.phone || '0988 123 456',
-    code: t.code,
-    avatar: t.avatar,
-    department: idx % 3 === 0 ? 'Tổ Toán - Tin học' : idx % 3 === 1 ? 'Tổ Khoa học Tự nhiên' : 'Tổ Khoa học Xã hội & Ngoại ngữ',
-    homeroomClass: t.homeroom_class || 'Bộ môn',
-    status: 'Đang giảng dạy',
-    workload: `${16 + (idx % 5)} tiết / tuần`,
-  }));
+// Get single teacher detail
+router.get('/teachers/:id', requirePermission('teacher.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { id } = req.params;
 
-  res.json({ success: true, teachers: formatted });
+    const teacher = db.prepare(`
+      SELECT 
+        u.id,
+        u.name,
+        u.email,
+        u.phone,
+        u.code,
+        u.avatar,
+        u.is_active,
+        u.created_at,
+        c.id as homeroom_class_id,
+        c.name as homeroom_class_name,
+        c.grade_level as homeroom_grade_level
+      FROM users u
+      LEFT JOIN classes c ON c.homeroom_teacher_id = u.id
+      WHERE u.id = ? AND u.school_id = ?
+    `).get(id, schoolId);
+
+    if (!teacher) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy giáo viên' });
+    }
+
+    // Get departments
+    const departments = db.prepare(`
+      SELECT DISTINCT sub.department
+      FROM teacher_assignments ta
+      JOIN subjects sub ON sub.id = ta.subject_id
+      WHERE ta.teacher_id = ? AND sub.department IS NOT NULL
+    `).all(id);
+    const teacherDepartments = departments.map(d => d.department).filter(Boolean);
+
+    // Get subjects taught
+    const subjects = db.prepare(`
+      SELECT DISTINCT s.id, s.name, s.code, s.department
+      FROM teacher_assignments ta
+      JOIN subjects s ON s.id = ta.subject_id
+      WHERE ta.teacher_id = ?
+    `).all(id);
+
+    // Get teaching assignments
+    const assignments = db.prepare(`
+      SELECT 
+        ta.id,
+        ta.class_id,
+        ta.subject_id,
+        ta.academic_year,
+        c.name as class_name,
+        c.grade_level,
+        s.name as subject_name,
+        s.code as subject_code
+      FROM teacher_assignments ta
+      JOIN classes c ON c.id = ta.class_id
+      JOIN subjects s ON s.id = ta.subject_id
+      WHERE ta.teacher_id = ?
+      ORDER BY c.grade_level, c.name, s.name
+    `).all(id);
+
+    // Calculate workload
+    const workloadStats = db.prepare(`
+      SELECT 
+        COUNT(DISTINCT ta.class_id) as class_count,
+        COUNT(DISTINCT ta.subject_id) as subject_count,
+        COUNT(*) as total_periods
+      FROM teacher_assignments ta
+      WHERE ta.teacher_id = ?
+    `).get(id);
+
+    // Get recent activity (audit logs for this teacher)
+    const recentActivity = db.prepare(`
+      SELECT al.*
+      FROM audit_logs al
+      WHERE al.actor_id = ? OR al.entity_id = ?
+      ORDER BY al.created_at DESC
+      LIMIT 10
+    `).all(id, id);
+
+    res.json({
+      success: true,
+      data: {
+        teacher: {
+          ...teacher,
+          is_active: teacher.is_active !== 0,
+          departments: teacherDepartments,
+          homeroomClassId: teacher.homeroom_class_id,
+          homeroomClassName: teacher.homeroom_class_name,
+          homeroomGradeLevel: teacher.homeroom_grade_level,
+        },
+        subjects,
+        assignments,
+        workload: {
+          classes: workloadStats?.class_count || 0,
+          subjects: workloadStats?.subject_count || 0,
+          periods: workloadStats?.total_periods || 0,
+          isHomeroom: !!teacher.homeroom_class_id,
+        },
+        recentActivity,
+      },
+      teacher: {
+        ...teacher,
+        is_active: teacher.is_active !== 0,
+        departments: teacherDepartments,
+        homeroomClassId: teacher.homeroom_class_id,
+        homeroomClassName: teacher.homeroom_class_name,
+      },
+      subjects,
+      assignments,
+      workload: {
+        classes: workloadStats?.class_count || 0,
+        subjects: workloadStats?.subject_count || 0,
+        periods: workloadStats?.total_periods || 0,
+        isHomeroom: !!teacher.homeroom_class_id,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update teacher
+router.put('/teachers/:id', requirePermission('teacher.update'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { id } = req.params;
+    const { name, phone, isActive, departmentId } = req.body;
+
+    // Verify teacher exists
+    const existing = db.prepare(`
+      SELECT id, name FROM users WHERE id = ? AND school_id = ? AND role = 'teacher'
+    `).get(id, schoolId);
+
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy giáo viên' });
+    }
+
+    // Update user fields
+    const updates = [];
+    const params = [];
+
+    if (name !== undefined) {
+      updates.push('name = ?');
+      params.push(name);
+    }
+    if (phone !== undefined) {
+      updates.push('phone = ?');
+      params.push(phone);
+    }
+    if (isActive !== undefined) {
+      updates.push('is_active = ?');
+      params.push(isActive ? 1 : 0);
+    }
+
+    if (updates.length > 0) {
+      params.push(id);
+      db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    }
+
+    res.json({
+      success: true,
+      message: 'Cập nhật thông tin giáo viên thành công',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get teacher workload
+router.get('/teachers/:id/workload', requirePermission('teacher.read'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Get assignments grouped by class
+    const classAssignments = db.prepare(`
+      SELECT 
+        c.id as class_id,
+        c.name as class_name,
+        c.grade_level,
+        COUNT(*) as period_count,
+        COUNT(DISTINCT ta.subject_id) as subject_count
+      FROM teacher_assignments ta
+      JOIN classes c ON c.id = ta.class_id
+      WHERE ta.teacher_id = ?
+      GROUP BY c.id, c.name, c.grade_level
+      ORDER BY c.grade_level, c.name
+    `).all(id);
+
+    // Get subject breakdown
+    const subjectBreakdown = db.prepare(`
+      SELECT 
+        s.id as subject_id,
+        s.name as subject_name,
+        s.code as subject_code,
+        s.department,
+        COUNT(*) as period_count,
+        COUNT(DISTINCT ta.class_id) as class_count
+      FROM teacher_assignments ta
+      JOIN subjects s ON s.id = ta.subject_id
+      WHERE ta.teacher_id = ?
+      GROUP BY s.id, s.name, s.code, s.department
+      ORDER BY s.department, s.name
+    `).all(id);
+
+    // Total periods
+    const totals = db.prepare(`
+      SELECT 
+        COUNT(*) as total_periods,
+        COUNT(DISTINCT class_id) as total_classes,
+        COUNT(DISTINCT subject_id) as total_subjects
+      FROM teacher_assignments
+      WHERE teacher_id = ?
+    `).get(id);
+
+    // Check homeroom
+    const homeroom = db.prepare(`
+      SELECT id, name, grade_level FROM classes WHERE homeroom_teacher_id = ?
+    `).get(id);
+
+    res.json({
+      success: true,
+      data: {
+        classAssignments,
+        subjectBreakdown,
+        totals: {
+          periods: totals?.total_periods || 0,
+          classes: totals?.total_classes || 0,
+          subjects: totals?.total_subjects || 0,
+        },
+        homeroom,
+      },
+      classAssignments,
+      subjectBreakdown,
+      totals: {
+        periods: totals?.total_periods || 0,
+        classes: totals?.total_classes || 0,
+        subjects: totals?.total_subjects || 0,
+      },
+      homeroom,
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Institutional Financial Overview

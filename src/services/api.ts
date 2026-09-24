@@ -675,13 +675,6 @@ export const adminApi = {
     return request(`/admin/classes/${id}`, { method: 'DELETE' });
   },
 
-  async getTeachers(): Promise<Teacher[]> {
-    const res = await request<{ teachers: Teacher[] }>('/admin/teachers');
-    return res?.success && Array.isArray((res as unknown as { teachers?: Teacher[] }).teachers)
-      ? (res as unknown as { teachers: Teacher[] }).teachers
-      : [];
-  },
-
   async getFinancials<T = unknown>(): Promise<T | null> {
     const res = await request<{ financials: T }>('/admin/financials');
     return res?.success ? (res as unknown as { financials: T }).financials : null;
@@ -949,6 +942,71 @@ export const adminApi = {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  },
+
+  // ── Teacher Management ─────────────────────────────────────────────────────────
+  async getTeachers(params: {
+    search?: string;
+    department?: string;
+    status?: 'active' | 'inactive';
+    page?: number;
+    limit?: number;
+  } = {}): Promise<{ teachers: unknown[]; pagination: PaginationMeta }> {
+    const stringParams: Record<string, string> = {};
+    if (params.search) stringParams.search = params.search;
+    if (params.department) stringParams.department = params.department;
+    if (params.status) stringParams.status = params.status;
+    if (params.page) stringParams.page = String(params.page);
+    if (params.limit) stringParams.limit = String(params.limit);
+    const query = new URLSearchParams(stringParams).toString();
+    const res = await request<{ teachers: unknown[]; pagination: PaginationMeta }>(
+      `/admin/teachers${query ? `?${query}` : ''}`
+    );
+    return res?.success
+      ? {
+          teachers: (res as unknown as { teachers?: unknown[] }).teachers || [],
+          pagination: (res as unknown as { pagination?: PaginationMeta }).pagination || { page: 1, limit: 50, total: 0, totalPages: 0, hasNext: false, hasPrev: false },
+        }
+      : { teachers: [], pagination: { page: 1, limit: 50, total: 0, totalPages: 0, hasNext: false, hasPrev: false } };
+  },
+
+  async getTeacherById(id: string): Promise<unknown | null> {
+    const res = await request<{ teacher: unknown }>(`/admin/teachers/${id}`);
+    return res?.success ? (res as unknown as { teacher: unknown }).teacher : null;
+  },
+
+  async updateTeacher(id: string, data: {
+    name?: string;
+    phone?: string;
+    isActive?: boolean;
+  }): Promise<StandardResponse> {
+    return request(`/admin/teachers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getTeacherWorkload(teacherId: string): Promise<{
+    classAssignments: unknown[];
+    subjectBreakdown: unknown[];
+    totals: { periods: number; classes: number; subjects: number };
+    homeroom: unknown | null;
+  }> {
+    const res = await request<{
+      classAssignments: unknown[];
+      subjectBreakdown: unknown[];
+      totals: { periods: number; classes: number; subjects: number };
+      homeroom: unknown | null;
+    }>(`/admin/teachers/${teacherId}/workload`);
+    if (res?.success) {
+      return {
+        classAssignments: (res as unknown as { classAssignments?: unknown[] }).classAssignments || [],
+        subjectBreakdown: (res as unknown as { subjectBreakdown?: unknown[] }).subjectBreakdown || [],
+        totals: (res as unknown as { totals?: { periods: number; classes: number; subjects: number } }).totals || { periods: 0, classes: 0, subjects: 0 },
+        homeroom: (res as unknown as { homeroom?: unknown | null }).homeroom || null,
+      };
+    }
+    return { classAssignments: [], subjectBreakdown: [], totals: { periods: 0, classes: 0, subjects: 0 }, homeroom: null };
   },
 
   // ── Announcements (G25) ──────────────────────────────────────────────────

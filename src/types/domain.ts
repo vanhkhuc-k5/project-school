@@ -59,14 +59,38 @@ export interface Student {
 }
 
 export interface Teacher {
-  id: string;
-  userId: string;
-  department?: string;
-  homeroomClassId?: string;
+  id?: string;
+  userId?: string;
   name?: string;
   code?: string;
-  phone?: string;
   email?: string;
+  phone?: string;
+  avatar?: string | null;
+  is_active?: boolean;
+  created_at?: string;
+  department?: string | null;
+  departments?: string[];
+  homeroomClassId?: string | null;
+  homeroomClassName?: string | null;
+  homeroomGradeLevel?: number | null;
+  workload?: {
+    classes: number;
+    subjects: number;
+    periods: number;
+    isHomeroom: boolean;
+  };
+  subjects?: { id: string; name: string; code: string; department: string }[];
+  assignments?: {
+    id: string;
+    class_id: string;
+    subject_id: string;
+    academic_year: string;
+    class_name: string;
+    grade_level: number;
+    subject_name: string;
+    subject_code: string;
+  }[];
+  recentActivity?: unknown[];
 }
 
 export interface Parent {
