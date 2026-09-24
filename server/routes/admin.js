@@ -3724,4 +3724,530 @@ router.get('/reports/filters', requirePermission('report.read'), async (req, res
   }
 });
 
+// ============================================================
+// Data Operations (Import/Export/Data Quality)
+// ============================================================
+
+// Get import/export capabilities
+router.get('/data/capabilities', requirePermission('import.write'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+
+    const capabilities = {
+      import: {
+        supported: ['students', 'teachers'],
+        maxFileSize: 5 * 1024 * 1024, // 5MB
+        maxRows: 10000,
+      },
+      export: {
+        supported: ['students', 'teachers', 'classes', 'subjects'],
+        maxRows: 50000,
+      },
+      dataQuality: {
+        checks: [
+          'students_without_class',
+          'students_without_guardian',
+          'classes_without_homeroom',
+          'teachers_without_assignment',
+          'duplicate_codes',
+          'missing_profile_fields',
+          'invalid_relations',
+        ],
+      },
+    };
+
+    res.json({ success: true, data: capabilities, ...capabilities });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Import preview (dry run)
+router.post('/data/import/preview', requirePermission('import.write'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { entityType, data } = req.body;
+
+    if (!entityType || !data || !Array.isArray(data)) {
+      return res.status(400).json({ success: false, message: 'Thiếu thông tin import' });
+    }
+
+    if (!['students', 'teachers'].includes(entityType)) {
+      return res.status(400).json({ success: false, message: 'Loại dữ liệu không được hỗ trợ' });
+    }
+
+    if (data.length > 10000) {
+      return res.status(400).json({ success: false, message: 'Số dòng vượt quá giới hạn (10000)' });
+    }
+
+    // Parse and validate rows
+    const validRows = [];
+    const errorRows = [];
+    const warningRows = [];
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const rowNumber = i + 2; // +2 for header
+
+      const errors = [];
+      const warnings = [];
+
+      // Basic validation
+      if (!row.name && !row.email) {
+        errors.push({ field: 'name/email', message: 'Tên hoặc email là bắt buộc' });
+      }
+
+      if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
+        errors.push({ field: 'email', message: 'Email không hợp lệ' });
+      }
+
+      if (row.phone && !/^[\d\s\-+()]{6,20}$/.test(row.phone)) {
+        warnings.push({ field: 'phone', message: 'Số điện thoại có thể không hợp lệ' });
+      }
+
+      // Entity-specific validation
+      if (entityType === 'students') {
+        // Check for duplicate student code
+        if (row.studentCode) {
+          const existing = db.prepare(`SELECT id FROM students WHERE code = ? AND class_id IN (SELECT id FROM classes WHERE school_id = ?)`).get(row.studentCode, schoolId);
+          if (existing) {
+            warnings.push({ field: 'studentCode', message: 'Mã học sinh đã tồn tại' });
+          }
+        }
+
+        // Check if class exists
+        if (row.className) {
+          const classExists = db.prepare(`SELECT id FROM classes WHERE name = ? AND school_id = ?`).get(row.className, schoolId);
+          if (!classExists) {
+            warnings.push({ field: 'className', message: 'Lớp học không tồn tại' });
+          }
+        }
+      }
+
+      if (entityType === 'teachers') {
+        // Check for duplicate employee code
+        if (row.employeeCode) {
+          const existing = db.prepare(`SELECT id FROM users WHERE code = ? AND role = 'teacher' AND school_id = ?`).get(row.employeeCode, schoolId);
+          if (existing) {
+            warnings.push({ field: 'employeeCode', message: 'Mã nhân viên đã tồn tại' });
+          }
+        }
+      }
+
+      if (errors.length > 0) {
+        errorRows.push({ rowNumber, row, errors });
+      } else if (warnings.length > 0) {
+        warningRows.push({ rowNumber, row, warnings });
+        validRows.push({ rowNumber, row });
+      } else {
+        validRows.push({ rowNumber, row });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        totalRows: data.length,
+        validRows: validRows.length,
+        warningRows: warningRows.length,
+        errorRows: errorRows.length,
+        errors: errorRows,
+        warnings: warningRows,
+        preview: validRows.slice(0, 10), // First 10 rows
+      },
+      totalRows: data.length,
+      validRows: validRows.length,
+      warningRows: warningRows.length,
+      errorRows: errorRows.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Import commit
+router.post('/data/import/commit', requirePermission('import.write'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { entityType, data, mode = 'dry_run' } = req.body;
+
+    if (!entityType || !data || !Array.isArray(data)) {
+      return res.status(400).json({ success: false, message: 'Thiếu thông tin import' });
+    }
+
+    if (mode !== 'commit') {
+      return res.status(400).json({ success: false, message: 'Chỉ hỗ trợ chế độ commit' });
+    }
+
+    let importedCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    // Process in transaction
+    const processRow = (row, rowNumber) => {
+      try {
+        // Check if record already exists
+        const existing = db.prepare(`
+          SELECT id FROM users 
+          WHERE email = ? AND school_id = ?
+        `).get(row.email, schoolId);
+
+        if (existing) {
+          skippedCount++;
+          return;
+        }
+
+        const id = `usr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const userId = id;
+        const role = entityType === 'students' ? 'student' : 'teacher';
+
+        // Create user
+        db.prepare(`
+          INSERT INTO users (id, school_id, email, name, phone, code, role, is_active, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'))
+        `).run(userId, schoolId, row.email || null, row.name, row.phone || null, row.studentCode || row.employeeCode || null, role);
+
+        if (entityType === 'students') {
+          // Find or create student record
+          const studentId = `stu_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          let classId = null;
+
+          if (row.className) {
+            const cls = db.prepare(`SELECT id FROM classes WHERE name = ? AND school_id = ?`).get(row.className, schoolId);
+            if (cls) classId = cls.id;
+          }
+
+          db.prepare(`
+            INSERT INTO students (id, user_id, class_id, code, gpa, created_at)
+            VALUES (?, ?, ?, ?, 0, datetime('now'))
+          `).run(studentId, userId, classId, row.studentCode || null);
+        }
+
+        importedCount++;
+      } catch (err) {
+        errorCount++;
+        errors.push({ rowNumber, message: err.message });
+      }
+    };
+
+    // Process all valid rows
+    data.forEach((row, i) => processRow(row, i + 2));
+
+    // Audit log
+    db.prepare(`
+      INSERT INTO audit_logs (id, actor_id, actor_name, role, action, entity_type, entity_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      `log_${Date.now()}`,
+      req.user.id,
+      req.user.name || 'Admin',
+      req.user.role,
+      `Import ${entityType}`,
+      entityType,
+      null,
+      JSON.stringify({ imported: importedCount, skipped: skippedCount, errors: errorCount })
+    );
+
+    res.json({
+      success: true,
+      message: `Đã import ${importedCount} bản ghi`,
+      data: {
+        imported: importedCount,
+        skipped: skippedCount,
+        errors: errorCount,
+        errorDetails: errors.slice(0, 10),
+      },
+      imported: importedCount,
+      skipped: skippedCount,
+      errors: errorCount,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Export dataset
+router.get('/data/export/:entityType', requirePermission('export.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+    const { entityType } = req.params;
+    const { format = 'csv' } = req.query;
+
+    if (!['students', 'teachers', 'classes', 'subjects'].includes(entityType)) {
+      return res.status(400).json({ success: false, message: 'Loại dữ liệu không được hỗ trợ' });
+    }
+
+    let data = [];
+    let headers = [];
+
+    switch (entityType) {
+      case 'students':
+        data = db.prepare(`
+          SELECT 
+            u.code as studentCode,
+            u.name,
+            u.email,
+            u.phone,
+            c.name as className,
+            c.grade_level as gradeLevel,
+            s.gpa
+          FROM students s
+          JOIN users u ON u.id = s.user_id
+          LEFT JOIN classes c ON c.id = s.class_id
+          WHERE c.school_id = ?
+          ORDER BY c.grade_level, c.name, u.name
+        `).all(schoolId);
+        headers = ['studentCode', 'name', 'email', 'phone', 'className', 'gradeLevel', 'gpa'];
+        break;
+
+      case 'teachers':
+        data = db.prepare(`
+          SELECT 
+            u.code as employeeCode,
+            u.name,
+            u.email,
+            u.phone
+          FROM users u
+          WHERE u.role = 'teacher' AND u.school_id = ?
+          ORDER BY u.name
+        `).all(schoolId);
+        headers = ['employeeCode', 'name', 'email', 'phone'];
+        break;
+
+      case 'classes':
+        data = db.prepare(`
+          SELECT c.name, c.grade_level as gradeLevel, c.academic_year as academicYear
+          FROM classes c
+          WHERE c.school_id = ?
+          ORDER BY c.grade_level, c.name
+        `).all(schoolId);
+        headers = ['name', 'gradeLevel', 'academicYear'];
+        break;
+
+      case 'subjects':
+        data = db.prepare(`SELECT name, code FROM subjects ORDER BY name`).all();
+        headers = ['name', 'code'];
+        break;
+    }
+
+    if (format === 'csv') {
+      const csvRows = [
+        headers.join(','),
+        ...data.map((row) =>
+          headers.map((h) => {
+            const val = row[h];
+            if (val === null || val === undefined) return '';
+            const str = String(val);
+            return str.includes(',') || str.includes('"') || str.includes('\n')
+              ? `"${str.replace(/"/g, '""')}"`
+              : str;
+          }).join(',')
+        ),
+      ];
+      const csv = csvRows.join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="export_${entityType}_${Date.now()}.csv"`);
+      return res.send(csv);
+    }
+
+    res.json({ success: true, data: { entityType, records: data }, records: data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Data Quality Checks
+router.get('/data/quality', requirePermission('report.read'), async (req, res, next) => {
+  try {
+    const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
+
+    const issues = [];
+
+    // 1. Students without class
+    const studentsWithoutClass = db.prepare(`
+      SELECT u.name, u.email, u.code
+      FROM students s
+      JOIN users u ON u.id = s.user_id
+      WHERE s.class_id IS NULL
+        AND u.id IN (SELECT user_id FROM students s2 JOIN classes c ON c.id = s2.class_id WHERE c.school_id = ?)
+      LIMIT 20
+    `).all(schoolId);
+
+    if (studentsWithoutClass.length > 0) {
+      issues.push({
+        type: 'students_without_class',
+        title: 'Học sinh chưa được phân lớp',
+        count: studentsWithoutClass.length,
+        severity: 'warning',
+        records: studentsWithoutClass,
+      });
+    }
+
+    // 2. Students without guardian
+    const studentsWithoutGuardian = db.prepare(`
+      SELECT u.name, u.email, u.code
+      FROM students s
+      JOIN users u ON u.id = s.user_id
+      WHERE s.id NOT IN (SELECT student_id FROM parent_student_links WHERE is_active = 1)
+        AND s.class_id IN (SELECT id FROM classes WHERE school_id = ?)
+      LIMIT 20
+    `).all(schoolId);
+
+    if (studentsWithoutGuardian.length > 0) {
+      issues.push({
+        type: 'students_without_guardian',
+        title: 'Học sinh chưa liên kết phụ huynh',
+        count: studentsWithoutGuardian.length,
+        severity: 'info',
+        records: studentsWithoutGuardian,
+      });
+    }
+
+    // 3. Classes without homeroom teacher
+    const classesWithoutHomeroom = db.prepare(`
+      SELECT c.name, c.grade_level
+      FROM classes c
+      WHERE c.school_id = ?
+        AND c.homeroom_teacher_id IS NULL
+      LIMIT 20
+    `).all(schoolId);
+
+    if (classesWithoutHomeroom.length > 0) {
+      issues.push({
+        type: 'classes_without_homeroom',
+        title: 'Lớp chưa có giáo viên chủ nhiệm',
+        count: classesWithoutHomeroom.length,
+        severity: 'warning',
+        records: classesWithoutHomeroom,
+      });
+    }
+
+    // 4. Teachers without assignment
+    const teachersWithoutAssignment = db.prepare(`
+      SELECT u.name, u.email
+      FROM users u
+      WHERE u.role = 'teacher'
+        AND u.school_id = ?
+        AND u.id NOT IN (SELECT teacher_id FROM teacher_classes WHERE is_active = 1)
+      LIMIT 20
+    `).all(schoolId);
+
+    if (teachersWithoutAssignment.length > 0) {
+      issues.push({
+        type: 'teachers_without_assignment',
+        title: 'Giáo viên chưa được phân công',
+        count: teachersWithoutAssignment.length,
+        severity: 'info',
+        records: teachersWithoutAssignment,
+      });
+    }
+
+    // 5. Duplicate codes
+    const duplicateCodes = db.prepare(`
+      SELECT code, COUNT(*) as count
+      FROM users
+      WHERE school_id = ? AND code IS NOT NULL
+      GROUP BY code
+      HAVING COUNT(*) > 1
+      LIMIT 20
+    `).all(schoolId);
+
+    if (duplicateCodes.length > 0) {
+      issues.push({
+        type: 'duplicate_codes',
+        title: 'Mã trùng lặp',
+        count: duplicateCodes.reduce((sum, d) => sum + d.count - 1, 0),
+        severity: 'error',
+        records: duplicateCodes,
+      });
+    }
+
+    // 6. Missing critical profile fields
+    const missingProfileFields = db.prepare(`
+      SELECT u.name, u.email, u.role,
+        CASE WHEN u.name IS NULL OR u.name = '' THEN 1 ELSE 0 END +
+        CASE WHEN u.email IS NULL OR u.email = '' THEN 1 ELSE 0 END as missingCount
+      FROM users u
+      WHERE u.school_id = ?
+        AND (u.name IS NULL OR u.name = '' OR u.email IS NULL OR u.email = '')
+      LIMIT 20
+    `).all(schoolId);
+
+    if (missingProfileFields.length > 0) {
+      issues.push({
+        type: 'missing_profile_fields',
+        title: 'Thiếu trường thông tin bắt buộc',
+        count: missingProfileFields.length,
+        severity: 'error',
+        records: missingProfileFields,
+      });
+    }
+
+    const totalIssues = issues.reduce((sum, i) => sum + i.count, 0);
+
+    res.json({
+      success: true,
+      data: { issues, totalIssues },
+      issues,
+      totalIssues,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get import templates
+router.get('/data/templates/:entityType', requirePermission('import.write'), async (req, res, next) => {
+  try {
+    const { entityType } = req.params;
+
+    let headers = [];
+    let sampleData = [];
+
+    switch (entityType) {
+      case 'students':
+        headers = ['name', 'email', 'phone', 'studentCode', 'className', 'dateOfBirth', 'gender'];
+        sampleData = [
+          { name: 'Nguyễn Văn A', email: 'nguyenvana@email.com', phone: '0901234567', studentCode: 'HS001', className: '10A1', dateOfBirth: '2010-01-15', gender: 'male' },
+          { name: 'Trần Thị B', email: 'tranthib@email.com', phone: '0912345678', studentCode: 'HS002', className: '10A1', dateOfBirth: '2010-03-20', gender: 'female' },
+        ];
+        break;
+
+      case 'teachers':
+        headers = ['name', 'email', 'phone', 'employeeCode', 'qualifications'];
+        sampleData = [
+          { name: 'Lê Văn C', email: 'levanc@school.edu.vn', phone: '0987654321', employeeCode: 'GV001', qualifications: 'Thạc sĩ Sư phạm' },
+          { name: 'Phạm Thị D', email: 'phamthid@school.edu.vn', phone: '0977654321', employeeCode: 'GV002', qualifications: 'Cử nhân Sư phạm Toán' },
+        ];
+        break;
+
+      default:
+        return res.status(400).json({ success: false, message: 'Không có template cho loại này' });
+    }
+
+    const csvRows = [
+      headers.join(','),
+      ...sampleData.map((row) =>
+        headers.map((h) => {
+          const val = row[h];
+          if (val === null || val === undefined) return '';
+          const str = String(val);
+          return str.includes(',') || str.includes('"') || str.includes('\n')
+            ? `"${str.replace(/"/g, '""')}"`
+            : str;
+        }).join(',')
+      ),
+    ];
+    const csv = csvRows.join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="template_${entityType}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

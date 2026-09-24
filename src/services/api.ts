@@ -2003,6 +2003,152 @@ export const adminApi = {
     return null;
   },
 
+  // ── Data Operations (Import/Export/Data Quality) ─────────────────────────────
+  async getDataCapabilities(): Promise<{
+    import: { supported: string[]; maxFileSize: number; maxRows: number };
+    export: { supported: string[]; maxRows: number };
+    dataQuality: { checks: string[] };
+  } | null> {
+    const res = await request<{
+      import: { supported: string[]; maxFileSize: number; maxRows: number };
+      export: { supported: string[]; maxRows: number };
+      dataQuality: { checks: string[] };
+    }>('/admin/data/capabilities');
+    if (res?.success) {
+      return {
+        import: (res as unknown as { import: { supported: string[]; maxFileSize: number; maxRows: number } }).import,
+        export: (res as unknown as { export: { supported: string[]; maxRows: number } }).export,
+        dataQuality: (res as unknown as { dataQuality: { checks: string[] } }).dataQuality,
+      };
+    }
+    return null;
+  },
+
+  async importPreview(entityType: string, data: Record<string, unknown>[]): Promise<{
+    totalRows: number;
+    validRows: number;
+    warningRows: number;
+    errorRows: number;
+    errors: Array<{ rowNumber: number; row: Record<string, unknown>; errors: Array<{ field: string; message: string }> }>;
+    warnings: Array<{ rowNumber: number; row: Record<string, unknown>; warnings: Array<{ field: string; message: string }> }>;
+    preview: Array<{ rowNumber: number; row: Record<string, unknown> }>;
+  } | null> {
+    const res = await request<{
+      totalRows: number;
+      validRows: number;
+      warningRows: number;
+      errorRows: number;
+      errors: Array<{ rowNumber: number; row: Record<string, unknown>; errors: Array<{ field: string; message: string }> }>;
+      warnings: Array<{ rowNumber: number; row: Record<string, unknown>; warnings: Array<{ field: string; message: string }> }>;
+      preview: Array<{ rowNumber: number; row: Record<string, unknown> }>;
+    }>('/admin/data/import/preview', {
+      method: 'POST',
+      body: JSON.stringify({ entityType, data }),
+    });
+    if (res?.success) {
+      return {
+        totalRows: (res as unknown as { totalRows: number }).totalRows,
+        validRows: (res as unknown as { validRows: number }).validRows,
+        warningRows: (res as unknown as { warningRows: number }).warningRows,
+        errorRows: (res as unknown as { errorRows: number }).errorRows,
+        errors: (res as unknown as { errors: Array<{ rowNumber: number; row: Record<string, unknown>; errors: Array<{ field: string; message: string }> }> }).errors || [],
+        warnings: (res as unknown as { warnings: Array<{ rowNumber: number; row: Record<string, unknown>; warnings: Array<{ field: string; message: string }> }> }).warnings || [],
+        preview: (res as unknown as { preview: Array<{ rowNumber: number; row: Record<string, unknown> }> }).preview || [],
+      };
+    }
+    return null;
+  },
+
+  async importCommit(entityType: string, data: Record<string, unknown>[]): Promise<{
+    imported: number;
+    skipped: number;
+    errors: number;
+  } | null> {
+    const res = await request<{
+      imported: number;
+      skipped: number;
+      errors: number;
+    }>('/admin/data/import/commit', {
+      method: 'POST',
+      body: JSON.stringify({ entityType, data, mode: 'commit' }),
+    });
+    if (res?.success) {
+      return {
+        imported: (res as unknown as { imported: number }).imported,
+        skipped: (res as unknown as { skipped: number }).skipped,
+        errors: (res as unknown as { errors: number }).errors,
+      };
+    }
+    return null;
+  },
+
+  async getDataQualityIssues(): Promise<{
+    issues: Array<{
+      type: string;
+      title: string;
+      count: number;
+      severity: 'error' | 'warning' | 'info';
+      records: Record<string, unknown>[];
+    }>;
+    totalIssues: number;
+  } | null> {
+    const res = await request<{
+      issues: Array<{
+        type: string;
+        title: string;
+        count: number;
+        severity: 'error' | 'warning' | 'info';
+        records: Record<string, unknown>[];
+      }>;
+      totalIssues: number;
+    }>('/admin/data/quality');
+    if (res?.success) {
+      return {
+        issues: (res as unknown as { issues: Array<{
+          type: string;
+          title: string;
+          count: number;
+          severity: 'error' | 'warning' | 'info';
+          records: Record<string, unknown>[];
+        }> }).issues || [],
+        totalIssues: (res as unknown as { totalIssues: number }).totalIssues,
+      };
+    }
+    return null;
+  },
+
+  async exportData(entityType: string): Promise<Blob | null> {
+    try {
+      const response = await fetch(`/api/admin/data/export/${entityType}?format=csv`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+      });
+      if (response.ok) {
+        return await response.blob();
+      }
+    } catch {
+      // Export failed
+    }
+    return null;
+  },
+
+  async downloadImportTemplate(entityType: string): Promise<Blob | null> {
+    try {
+      const response = await fetch(`/api/admin/data/templates/${entityType}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+      });
+      if (response.ok) {
+        return await response.blob();
+      }
+    } catch {
+      // Download failed
+    }
+    return null;
+  },
+
   // ── Announcements (G25) ──────────────────────────────────────────────────
   async getAnnouncements(params: {
     page?: number; limit?: number;
