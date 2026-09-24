@@ -195,6 +195,8 @@ export async function chat(req, res, next) {
     });
 
     // Save AI response (only if student record exists)
+
+    // Save AI response (only if student record exists)
     if (hasStudentRecord) {
       conversationRepo.saveMessage({
         id: aiMsgId,

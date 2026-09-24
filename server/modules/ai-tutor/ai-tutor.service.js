@@ -272,7 +272,7 @@ export const aiTutorService = {
     try {
       // Initialize provider if needed
       await initializeProvider();
-      
+
       const provider = getAIProvider();
 
       // Build messages

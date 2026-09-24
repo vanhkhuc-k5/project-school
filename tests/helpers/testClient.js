@@ -44,18 +44,20 @@ export async function describe(suiteName, fn) {
   for (const t of suite.tests) {
     testState.total++;
     const testStart = Date.now();
+    console.log(`[TEST START] ${suite.name} :: ${t.name}`);
     let timedOut = false;
     try {
       // Bounded test execution - prevents hanging tests from blocking CI
       await Promise.race([
         t.fn(),
-        new Promise((_, reject) => 
+        new Promise((_, reject) =>
           setTimeout(() => reject(new Error(`TEST_TIMEOUT: "${t.name}" exceeded ${TEST_TIMEOUT_MS}ms`)), TEST_TIMEOUT_MS)
         ),
       ]);
       const duration = Date.now() - testStart;
       testState.passed++;
       suite.passed++;
+      console.log(`[TEST END] ${suite.name} :: ${t.name} → PASS (${duration}ms)`);
       console.log(`  ${colors.green}✔ PASS${colors.reset} ${t.name} ${colors.gray}(${duration}ms)${colors.reset}`);
     } catch (err) {
       const duration = Date.now() - testStart;
