@@ -29,18 +29,20 @@ export default defineConfig({
     },
   ],
 
+  // NOTE: Playwright manages both backend and frontend servers automatically.
+  // Backend health check uses /api/health (not /) since Express only serves /api/*
   webServer: [
     {
       command: 'npm run server',
-      url: 'http://localhost:5000',
+      url: 'http://localhost:5000/api/health',
       reuseExistingServer: !process.env.CI,
-      timeout: 30000,
+      timeout: 60000,
     },
     {
       command: 'npm run dev',
-      url: 'http://localhost:5173',
+      url: 'http://localhost:5173/',
       reuseExistingServer: !process.env.CI,
-      timeout: 30000,
+      timeout: 60000,
     },
   ],
 });
