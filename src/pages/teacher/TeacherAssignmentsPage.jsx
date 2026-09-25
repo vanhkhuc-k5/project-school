@@ -313,79 +313,137 @@ export function TeacherAssignmentsPage({ onNavigateCreateAssignment, onNavigateE
         </>
       )}
 
-      {/* Grading Modal */}
+      {/* Grading Modal — Split-screen: submission preview + grade input */}
       <Modal
         isOpen={Boolean(selectedSubmission)}
         onClose={() => setSelectedSubmission(null)}
         title={`Chấm bài: ${selectedSubmission?.student_name} — ${selectedSubmission?.assignment_title}`}
+        maxWidth="max-w-5xl"
       >
         {selectedSubmission && (
-          <form onSubmit={handleSaveGrading} className="space-y-4 text-xs">
-            <div className="p-3 bg-surface-neutral rounded border border-hairline space-y-1">
-              <div className="font-semibold text-text-primary text-sm">
-                {selectedSubmission.assignment_title}
+          <div className="space-y-4 text-xs">
+            {/* Student info bar */}
+            <div className="p-3 bg-surface-neutral rounded border border-hairline flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-4">
+                <div className="w-8 h-8 rounded-full bg-sky text-primary font-bold flex items-center justify-center text-xs">
+                  {selectedSubmission.student_name?.substring(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <div className="font-semibold text-text-primary text-sm">{selectedSubmission.student_name}</div>
+                  <div className="text-[11px] text-text-secondary font-mono">{selectedSubmission.student_code || ''}</div>
+                </div>
+                <div className="text-text-secondary text-xs">
+                  {selectedSubmission.class_name && `Lớp ${selectedSubmission.class_name} •`}
+                  {selectedSubmission.submitted_at && ` Nộp lúc: ${new Date(selectedSubmission.submitted_at).toLocaleString('vi-VN')}`}
+                </div>
               </div>
-              <div className="text-text-secondary text-xs">
-                Học sinh: <strong className="text-text-primary">{selectedSubmission.student_name}</strong>
-                {selectedSubmission.class_name && ` • ${selectedSubmission.class_name}`}
-              </div>
-              <div className="text-text-secondary text-xs">
-                Thang điểm: <strong className="text-text-primary">{selectedSubmission.total_score}</strong>
+              <div className="text-right">
+                <div className="text-[11px] text-text-secondary">Thang điểm</div>
+                <div className="text-base font-bold text-primary">{selectedSubmission.total_score}</div>
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-text-primary mb-1">
-                Điểm số
-              </label>
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                max={selectedSubmission.total_score}
-                value={gradingScore}
-                onChange={(e) => setGradingScore(e.target.value)}
-                className="w-full h-10 px-3 bg-white border border-hairline rounded text-sm font-bold text-primary outline-none focus:border-ocean"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-text-primary mb-1">
-                Nhận xét & Phản hồi
-              </label>
-              <textarea
-                rows={3}
-                value={gradingFeedback}
-                onChange={(e) => setGradingFeedback(e.target.value)}
-                placeholder="VD: Bài làm tốt, cần cải thiện phần lập luận..."
-                className="w-full p-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none resize-none focus:border-ocean"
-              />
-            </div>
-
-            {gradeSuccess && (
-              <div className="p-3 bg-emerald-50 border border-emerald-300 rounded text-xs text-emerald-800 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Đã lưu kết quả chấm bài thành công!</span>
+            {/* Split screen */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Left: Submission preview */}
+              <div className="space-y-2">
+                <div className="font-semibold text-text-primary text-xs uppercase tracking-wider flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-ocean" />
+                  Bài nộp của học sinh
+                </div>
+                <div className="p-4 bg-surface-neutral rounded border border-hairline max-h-72 overflow-y-auto text-xs text-text-secondary space-y-2">
+                  {selectedSubmission.submission_content ? (
+                    <p className="whitespace-pre-wrap leading-relaxed text-text-primary">{selectedSubmission.submission_content}</p>
+                  ) : selectedSubmission.answers && Object.keys(selectedSubmission.answers).length > 0 ? (
+                    Object.entries(selectedSubmission.answers).map(([qId, answer]) => (
+                      <div key={qId} className="p-2.5 bg-white rounded border border-hairline space-y-1">
+                        <div className="text-[10px] text-text-secondary font-mono">Câu {qId}</div>
+                        <div className="text-text-primary font-medium">{String(answer)}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-6 text-text-secondary flex flex-col items-center gap-2">
+                      <FileText className="w-8 h-8 text-hairline/50" />
+                      <span>Không có nội dung bài nộp</span>
+                    </div>
+                  )}
+                </div>
+                {selectedSubmission.is_late && (
+                  <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>Nộp trễ hạn</span>
+                  </div>
+                )}
               </div>
-            )}
 
-            {gradeError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4" />
-                <span>{gradeError}</span>
-              </div>
-            )}
+              {/* Right: Grading form */}
+              <form onSubmit={handleSaveGrading} className="space-y-4">
+                <div className="font-semibold text-text-primary text-xs uppercase tracking-wider flex items-center gap-2">
+                  <ClipboardCheck className="w-4 h-4 text-primary" />
+                  Nhập điểm & Phản hồi sư phạm
+                </div>
 
-            <div className="flex justify-end gap-3 pt-2 hairline-t">
-              <Button variant="secondary" size="md" onClick={() => setSelectedSubmission(null)}>
-                Hủy bỏ
-              </Button>
-              <Button variant="primary" size="md" type="submit" disabled={isGrading}>
-                {isGrading ? 'Đang lưu...' : 'Xác nhận điểm'}
-              </Button>
+                {gradeSuccess ? (
+                  <div className="p-4 bg-emerald-50 border border-emerald-300 rounded text-center text-xs text-emerald-800 space-y-1">
+                    <CheckCircle2 className="w-5 h-5 text-success mx-auto" />
+                    <div className="font-semibold">Đã lưu điểm thành công!</div>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-text-primary mb-1">
+                        Điểm số <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max={selectedSubmission.total_score}
+                        value={gradingScore}
+                        onChange={(e) => setGradingScore(e.target.value)}
+                        className={`w-full h-11 px-3 bg-white border rounded text-base font-bold text-primary outline-none focus:ring-2 focus:ring-ocean/15 ${
+                          gradeError ? 'border-danger focus:border-danger' : 'border-hairline focus:border-ocean'
+                        }`}
+                        required
+                      />
+                      <div className="text-[11px] text-text-secondary mt-1">
+                        Thang điểm: 0 — {selectedSubmission.total_score}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-text-primary mb-1">
+                        Nhận xét sư phạm <span className="text-[11px] text-text-secondary font-normal">(hiển thị cho học sinh)</span>
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={gradingFeedback}
+                        onChange={(e) => setGradingFeedback(e.target.value)}
+                        placeholder="VD: Bài làm tốt, nắm vững kiến thức chương 2. Cần cải thiện phần lập luận và trình bày bài giải..."
+                        className="w-full p-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none resize-none focus:border-ocean focus:ring-1 focus:ring-ocean/15"
+                      />
+                    </div>
+
+                    {gradeError && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>{gradeError}</span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end gap-3 pt-2 hairline-t">
+                      <Button variant="secondary" size="md" type="button" onClick={() => setSelectedSubmission(null)}>
+                        Hủy bỏ
+                      </Button>
+                      <Button variant="primary" size="md" type="submit" disabled={isGrading}>
+                        {isGrading ? 'Đang lưu...' : 'Xác nhận điểm'}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </form>
             </div>
-          </form>
+          </div>
         )}
       </Modal>
 

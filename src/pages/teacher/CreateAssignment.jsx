@@ -20,6 +20,7 @@ import {
   ChevronLeft,
   Loader2,
   X,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -39,6 +40,7 @@ const EMPTY_QUESTION = (type = 'multiple_choice') => ({
   prompt: '',
   questionType: type,
   maxScore: 1.0,
+  difficulty: 'TB', // 'NB' | 'TH' | 'VD' | 'VDC' (Thông tư 22 levels)
   options:
     type === 'multiple_choice'
       ? [
@@ -90,10 +92,12 @@ function QuestionEditor({ question, index, totalScore, onChange, onDelete }) {
       explanation: question.explanation,
       hasPlot: question.hasPlot,
       plotData: question.plotData,
+      difficulty: question.difficulty || 'TB', // Preserve difficulty when switching type
     };
     onChange(updated);
   };
 
+  const handleDifficultyChange = (val) => onChange({ ...question, difficulty: val });
   const handlePromptChange = (val) => onChange({ ...question, prompt: val });
   const handleMaxScoreChange = (val) => onChange({ ...question, maxScore: parseFloat(val) || 0 });
   const handleExplanationChange = (val) => onChange({ ...question, explanation: val });
@@ -148,7 +152,7 @@ function QuestionEditor({ question, index, totalScore, onChange, onDelete }) {
     <Card padding="p-5" className={`space-y-3 ${questionIsValid() ? '' : 'border-warning'}`}>
       {/* Header */}
       <div className="flex items-center justify-between hairline-b pb-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-semibold text-primary px-2 py-0.5 rounded bg-sky">
             Câu {index + 1}
           </span>
@@ -163,6 +167,16 @@ function QuestionEditor({ question, index, totalScore, onChange, onDelete }) {
           </select>
           <span className="text-xs text-text-secondary">
             • {question.maxScore} điểm
+          </span>
+          {/* Difficulty badge (Thông tư 22) */}
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+            question.difficulty === 'NB' ? 'bg-sky text-ocean' :
+            question.difficulty === 'TH' ? 'bg-amber-50 text-amber-700' :
+            question.difficulty === 'VD' ? 'bg-emerald-50 text-emerald-700' :
+            question.difficulty === 'VDC' ? 'bg-red-50 text-red-700' :
+            'bg-surface-neutral text-text-secondary'
+          }`} title="Mức độ nhận thức (Thông tư 22)">
+            {question.difficulty || 'TB'}
           </span>
           {!questionIsValid() && (
             <Badge variant="warning" size="sm">Chưa hoàn thiện</Badge>
@@ -315,31 +329,64 @@ function QuestionEditor({ question, index, totalScore, onChange, onDelete }) {
 
       {/* Settings Tab */}
       {activeTab === 'settings' && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-4">
+          {/* Difficulty tagging per Thông tư 22 */}
           <div>
-            <label className="block text-xs font-medium text-text-primary mb-1">
-              Điểm tối đa
+            <label className="block text-xs font-medium text-text-primary mb-2">
+              Mức độ nhận thức (Thông tư 22)
             </label>
-            <input
-              type="number"
-              min="0.1"
-              max="100"
-              step="0.1"
-              value={question.maxScore}
-              onChange={(e) => handleMaxScoreChange(e.target.value)}
-              className="w-full h-9 px-3 bg-white border border-hairline rounded text-xs text-text-primary focus:border-ocean outline-none"
-            />
+            <div className="flex flex-wrap gap-2">
+              {[
+                { value: 'NB', label: 'NB', desc: 'Nhận biết', color: 'bg-sky text-ocean hover:bg-sky/70', active: 'ring-2 ring-ocean ring-offset-1' },
+                { value: 'TH', label: 'TH', desc: 'Thông hiểu', color: 'bg-amber-50 text-amber-700 hover:bg-amber-100', active: 'ring-2 ring-amber-500 ring-offset-1' },
+                { value: 'VD', label: 'VD', desc: 'Vận dụng', color: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100', active: 'ring-2 ring-emerald-500 ring-offset-1' },
+                { value: 'VDC', label: 'VDC', desc: 'Vận dụng cao', color: 'bg-red-50 text-red-700 hover:bg-red-100', active: 'ring-2 ring-red-500 ring-offset-1' },
+              ].map(diff => {
+                const isSelected = (question.difficulty || 'TB') === diff.value;
+                return (
+                  <button
+                    key={diff.value}
+                    type="button"
+                    onClick={() => handleDifficultyChange(diff.value)}
+                    title={diff.desc}
+                    className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${diff.color} ${
+                      isSelected ? diff.active : 'opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <div>{diff.label}</div>
+                    <div className="text-[10px] font-normal opacity-80">{diff.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div className="flex items-end">
-            <label className="flex items-center gap-2 cursor-pointer text-xs text-text-primary">
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-text-primary mb-1">
+                Điểm tối đa
+              </label>
               <input
-                type="checkbox"
-                checked={question.hasPlot}
-                onChange={handlePlotToggle}
-                className="w-4 h-4 text-primary rounded border-hairline"
+                type="number"
+                min="0.1"
+                max="100"
+                step="0.1"
+                value={question.maxScore}
+                onChange={(e) => handleMaxScoreChange(e.target.value)}
+                className="w-full h-9 px-3 bg-white border border-hairline rounded text-xs text-text-primary focus:border-ocean outline-none"
               />
-              <span>Có đồ thị đính kèm</span>
-            </label>
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 cursor-pointer text-xs text-text-primary">
+                <input
+                  type="checkbox"
+                  checked={question.hasPlot}
+                  onChange={handlePlotToggle}
+                  className="w-4 h-4 text-primary rounded border-hairline"
+                />
+                <span>Có đồ thị đính kèm</span>
+              </label>
+            </div>
           </div>
         </div>
       )}
@@ -599,6 +646,7 @@ export function CreateAssignment({ assignmentId: propAssignmentId, onBackToDashb
       questions: form.questions.map((q) => ({
         prompt: q.prompt.trim(),
         questionType: q.questionType,
+        difficulty: q.difficulty || 'TB', // Thông tư 22 cognitive level
         maxScore: parseFloat(q.maxScore) || 1.0,
         options: q.options?.filter((o) => o.text.trim()),
         correctAnswer: q.correctAnswer || undefined,
@@ -918,9 +966,35 @@ export function CreateAssignment({ assignmentId: propAssignmentId, onBackToDashb
                   <span className="w-2 h-2 rounded-full bg-primary" />
                   3. Danh sách câu hỏi ({form.questions.length} câu)
                 </h2>
-                <span className="text-xs text-text-secondary">
-                  Tổng điểm: {computedTotal.toFixed(1)} / {parseFloat(form.totalScore) || 10}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-text-secondary">
+                    Tổng điểm: {computedTotal.toFixed(1)} / {parseFloat(form.totalScore) || 10}
+                  </span>
+                  {form.questions.length >= 4 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Generate 4 exam codes with shuffled questions
+                        const codes = ['101', '102', '103', '104'];
+                        const shuffled = codes.map((code) => ({
+                          code,
+                          questions: [...form.questions]
+                            .map((q, i) => ({ ...q, originalIndex: i }))
+                            .sort(() => Math.random() - 0.5),
+                          questionCount: form.questions.length,
+                        }));
+                        const msg = shuffled.map(s =>
+                          `Đề ${s.code}: ${s.questionCount} câu (thứ tự câu hỏi đã đảo)`
+                        ).join('\n');
+                        alert(`Đã tạo 4 mã đề thi:\n\n${msg}`);
+                      }}
+                      className="px-3 py-1.5 border border-ocean/40 bg-sky/30 hover:bg-sky/60 rounded text-xs text-ocean font-medium flex items-center gap-1.5 transition-colors"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      Tạo 4 mã đề đảo
+                    </button>
+                  )}
+                </div>
               </div>
 
               {form.questions.map((q, idx) => (

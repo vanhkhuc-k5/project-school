@@ -38,6 +38,7 @@ const DEFAULT_QUICK_CHIPS = [
   '✍️ Cho ví dụ tương tự tự luyện',
   '🔍 Kiểm tra đáp án câu 1.1b',
   '📋 Tóm tắt sơ đồ tư duy Định lý Vi-ét',
+  '🎯 Tạo bài tập tương tự (Socratic)',
 ];
 
 // ── Normalize a backend message to the shape the UI expects ───────────────────
@@ -192,6 +193,28 @@ export function AiTutorPage() {
   const handleQuickChip = (chip) => {
     // Strip emoji prefix to get the actual prompt text
     const text = chip.replace(/^[^\w\s]+\s*/, '').trim();
+
+    // Special handler for Socratic practice generation
+    if (text === 'Tạo bài tập tương tự (Socratic)') {
+      // Analyze the last AI response for topic context, then generate 3 Socratic questions
+      const lastAiMsg = [...messages].reverse().find(m => m.sender === 'ai');
+      const topicContext = lastAiMsg?.content?.intro ||
+        lastAiMsg?.text ||
+        selectedTopic ||
+        'bài toán hiện tại';
+
+      // Generate 3 Socratic follow-up questions based on context
+      const socraticPrompt = `Phân tích bài toán/topic sau: "${topicContext}". ` +
+        `Dựa trên các lỗi sai phổ biến của học sinh, hãy tạo 3 câu hỏi Socratic (dẫn dắt tư duy) ` +
+        `theo 3 cấp độ khác nhau (Dễ → Trung bình → Khó). ` +
+        `Mỗi câu hỏi nên có: (1) gợi ý để học sinh tự tìm ra, (2) đáp án đúng, (3) giải thích tại sao đó là đáp án đúng. ` +
+        `Trả lời bằng tiếng Việt, định dạng rõ ràng.`;
+
+      setInputText(socraticPrompt);
+      inputRef.current?.focus();
+      return;
+    }
+
     setInputText(text);
     inputRef.current?.focus();
   };
@@ -475,7 +498,7 @@ export function AiTutorPage() {
                   </div>
 
                   {/* AI message actions */}
-                  <div className="flex items-center gap-3 text-xs text-text-secondary pl-1">
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-text-secondary pl-1">
                     <button onClick={handleCopy} className="hover:text-primary flex items-center gap-1">
                       <Copy className="w-3.5 h-3.5" />
                       <span>{copied ? 'Đã sao chép!' : 'Tóm chép'}</span>
@@ -484,6 +507,15 @@ export function AiTutorPage() {
                     <button onClick={handleSpeak} className="hover:text-primary flex items-center gap-1">
                       <Volume2 className={`w-3.5 h-3.5 ${isSpeaking ? 'text-ocean animate-bounce' : ''}`} />
                       <span>{isSpeaking ? 'Đang đọc…' : 'Nghe giảng'}</span>
+                    </button>
+                    <span>•</span>
+                    <button
+                      onClick={() => handleQuickChip('🎯 Tạo bài tập tương tự (Socratic)')}
+                      className="hover:text-ocean flex items-center gap-1 text-ocean font-medium"
+                      title="Tạo bài tập tương tự theo phương pháp Socratic"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Tạo bài tập Socratic</span>
                     </button>
                     <span>•</span>
                     <button className="hover:text-primary flex items-center gap-1">

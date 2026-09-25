@@ -4227,6 +4227,26 @@ export const gradebookApi = {
     });
   },
 
+  // Bulk enter grades for multiple students at once (gradebook matrix)
+  async bulkEnterGrades(payload: {
+    classId: string;
+    semesterId?: string;
+    subjectId?: string;
+    entries: Array<{
+      studentId: string;
+      categoryCode: string | null; // 'TX' | 'GK' | 'CK' | null
+      rawScore: number;
+      maxScore?: number;
+      testName?: string;
+      gradedAt?: string;
+    }>;
+  }): Promise<StandardResponse<{ saved: number; errors: string[] }>> {
+    return request('/gradebook/grades/bulk', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   // --- Calculation ---
   async computeStudentGrade(params: {
     studentId?: string;
@@ -4289,6 +4309,9 @@ export const gradebookApi = {
 // Re-export adminApi methods as a default `api` alias for backward compatibility
 // Note: adminApi already contains all the academic management methods (years, semesters, departments)
 export { adminApi as api };
+
+// Export request function as apiRequest for backward compatibility
+export const apiRequest = request;
 
 
 

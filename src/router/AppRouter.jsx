@@ -7,13 +7,10 @@
 // - Protected routes with role-based access
 // - Role/permission-aware routes
 // - 404 Not Found page
-// - 403 Forbidden page
-//
-// SECURITY: Server-side authorization is the security boundary.
-// This router provides UX-level role guards only. Do NOT use this as a security boundary.
+// - Code-splitting with React.lazy()
 // =============================================================================
 
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -31,57 +28,72 @@ import { ForbiddenPage } from '../pages/errors/ForbiddenPage';
 // ── Auth Pages ─────────────────────────────────────────────────────────────
 import { LoginPage } from '../pages/auth/LoginPage';
 
-// ── Role Layouts ────────────────────────────────────────────────────────────
+// ── Role Layouts (static imports - shared across routes) ────────────────────
 import { StudentLayout } from '../layouts/StudentLayout';
 import { TeacherLayout } from '../layouts/TeacherLayout';
 import { ParentLayout } from '../layouts/ParentLayout';
 import { AdminLayout } from '../layouts/AdminLayout';
+import { LeadershipLayout } from '../layouts/LeadershipLayout';
+import { DepartmentHeadLayout } from '../layouts/DepartmentHeadLayout';
 
-// ── Student Pages ───────────────────────────────────────────────────────────
-import { StudentDashboard } from '../pages/student/StudentDashboard';
-import { StudentAssignmentsPage } from '../pages/student/StudentAssignmentsPage';
-import { StudentResourcesPage } from '../pages/student/StudentResourcesPage';
-import { StudentGradesPage } from '../pages/student/StudentGradesPage';
-import { StudentTimetablePage } from '../pages/student/StudentTimetablePage';
-import { StudentAttendancePage } from '../pages/student/StudentAttendancePage';
-import { StudentAnnouncementsPage } from '../pages/student/StudentAnnouncementsPage';
-import { AiTutorPage } from '../pages/student/AiTutorPage';
+// ── Code-splitting: Lazy load pages for better bundle size ──────────────────
+// Student Pages (lazy loaded)
+const StudentDashboard = lazy(() => import('../pages/student/StudentDashboard').then(m => ({ default: m.StudentDashboard })));
+const StudentAssignmentsPage = lazy(() => import('../pages/student/StudentAssignmentsPage').then(m => ({ default: m.StudentAssignmentsPage })));
+const StudentResourcesPage = lazy(() => import('../pages/student/StudentResourcesPage').then(m => ({ default: m.StudentResourcesPage })));
+const StudentGradesPage = lazy(() => import('../pages/student/StudentGradesPage').then(m => ({ default: m.StudentGradesPage })));
+const StudentTimetablePage = lazy(() => import('../pages/student/StudentTimetablePage').then(m => ({ default: m.StudentTimetablePage })));
+const StudentAttendancePage = lazy(() => import('../pages/student/StudentAttendancePage').then(m => ({ default: m.StudentAttendancePage })));
+const StudentAnnouncementsPage = lazy(() => import('../pages/student/StudentAnnouncementsPage').then(m => ({ default: m.StudentAnnouncementsPage })));
+const AiTutorPage = lazy(() => import('../pages/student/AiTutorPage').then(m => ({ default: m.AiTutorPage })));
 
-// ── Teacher Pages ───────────────────────────────────────────────────────────
-import { TeacherDashboard } from '../pages/teacher/TeacherDashboard';
-import { TeacherClassesPage } from '../pages/teacher/TeacherClassesPage';
-import { TeacherAssignmentsPage } from '../pages/teacher/TeacherAssignmentsPage';
-import { TeacherAnalytics } from '../pages/teacher/TeacherAnalytics';
-import { TeacherReportsPage } from '../pages/teacher/TeacherReportsPage';
-import { TeacherSchedulePage } from '../pages/teacher/TeacherSchedulePage';
-import { CreateAssignment } from '../pages/teacher/CreateAssignment';
+// Teacher Pages (lazy loaded)
+const TeacherDashboard = lazy(() => import('../pages/teacher/TeacherDashboard').then(m => ({ default: m.TeacherDashboard })));
+const TeacherClassesPage = lazy(() => import('../pages/teacher/TeacherClassesPage').then(m => ({ default: m.TeacherClassesPage })));
+const TeacherAssignmentsPage = lazy(() => import('../pages/teacher/TeacherAssignmentsPage').then(m => ({ default: m.TeacherAssignmentsPage })));
+const TeacherAnalytics = lazy(() => import('../pages/teacher/TeacherAnalytics').then(m => ({ default: m.TeacherAnalytics })));
+const TeacherReportsPage = lazy(() => import('../pages/teacher/TeacherReportsPage').then(m => ({ default: m.TeacherReportsPage })));
+const TeacherSchedulePage = lazy(() => import('../pages/teacher/TeacherSchedulePage').then(m => ({ default: m.TeacherSchedulePage })));
+const CreateAssignment = lazy(() => import('../pages/teacher/CreateAssignment').then(m => ({ default: m.CreateAssignment })));
 
-// ── Parent Pages ────────────────────────────────────────────────────────────
-import { ParentDashboardPage } from '../pages/parent/ParentDashboardPage';
-import { ParentGradesPage } from '../pages/parent/ParentGradesPage';
-import { ParentSchedulePage } from '../pages/parent/ParentSchedulePage';
-import { ParentLeaveRequestPage } from '../pages/parent/ParentLeaveRequestPage';
-import { ParentTuitionPage } from '../pages/parent/ParentTuitionPage';
-import { ParentMessagesPage } from '../pages/parent/ParentMessagesPage';
-import { ParentNoticesPage } from '../pages/parent/ParentNoticesPage';
+// Parent Pages (lazy loaded)
+const ParentDashboardPage = lazy(() => import('../pages/parent/ParentDashboardPage').then(m => ({ default: m.ParentDashboardPage })));
+const ParentGradesPage = lazy(() => import('../pages/parent/ParentGradesPage').then(m => ({ default: m.ParentGradesPage })));
+const ParentSchedulePage = lazy(() => import('../pages/parent/ParentSchedulePage').then(m => ({ default: m.ParentSchedulePage })));
+const ParentLeaveRequestPage = lazy(() => import('../pages/parent/ParentLeaveRequestPage').then(m => ({ default: m.ParentLeaveRequestPage })));
+const ParentTuitionPage = lazy(() => import('../pages/parent/ParentTuitionPage').then(m => ({ default: m.ParentTuitionPage })));
+const ParentMessagesPage = lazy(() => import('../pages/parent/ParentMessagesPage').then(m => ({ default: m.ParentMessagesPage })));
+const ParentNoticesPage = lazy(() => import('../pages/parent/ParentNoticesPage').then(m => ({ default: m.ParentNoticesPage })));
 
-// ── Admin Pages ─────────────────────────────────────────────────────────────
-import { AdminDashboard } from '../pages/admin/AdminDashboard';
-import { AdminAnnouncementsPage } from '../pages/admin/AdminAnnouncementsPage';
-import { AdminAcademicPage } from '../pages/admin/AdminAcademicPage';
-import { AdminStudentListPage } from '../pages/admin/AdminStudentListPage';
-import { AdminStudent360Page } from '../pages/admin/AdminStudent360Page';
-import { AdminTeacherListPage } from '../pages/admin/AdminTeacherListPage';
-import { AdminTeacher360Page } from '../pages/admin/AdminTeacher360Page';
-import { AdminClassStructurePage } from '../pages/admin/AdminClassStructurePage';
-import { AdminAttendancePage } from '../pages/admin/AdminAttendancePage';
-import { AdminAssessmentPage } from '../pages/admin/AdminAssessmentPage';
-import { AdminParentListPage } from '../pages/admin/AdminParentListPage';
-import { AdminParentDetailPage } from '../pages/admin/AdminParentDetailPage';
-import { AdminCommunicationPage } from '../pages/admin/AdminCommunicationPage';
-import { AdminReportCenterPage } from '../pages/admin/AdminReportCenterPage';
-import { AdminDataOperationsPage } from '../pages/admin/AdminDataOperationsPage';
-import { AdminSystemPage } from '../pages/admin/AdminSystemPage';
+// Department Pages (lazy loaded)
+const DepartmentDashboardPage = lazy(() => import('../pages/department/DepartmentDashboardPage').then(m => ({ default: m.DepartmentDashboardPage })));
+const DepartmentCurriculumPage = lazy(() => import('../pages/department/DepartmentCurriculumPage').then(m => ({ default: m.DepartmentCurriculumPage })));
+const DepartmentLessonPlanApprovalPage = lazy(() => import('../pages/department/DepartmentLessonPlanApprovalPage').then(m => ({ default: m.DepartmentLessonPlanApprovalPage })));
+const DepartmentAssessmentAnalyticsPage = lazy(() => import('../pages/department/DepartmentAssessmentAnalyticsPage').then(m => ({ default: m.DepartmentAssessmentAnalyticsPage })));
+
+// Leadership Pages (lazy loaded)
+const LeadershipDashboardPage = lazy(() => import('../pages/leadership/LeadershipDashboardPage').then(m => ({ default: m.LeadershipDashboardPage })));
+const LeadershipStaffPage = lazy(() => import('../pages/leadership/LeadershipStaffPage').then(m => ({ default: m.LeadershipStaffPage })));
+const LeadershipAcademicReportsPage = lazy(() => import('../pages/leadership/LeadershipAcademicReportsPage').then(m => ({ default: m.LeadershipAcademicReportsPage })));
+const LeadershipApprovalsPage = lazy(() => import('../pages/leadership/LeadershipApprovalsPage').then(m => ({ default: m.LeadershipApprovalsPage })));
+
+// Admin Pages (lazy loaded)
+const AdminDashboard = lazy(() => import('../pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const AdminAnnouncementsPage = lazy(() => import('../pages/admin/AdminAnnouncementsPage').then(m => ({ default: m.AdminAnnouncementsPage })));
+const AdminAcademicPage = lazy(() => import('../pages/admin/AdminAcademicPage').then(m => ({ default: m.AdminAcademicPage })));
+const AdminStudentListPage = lazy(() => import('../pages/admin/AdminStudentListPage').then(m => ({ default: m.AdminStudentListPage })));
+const AdminStudent360Page = lazy(() => import('../pages/admin/AdminStudent360Page').then(m => ({ default: m.AdminStudent360Page })));
+const AdminTeacherListPage = lazy(() => import('../pages/admin/AdminTeacherListPage').then(m => ({ default: m.AdminTeacherListPage })));
+const AdminTeacher360Page = lazy(() => import('../pages/admin/AdminTeacher360Page').then(m => ({ default: m.AdminTeacher360Page })));
+const AdminClassStructurePage = lazy(() => import('../pages/admin/AdminClassStructurePage').then(m => ({ default: m.AdminClassStructurePage })));
+const AdminAttendancePage = lazy(() => import('../pages/admin/AdminAttendancePage').then(m => ({ default: m.AdminAttendancePage })));
+const AdminAssessmentPage = lazy(() => import('../pages/admin/AdminAssessmentPage').then(m => ({ default: m.AdminAssessmentPage })));
+const AdminParentListPage = lazy(() => import('../pages/admin/AdminParentListPage').then(m => ({ default: m.AdminParentListPage })));
+const AdminParentDetailPage = lazy(() => import('../pages/admin/AdminParentDetailPage').then(m => ({ default: m.AdminParentDetailPage })));
+const AdminCommunicationPage = lazy(() => import('../pages/admin/AdminCommunicationPage').then(m => ({ default: m.AdminCommunicationPage })));
+const AdminReportCenterPage = lazy(() => import('../pages/admin/AdminReportCenterPage').then(m => ({ default: m.AdminReportCenterPage })));
+const AdminDataOperationsPage = lazy(() => import('../pages/admin/AdminDataOperationsPage').then(m => ({ default: m.AdminDataOperationsPage })));
+const AdminSystemPage = lazy(() => import('../pages/admin/AdminSystemPage').then(m => ({ default: m.AdminSystemPage })));
 
 // =============================================================================
 // Role Constants
@@ -178,6 +190,18 @@ function ScrollToTop() {
     window.scrollTo(0, 0);
   }, [pathname]);
   return null;
+}
+
+// Loading fallback for lazy loaded routes
+function RouteLoader() {
+  return (
+    <div className="min-h-[400px] flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 border-4 border-ocean/30 border-t-ocean rounded-full animate-spin" />
+        <span className="text-sm text-text-secondary">Đang tải...</span>
+      </div>
+    </div>
+  );
 }
 
 // =============================================================================
@@ -291,12 +315,15 @@ export function AppRouter() {
           path="/leadership"
           element={
             <ProtectedRoute allowedRoles={LEADERSHIP_ROLES}>
-              <AdminLayout />
+              <LeadershipLayout />
             </ProtectedRoute>
           }
         >
-          <Route index element={<AdminDashboard />} />
-          <Route path="dashboard" element={<AdminDashboard />} />
+          <Route index element={<Navigate to="/leadership/dashboard" replace />} />
+          <Route path="dashboard" element={<LeadershipDashboardPage />} />
+          <Route path="staff" element={<LeadershipStaffPage />} />
+          <Route path="academic" element={<LeadershipAcademicReportsPage />} />
+          <Route path="approvals" element={<LeadershipApprovalsPage />} />
         </Route>
 
         {/* ── Department Head Routes ───────────────────────────────────── */}
@@ -304,12 +331,15 @@ export function AppRouter() {
           path="/department"
           element={
             <ProtectedRoute allowedRoles={DEPARTMENT_HEAD_ROLES}>
-              <AdminLayout />
+              <DepartmentHeadLayout />
             </ProtectedRoute>
           }
         >
-          <Route index element={<AdminDashboard />} />
-          <Route path="dashboard" element={<AdminDashboard />} />
+          <Route index element={<Navigate to="/department/dashboard" replace />} />
+          <Route path="dashboard" element={<DepartmentDashboardPage />} />
+          <Route path="curriculum" element={<DepartmentCurriculumPage />} />
+          <Route path="lesson-plans" element={<DepartmentLessonPlanApprovalPage />} />
+          <Route path="assessments" element={<DepartmentAssessmentAnalyticsPage />} />
         </Route>
 
         {/* ── Catch-all 404 ───────────────────────────────────────────── */}
