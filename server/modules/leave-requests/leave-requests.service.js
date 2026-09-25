@@ -7,6 +7,7 @@ import { AppError } from '../../shared/errors/index.js';
 import { LEAVE_STATUS, STATUS_TRANSITIONS, REVIEWER_ROLES } from './leave-requests.types.js';
 import { pgQuery, isPostgresConfigured } from '../../postgres.js';
 import { db } from '../../db.js';
+import { notifyLeaveRequestUpdated } from '../notifications/notifications.service.js';
 
 // ── Authorization Helpers ────────────────────────────────────────────────────
 
@@ -296,6 +297,25 @@ export const leaveRequestService = {
       reviewNote,
       reviewerId: userId,
     });
+
+    // G26/G40: Dispatch SSE notification to parent
+    try {
+      const updatedRequest = await repo.leaveRequestRepo.findById(id);
+      if (updatedRequest) {
+        await notifyLeaveRequestUpdated({
+          leaveRequest: {
+            id: updatedRequest.id,
+            status,
+            startDate: updatedRequest.start_date,
+            endDate: updatedRequest.end_date,
+          },
+          requester: { id: updatedRequest.parent_id, name: null },
+          actor: { name: userName, role },
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[Notification] notifyLeaveRequestUpdated failed (non-fatal):', notifErr.message);
+    }
 
     const action = status === LEAVE_STATUS.APPROVED ? 'Duyệt' : 'Từ chối';
     await logAudit({

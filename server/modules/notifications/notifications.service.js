@@ -7,6 +7,7 @@ import {
   NOTIFICATION_LABELS,
 } from './notifications.types.js';
 import { AppError } from '../../shared/errors/index.js';
+import { dispatchToUser } from './sse.controller.js';
 
 // ── Core CRUD ────────────────────────────────────────────────────────────────
 
@@ -97,6 +98,26 @@ export async function notifyAssignmentPublished({ assignment, students }) {
   }));
 
   await repo.createNotificationsBatch(notifications);
+
+  // G26/G40: Dispatch SSE event to each student in real-time
+  for (const student of students) {
+    try {
+      const sseData = {
+        event: 'ASSIGNMENT_PUBLISHED',
+        assignmentId: assignment.id,
+        title: assignment.title || 'Bài tập mới',
+        dueDate: assignment.dueDate || null,
+        classId: assignment.classId || null,
+        subjectId: assignment.subjectId || null,
+        message: assignment.dueDate
+          ? `Bài tập mới: ${assignment.title} — Hạn nộp: ${new Date(assignment.dueDate).toLocaleDateString('vi-VN')}`
+          : `Bài tập mới: ${assignment.title}`,
+      };
+      dispatchToUser(student.id, 'ASSIGNMENT_PUBLISHED', sseData);
+    } catch (sseErr) {
+      console.warn('[SSE] dispatchToUser failed for assignment notification:', sseErr.message);
+    }
+  }
 }
 
 /**
@@ -150,6 +171,25 @@ export async function notifyGradePublished({ grade, student }) {
       semesterId: grade.semesterId,
     },
   });
+
+  // G26/G40: Dispatch SSE event to student in real-time
+  try {
+    dispatchToUser(student.id, 'GRADE_PUBLISHED', {
+      event: 'GRADE_PUBLISHED',
+      gradeId: grade.id,
+      subject: grade.subject || 'Bài kiểm tra',
+      rawScore: grade.rawScore,
+      maxScore: grade.maxScore || 10,
+      subjectId: grade.subjectId || null,
+      classId: grade.classId || null,
+      academicYearId: grade.academicYearId || null,
+      semesterId: grade.semesterId || null,
+      message: `Kết quả học tập: ${student.name ? 'Em ' + student.name : 'Bạn'} vừa có điểm mới môn ${grade.subject || 'Bài kiểm tra'} (${scoreText})`,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (sseErr) {
+    console.warn('[SSE] dispatchToUser failed for grade notification:', sseErr.message);
+  }
 }
 
 /**
@@ -244,6 +284,27 @@ export async function notifyLeaveRequestUpdated({ leaveRequest, requester, actor
       endDate: leaveRequest.endDate,
     },
   });
+
+  // G26/G40: Dispatch SSE event to parent in real-time
+  try {
+    dispatchToUser(requester.id, 'LEAVE_REQUEST_UPDATED', {
+      event: 'LEAVE_REQUEST_UPDATED',
+      leaveRequestId: leaveRequest.id,
+      status: leaveRequest.status,
+      startDate: leaveRequest.startDate || null,
+      endDate: leaveRequest.endDate || null,
+      actorName: actor?.name || 'GVCN',
+      actorRole: actor?.role || 'teacher',
+      message: leaveRequest.status === 'approved'
+        ? `Đơn xin nghỉ phép của con bạn đã được Phê duyệt bởi ${actor?.name || 'GVCN'}.`
+        : leaveRequest.status === 'rejected'
+        ? `Đơn xin nghỉ phép của con bạn đã được Từ chối bởi ${actor?.name || 'GVCN'}.`
+        : `Đơn xin nghỉ phép của con bạn đang được xem xét.`,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (sseErr) {
+    console.warn('[SSE] dispatchToUser failed for leave request notification:', sseErr.message);
+  }
 }
 
 /**

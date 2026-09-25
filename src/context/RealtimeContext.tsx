@@ -273,6 +273,30 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
       }
     });
 
+    // G40: Handle LEAVE_REQUEST_UPDATED event — parent gets real-time leave request status update
+    eventSource.addEventListener('LEAVE_REQUEST_UPDATED', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const notification: Notification = {
+          id: `leave-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type: 'leave_request_updated',
+          title: 'Cập nhật đơn nghỉ phép',
+          message: data.message || 'Đơn xin nghỉ phép đã được cập nhật.',
+          data,
+          timestamp: data.timestamp || new Date().toISOString(),
+        };
+
+        setNotifications((prev) => [notification, ...prev]);
+        setUnreadCount((prev) => prev + 1);
+
+        if (onNotification) {
+          onNotification(notification);
+        }
+      } catch (err) {
+        console.error('[Realtime] Failed to parse LEAVE_REQUEST_UPDATED event:', err);
+      }
+    });
+
     // G39: Handle EMERGENCY_BROADCAST event — school-wide emergency alert
     eventSource.addEventListener('EMERGENCY_BROADCAST', (event) => {
       try {

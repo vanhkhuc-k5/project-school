@@ -10,6 +10,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
+  timeout: 45000,
   reporter: [
     ['html', { outputFolder: 'playwright-report' }],
     ['list'],
@@ -36,21 +37,25 @@ export default defineConfig({
   //   - Uses test fixtures (NOT production seed)
   //   - Health check: /api/health
   //
-  // Frontend: Vite dev server
+  // Frontend: Vite preview server (uses built files for faster startup)
   //   - Port: 5173
-  //   - Proxies /api/* to backend at localhost:5000
+  //   - Health check: / (HTTP 200)
   webServer: [
     {
       command: 'node tests/browser/e2e-server.js',
       url: 'http://localhost:5000/api/health',
       reuseExistingServer: !process.env.CI,
-      timeout: 60000,
+      timeout: 120000,
+      stdout: 'pipe',
+      stderr: 'pipe',
     },
     {
-      command: 'npm run dev',
+      command: 'npm run preview',
       url: 'http://localhost:5173/',
       reuseExistingServer: !process.env.CI,
-      timeout: 60000,
+      timeout: 120000,
+      stdout: 'pipe',
+      stderr: 'pipe',
     },
   ],
 });
