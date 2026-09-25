@@ -1,0 +1,79 @@
+# =============================================================================
+# EduPortal Docker Compose — Development Configuration
+# For local development with hot-reload
+# =============================================================================
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: eduportal-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: eduportal_dev
+      POSTGRES_USER: eduportal
+      POSTGRES_PASSWORD: eduportal_dev_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eduportal -d eduportal_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eduportal-dev-network
+
+  # EduPortal Backend (development mode with hot-reload)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: eduportal-backend-dev
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://eduportal:eduportal_dev_password@postgres:5432/eduportal_dev
+      NODE_ENV: development
+      PORT: 5000
+      DEV_MODE: "true"
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - eduportal-dev-network
+
+  # EduPortal Frontend (Vite dev server)
+  frontend:
+    image: node:20-alpine
+    container_name: eduportal-frontend-dev
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    environment:
+      VITE_API_URL: http://localhost:5000/api
+      NODE_ENV: development
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - eduportal-dev-network
+
+networks:
+  eduportal-dev-network:
+    driver: bridge
+
+volumes:
+  postgres_dev_data:
+    driver: local

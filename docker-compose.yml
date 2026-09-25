@@ -1,0 +1,107 @@
+# =============================================================================
+# EduPortal Docker Compose — Development & Production Configuration
+# =============================================================================
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: eduportal-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: eduportal
+      POSTGRES_USER: eduportal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eduportal_dev_password_change_in_prod}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./server/database/migrations:/docker-entrypoint-initdb.d/migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eduportal -d eduportal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eduportal-network
+
+  # Redis (for session cache and pub/sub in production)
+  redis:
+    image: redis:7-alpine
+    container_name: eduportal-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eduportal-network
+
+  # EduPortal Backend + Frontend
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: eduportal-app
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql://eduportal:${POSTGRES_PASSWORD:-eduportal_dev_password_change_in_prod}@postgres:5432/eduportal
+      # Redis
+      REDIS_URL: redis://redis:6379
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-change_this_secret_in_production_min_32_chars}
+      # API
+      API_URL: http://localhost:3000/api
+      NODE_ENV: production
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - eduportal-network
+
+  # Nginx Reverse Proxy (optional, for production)
+  nginx:
+    image: nginx:alpine
+    container_name: eduportal-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    networks:
+      - eduportal-network
+    profiles:
+      - production
+
+networks:
+  eduportal-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
