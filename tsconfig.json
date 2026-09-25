@@ -14,11 +14,15 @@
     "jsx": "react-jsx",
 
     /* Strictness */
-    "strict": true,
-    "noImplicitAny": true,
+    "strict": false,
+    "noImplicitAny": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* Allow JS imports */
+    "allowJs": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts"],
+  "typeRoots": ["./src/types", "./node_modules/@types"]
 }

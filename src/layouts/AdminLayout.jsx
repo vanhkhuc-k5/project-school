@@ -3,7 +3,7 @@
 // Admin portal layout with keyboard navigation and mobile support
 // =============================================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { BarChart2, BookOpen, Users, Award, FileText, Shield, Settings, LogOut, Bell, Menu, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -245,7 +245,16 @@ export function AdminLayout() {
             className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1400px] w-full mx-auto focus:outline-none"
             tabIndex={-1}
           >
-            <Outlet />
+            <Suspense fallback={
+              <div className="min-h-[400px] flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-10 h-10 border-4 border-ocean/30 border-t-ocean rounded-full animate-spin" />
+                  <span className="text-sm text-text-secondary">Đang tải...</span>
+                </div>
+              </div>
+            }>
+              <Outlet />
+            </Suspense>
           </main>
         </div>
       </div>
