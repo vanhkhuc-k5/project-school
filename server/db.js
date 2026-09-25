@@ -921,6 +921,9 @@ export function initSchema() {
   // Announcements: sender_id alias for author_id
   addCol('announcements', 'sender_id TEXT');
   addCol('announcements', 'sender_name TEXT');
+  // G39: Emergency broadcast columns
+  addCol('announcements', 'is_emergency INTEGER DEFAULT 0');
+  addCol('announcements', 'requires_acknowledgment INTEGER DEFAULT 0');
   // Schools: short_name
   addCol('schools', 'short_name TEXT');
   // Create announcement_categories table

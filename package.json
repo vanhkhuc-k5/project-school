@@ -14,7 +14,6 @@
     "seed": "node server/seed.js",
     "seed:staging": "NODE_ENV=staging node server/seed-staging.js",
     "seed:supabase": "node server/supabase/seed-runner.js",
-    
     "-- CI SCRIPTS (G50) --": "",
     "test": "node tests/runner.js",
     "test:unit": "node tests/runner.js --unit-only",
@@ -26,7 +25,6 @@
     "build": "vite build",
     "verify": "node scripts/pre-push-verify.js",
     "pre-push": "node scripts/pre-push-verify.js",
-    
     "-- DEVELOPMENT --": "",
     "dev:all": "concurrently \"npm run server\" \"npm run dev\"",
     "preview": "vite preview",
@@ -35,12 +33,10 @@
     "start:staging": "npm run server:staging",
     "seed:dev": "node server/seed-dev.js",
     "seed:dev:reset": "node server/seed-dev.js --reset",
-    
     "-- DATABASE --": "",
     "db:migrate": "node server/database/migrate-cli.js",
     "db:status": "node server/database/migrate-cli.js status",
     "db:init": "node server/database/migrate-cli.js init",
-    
     "-- DATA MIGRATION (G52) --": "",
     "db:export": "node server/database/migration/export-source.js",
     "db:validate-source": "node server/database/migration/migrate-data.js --mode=validate",
@@ -55,6 +51,8 @@
     "cors": "^2.8.6",
     "dotenv": "^18.0.1",
     "express": "^5.2.1",
+    "express-rate-limit": "^7.5.1",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.468.0",
     "pg": "^8.23.0",

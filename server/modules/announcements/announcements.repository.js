@@ -51,7 +51,7 @@ export async function createAnnouncement({ data, schoolId, authorId, authorName 
         attachments, target_roles, target_class_ids, category_id,
         is_active, is_emergency, requires_acknowledgment,
         published_at, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,TRUE,$18,$19,$20,current_timestamp,current_timestamp)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,TRUE,$18,$19,$20,$21,current_timestamp,current_timestamp)
       RETURNING *
     `, [
       id, schoolId, data.title, data.content, data.summary || null,
@@ -60,9 +60,9 @@ export async function createAnnouncement({ data, schoolId, authorId, authorName 
       data.scheduledPublishAt || null, authorId, authorName || 'Admin',
       attachments, targetRoles, targetClassIds,
       data.categoryId || null,
-      data.status === 'published' ? now : null,
       data.isEmergency ? 1 : 0,
       data.requiresAcknowledgment ? 1 : 0,
+      data.status === 'published' ? now : null,
     ]);
     return parseAnn(res.rows[0]);
   }
@@ -74,7 +74,7 @@ export async function createAnnouncement({ data, schoolId, authorId, authorName 
       attachments, target_roles, target_class_ids, category_id,
       is_active, is_emergency, requires_acknowledgment,
       published_at, created_at, updated_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,datetime('now'),datetime('now'))
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,datetime('now'),datetime('now'))
   `).run(
     id, schoolId, data.title, data.content, data.summary || null,
     data.scope || 'all', data.priority || 'normal', data.status || 'draft',
@@ -82,9 +82,9 @@ export async function createAnnouncement({ data, schoolId, authorId, authorName 
     data.scheduledPublishAt || null, authorId, authorName || 'Admin',
     attachments, targetRoles, targetClassIds,
     data.categoryId || null,
-    data.status === 'published' ? now : null,
     data.isEmergency ? 1 : 0,
     data.requiresAcknowledgment ? 1 : 0,
+    data.status === 'published' ? now : null,
   );
 
   return getAnnouncementById(id);
