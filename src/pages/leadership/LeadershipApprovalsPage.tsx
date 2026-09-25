@@ -347,7 +347,7 @@ export function LeadershipApprovalsPage() {
   const fetchApprovals = async () => {
     try {
       setLoading(true);
-      const response = await apiRequest<{ data: ApprovalItem[] }>('/api/v1/leadership/approvals', {
+      const response = await apiRequest<ApprovalItem[]>('/api/v1/leadership/approvals', {
         method: 'GET',
       });
 

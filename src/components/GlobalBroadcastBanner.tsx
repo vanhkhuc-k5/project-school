@@ -1,8 +1,18 @@
+// =============================================================================
+// GlobalBroadcastBanner — TypeScript
+// =============================================================================
+
 import React from 'react';
-import { Megaphone, X, ChevronRight, Bell } from 'lucide-react';
+import { Megaphone, X, ChevronRight } from 'lucide-react';
 import { useSync } from '../context/SyncContext';
 
-export function GlobalBroadcastBanner({ onOpenNotifications }) {
+interface GlobalBroadcastBannerProps {
+  onOpenNotifications?: () => void;
+}
+
+export function GlobalBroadcastBanner({
+  onOpenNotifications,
+}: GlobalBroadcastBannerProps): React.JSX.Element | null {
   const { broadcastAlert, dismissBroadcast } = useSync();
 
   if (!broadcastAlert) return null;
@@ -11,8 +21,8 @@ export function GlobalBroadcastBanner({ onOpenNotifications }) {
     <div className="bg-primary text-white hairline-b px-4 py-2.5 flex items-center justify-between text-xs shadow-whisper relative z-40 transition-all animate-fadeIn">
       <div className="flex items-center gap-3 overflow-hidden">
         <span className="flex h-2 w-2 relative shrink-0">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
         </span>
 
         <div className="flex items-center gap-2 overflow-hidden">

@@ -5,7 +5,7 @@
 import React from 'react';
 import type { LucideIcon } from 'lucide-react';
 
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'navy';
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'navy' | 'default' | 'secondary';
 type BadgeSize = 'sm' | 'md';
 
 interface BadgeProps {
@@ -35,6 +35,8 @@ export function Badge({
     info: 'bg-sky text-primary',
     neutral: 'bg-surface-neutral text-text-secondary border border-hairline',
     navy: 'bg-primary text-white',
+    default: 'bg-surface-neutral text-text-secondary',
+    secondary: 'bg-surface-neutral text-text-secondary',
   };
 
   return (

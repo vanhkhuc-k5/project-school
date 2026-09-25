@@ -70,6 +70,7 @@ const [
   { runAITutorContextIntegrationTests },
   { runAcademicCycleE2ETests },
   { runSecurityIntegrationTests },
+  { runAdminFullFeaturesTests },
 ] = await Promise.all([
   import('./unit/auth.test.js'),
   import('./unit/database.test.js'),
@@ -115,6 +116,7 @@ const [
   import('./integration/ai_tutor_context.test.js'),
   import('./e2e/academic_cycle.test.js'),
   import('./integration/security_negative.test.js'),
+  import('./integration/admin_full_features.test.js'),
 ]);
 
 // =============================================================================
@@ -276,6 +278,10 @@ async function main() {
     // ── Layer 4: Security regression tests ────────────────────────────────
     resetTestFixtures();
     await runSecurityIntegrationTests();
+
+    // ── Layer 5: Admin Full Features (Phase 02–12) ────────────────────────
+    resetTestFixtures();
+    await runAdminFullFeaturesTests();
 
   } catch (err) {
     console.error(`\n${colors.red}Critical test runner error: ${err.message}${colors.reset}`);

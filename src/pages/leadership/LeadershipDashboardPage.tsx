@@ -244,7 +244,7 @@ export function LeadershipDashboardPage() {
       setError(null);
 
       // Try to fetch from API
-      const response = await apiRequest<{ data: KPIData }>('/api/leadership/dashboard', {
+      const response = await apiRequest<KPIData>('/api/leadership/dashboard', {
         method: 'GET',
       });
 

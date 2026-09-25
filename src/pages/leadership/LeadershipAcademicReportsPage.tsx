@@ -19,7 +19,7 @@ import {
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
-import { Select } from '../../components/Select';
+import { Select } from '../../components/Input';
 import { PageLoader } from '../../components/LoadingState';
 import { apiRequest } from '../../services/api';
 
@@ -248,7 +248,7 @@ export function LeadershipAcademicReportsPage() {
   const fetchReport = async () => {
     try {
       setLoading(true);
-      const response = await apiRequest<{ data: AcademicReport }>('/api/leadership/reports/academic', {
+      const response = await apiRequest<AcademicReport>('/api/leadership/reports/academic', {
         method: 'GET',
       });
 

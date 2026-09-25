@@ -1,6 +1,5 @@
 // =============================================================================
-// NotificationCenter — G42 Responsive & Accessibility
-// Accessible notification drawer with focus trap, keyboard nav, and screen reader support
+// NotificationCenter — TypeScript
 // =============================================================================
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -15,44 +14,64 @@ import {
   X,
 } from 'lucide-react';
 
-export function NotificationCenter({ isOpen, onClose }) {
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useSync();
-  const [activeFilter, setActiveFilter] = useState('all');
-  const panelRef = useRef(null);
-  const closeButtonRef = useRef(null);
-  const previousFocusRef = useRef(null);
+interface Notification {
+  id: string;
+  isRead?: boolean;
+  category?: string;
+  tag?: string;
+  tagType?: string;
+  title?: string;
+  content?: string;
+  sender?: string;
+  createdAt?: string;
+}
 
-  // ── Focus trap ──────────────────────────────────────────────────────────────
-  const handleKeyDown = useCallback((e) => {
+interface NotificationCenterProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function NotificationCenter({
+  isOpen = false,
+  onClose,
+}: NotificationCenterProps): React.JSX.Element | null {
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useSync();
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       onClose?.();
       return;
     }
 
     if (e.key === 'Tab' && panelRef.current) {
-      const focusable = panelRef.current.querySelectorAll(
+      const focusable = panelRef.current.querySelectorAll<HTMLElement>(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       );
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
 
+      if (!first || !last) return;
+
       if (e.shiftKey && document.activeElement === first) {
         e.preventDefault();
-        last?.focus();
+        last.focus();
       } else if (!e.shiftKey && document.activeElement === last) {
         e.preventDefault();
-        first?.focus();
+        first.focus();
       }
     }
   }, [onClose]);
 
   useEffect(() => {
     if (isOpen) {
-      previousFocusRef.current = document.activeElement;
+      previousFocusRef.current = document.activeElement as HTMLElement;
       document.body.style.overflow = 'hidden';
       window.addEventListener('keydown', handleKeyDown);
 
-      // Focus the close button
       setTimeout(() => {
         closeButtonRef.current?.focus();
       }, 0);
@@ -61,22 +80,20 @@ export function NotificationCenter({ isOpen, onClose }) {
     return () => {
       document.body.style.overflow = '';
       window.removeEventListener('keydown', handleKeyDown);
-
-      // Return focus to the element that opened the drawer
-      if (previousFocusRef.current && typeof previousFocusRef.current.focus === 'function') {
+      if (previousFocusRef.current) {
         previousFocusRef.current.focus();
       }
     };
   }, [isOpen, handleKeyDown]);
 
-  const filteredNotifs = notifications.filter((n) => {
+  const filteredNotifs = notifications.filter((n: Notification) => {
     if (activeFilter === 'unread') return !n.isRead;
     if (activeFilter === 'exam') return n.category === 'teacher' || n.tag?.includes('bài tập');
     if (activeFilter === 'admin') return n.category === 'school' || n.tag?.includes('BGH');
     return true;
   });
 
-  const getIcon = (notif) => {
+  const getIcon = (notif: Notification): React.JSX.Element => {
     if (notif.category === 'school') return <Megaphone className="w-4 h-4 text-ocean" aria-hidden="true" />;
     if (notif.tagType === 'warning') return <AlertTriangle className="w-4 h-4 text-warning-dark" aria-hidden="true" />;
     if (notif.tagType === 'success') return <CheckCircle2 className="w-4 h-4 text-success" aria-hidden="true" />;
@@ -91,7 +108,6 @@ export function NotificationCenter({ isOpen, onClose }) {
       role="presentation"
       onClick={onClose}
     >
-      {/* Drawer panel */}
       <div
         ref={panelRef}
         role="dialog"
@@ -168,7 +184,7 @@ export function NotificationCenter({ isOpen, onClose }) {
           role="region"
           aria-label="Danh sách thông báo"
           aria-live="polite"
-          aria-atomic="false"
+          aria-atomic={false}
           className="flex-1 overflow-y-auto"
         >
           {filteredNotifs.length === 0 ? (
@@ -177,7 +193,7 @@ export function NotificationCenter({ isOpen, onClose }) {
             </div>
           ) : (
             <ul>
-              {filteredNotifs.map((n) => (
+              {filteredNotifs.map((n: Notification) => (
                 <li key={n.id}>
                   <button
                     onClick={() => markAsRead(n.id)}
@@ -188,7 +204,7 @@ export function NotificationCenter({ isOpen, onClose }) {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="p-1 rounded bg-surface-neutral shrink-0">{getIcon(n)}</span>
-                        <Badge variant={n.tagType || 'info'} size="sm">
+                        <Badge variant={(n.tagType as 'info' | 'success' | 'warning' | 'danger' | 'neutral' | 'navy' | 'default') || 'info'} size="sm">
                           {n.tag || 'Thông báo'}
                         </Badge>
                       </div>

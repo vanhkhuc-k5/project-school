@@ -398,10 +398,10 @@ export const teacherApi = {
     return res?.success && res.data ? res.data : null;
   },
 
-  async getClasses<T = unknown>(classId?: string): Promise<T | null> {
+  async getClasses(classId?: string): Promise<TeacherClassData | null> {
     const query = classId ? `?classId=${classId}` : '';
-    const res = await request<T>(`/teacher/classes${query}`);
-    return res?.success ? (res as unknown as T) : null;
+    const res = await request<TeacherClassData>(`/teacher/classes${query}`);
+    return res?.success ? res.data : null;
   },
 
   async updateGrade(data: Record<string, unknown>): Promise<StandardResponse> {
@@ -3348,6 +3348,10 @@ export interface TeacherAssignmentRecord {
 export interface TeacherAssignedClass {
   id: string;
   name: string;
+  // Aliases used by pages
+  classId: string;
+  className: string;
+  studentCount: number;
   grade_level: number;
   room?: string;
   academic_year?: string;
@@ -3369,6 +3373,23 @@ export interface MyClassesResponse {
   teacherName: string;
   academicYearId: string;
   classes: TeacherAssignedClass[];
+}
+
+// Data shape returned by GET /teacher/classes
+export interface TeacherClassData {
+  currentClassId?: string;
+  classes: TeacherAssignedClass[];
+  students?: Array<{
+    id: string;
+    name: string;
+    code: string;
+    gpa: number;
+    rank: number;
+    attendance: string;
+    status: string;
+    statusType?: string;
+    phone?: string;
+  }>;
 }
 
 export interface CreateTeacherAssignmentPayload {
@@ -3626,6 +3647,9 @@ export interface TimetablePeriodSlot {
   semesterId?: string;
 }
 
+// Alias for teacher pages that expect the domain type name
+export type TimetableSlot = TimetablePeriodSlot;
+
 export interface TimetableDaySchedule {
   day: string;
   dayOfWeek: number;
@@ -3713,11 +3737,15 @@ export interface AssignmentQuestion {
   prompt: string;
   questionType: 'multiple_choice' | 'short_answer' | 'essay';
   maxScore: number;
+  difficulty?: 'NB' | 'TH' | 'VD' | 'VDC' | 'TB';
   options?: AssignmentQuestionOption[];
   correctAnswer?: string;
   explanation?: string;
   hasPlot?: boolean;
   plotData?: string;
+  // Legacy field names from assignment form
+  question_type?: string;
+  points?: number;
 }
 
 export interface AssignmentListItem {
@@ -3739,6 +3767,9 @@ export interface AssignmentListItem {
   question_count: number;
   submission_count: number;
   graded_count: number;
+  // Aliases used by pages
+  class_name?: string;
+  student_count?: number;
 }
 
 export interface AssignmentDetail extends AssignmentListItem {
@@ -3771,6 +3802,11 @@ export interface GradingQueueItem {
   student_name: string;
   student_code: string;
   class_name?: string;
+  // Aliases used by pages
+  submission_content?: string;
+  answers?: Record<string, string>;
+  is_late?: boolean;
+  resubmit_count?: number;
 }
 
 export interface GradingQueueResponse {

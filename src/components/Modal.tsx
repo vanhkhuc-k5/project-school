@@ -1,65 +1,81 @@
 // =============================================================================
-// Modal Component — G42 Responsive & Accessibility
-// Accessible dialog with focus trap and keyboard support
+// Modal Component — TypeScript
 // =============================================================================
 
 import React, { useEffect, useRef, useCallback } from 'react';
 import { X } from 'lucide-react';
 
+type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
+
+interface ModalProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+  title?: string;
+  children?: React.ReactNode;
+  maxWidth?: string;
+  size?: ModalSize;
+  closeOnOverlayClick?: boolean;
+}
+
+const sizeMap: Record<ModalSize, string> = {
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-lg',
+  xl: 'max-w-xl',
+  '2xl': 'max-w-2xl',
+  full: 'max-w-[90vw]',
+};
+
 export function Modal({
-  isOpen,
+  isOpen = false,
   onClose,
   title,
   children,
   maxWidth = 'max-w-lg',
+  size,
   closeOnOverlayClick = true,
-}) {
-  const modalRef = useRef(null);
-  const previousActiveElement = useRef(null);
-  const closeButtonRef = useRef(null);
+}: ModalProps): React.JSX.Element | null {
+  const modalRef = useRef<HTMLDivElement>(null);
+  const previousActiveElement = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Focus trap
-  const handleKeyDown = useCallback((e) => {
+  const effectiveMaxWidth = size ? sizeMap[size] : maxWidth;
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       onClose?.();
       return;
     }
 
-    // Tab key handling for focus trap
     if (e.key === 'Tab' && modalRef.current) {
-      const focusableElements = modalRef.current.querySelectorAll(
+      const focusableElements = modalRef.current.querySelectorAll<HTMLElement>(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       );
       const firstElement = focusableElements[0];
       const lastElement = focusableElements[focusableElements.length - 1];
 
+      if (!firstElement || !lastElement) return;
+
       if (e.shiftKey && document.activeElement === firstElement) {
         e.preventDefault();
-        lastElement?.focus();
+        lastElement.focus();
       } else if (!e.shiftKey && document.activeElement === lastElement) {
         e.preventDefault();
-        firstElement?.focus();
+        firstElement.focus();
       }
     }
   }, [onClose]);
 
   useEffect(() => {
     if (isOpen) {
-      // Store current focused element
-      previousActiveElement.current = document.activeElement;
-      
-      // Prevent body scroll
+      previousActiveElement.current = document.activeElement as HTMLElement;
       document.body.style.overflow = 'hidden';
-      
-      // Add keydown listener
       window.addEventListener('keydown', handleKeyDown);
-      
-      // Focus the close button or first focusable element
       setTimeout(() => {
         if (closeButtonRef.current) {
           closeButtonRef.current.focus();
         } else if (modalRef.current) {
-          const firstFocusable = modalRef.current.querySelector(
+          const firstFocusable = modalRef.current.querySelector<HTMLElement>(
             'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
           );
           firstFocusable?.focus();
@@ -70,9 +86,7 @@ export function Modal({
     return () => {
       document.body.style.overflow = '';
       window.removeEventListener('keydown', handleKeyDown);
-      
-      // Return focus to previous element
-      if (previousActiveElement.current && typeof previousActiveElement.current.focus === 'function') {
+      if (previousActiveElement.current) {
         previousActiveElement.current.focus();
       }
     };
@@ -80,7 +94,7 @@ export function Modal({
 
   if (!isOpen) return null;
 
-  const handleOverlayClick = (e) => {
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (closeOnOverlayClick && e.target === e.currentTarget) {
       onClose?.();
     }
@@ -94,20 +108,17 @@ export function Modal({
       aria-labelledby={title ? 'modal-title' : undefined}
       aria-describedby={title ? undefined : 'modal-description'}
     >
-      {/* Overlay */}
       <div
         className="fixed inset-0"
         onClick={handleOverlayClick}
         aria-hidden="true"
       />
-      
-      {/* Modal Content */}
+
       <div
         ref={modalRef}
-        className={`relative w-full ${maxWidth} bg-white rounded-card shadow-popover border border-hairline overflow-hidden z-10 animate-scaleUp`}
+        className={`relative w-full ${effectiveMaxWidth} bg-white rounded-card shadow-popover border border-hairline overflow-hidden z-10 animate-scaleUp`}
         id="modal-content"
       >
-        {/* Header */}
         {title && (
           <div className="flex items-center justify-between px-6 py-4 hairline-b bg-surface-neutral/60">
             <h2 id="modal-title" className="text-base font-medium text-text-primary">
@@ -123,8 +134,7 @@ export function Modal({
             </button>
           </div>
         )}
-        
-        {/* Body */}
+
         <div className="p-6">
           {children}
         </div>

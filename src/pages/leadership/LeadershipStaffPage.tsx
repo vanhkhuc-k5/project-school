@@ -290,7 +290,7 @@ export function LeadershipStaffPage() {
   const fetchTeachers = async () => {
     try {
       setLoading(true);
-      const response = await apiRequest<{ data: TeacherProfile[] }>('/api/leadership/teachers', {
+      const response = await apiRequest<TeacherProfile[]>('/api/leadership/teachers', {
         method: 'GET',
       });
 

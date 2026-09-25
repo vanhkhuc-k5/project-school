@@ -1,24 +1,38 @@
+// =============================================================================
+// Header Component — TypeScript
+// =============================================================================
+
 import React, { useState } from 'react';
-import { Search, Bell, Calendar, LogOut, ChevronDown, User, RefreshCw } from 'lucide-react';
+import { Search, Bell, Calendar, LogOut, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSync } from '../context/SyncContext';
 import { NotificationCenter } from './NotificationCenter';
 import { Badge } from './Badge';
 
-const roleBadgeConfig = {
+interface RoleBadgeConfig {
+  [key: string]: { label: string; variant: 'info' | 'success' | 'warning' | 'neutral' | 'navy' | 'default' };
+}
+
+const roleBadgeConfig: RoleBadgeConfig = {
   student: { label: 'Học sinh', variant: 'info' },
   teacher: { label: 'Giáo viên', variant: 'success' },
   parent: { label: 'Phụ huynh', variant: 'warning' },
   admin: { label: 'Ban Giám Hiệu', variant: 'neutral' },
 };
 
+interface HeaderProps {
+  searchPlaceholder?: string;
+  title?: string;
+  subtitle?: string;
+}
+
 export function Header({
   searchPlaceholder = 'Tìm kiếm bài học, tài liệu, bài tập...',
   title,
   subtitle,
-}) {
+}: HeaderProps): React.JSX.Element {
   const { currentUser, currentRole, logout } = useAuth();
-  const { unreadCount, syncStatus, isSyncing, triggerSync } = useSync();
+  const { unreadCount, isSyncing, triggerSync } = useSync();
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
 
   return (
@@ -54,7 +68,7 @@ export function Header({
             title="Nhấn để đồng bộ lại dữ liệu ngay lập tức"
             aria-label="Đồng bộ dữ liệu ngay"
           >
-            <span className={`w-1.5 h-1.5 rounded-full bg-emerald-500 ${isSyncing ? 'animate-ping' : ''}`} aria-hidden="true"></span>
+            <span className={`w-1.5 h-1.5 rounded-full bg-emerald-500 ${isSyncing ? 'animate-ping' : ''}`} aria-hidden="true" />
             <span>{isSyncing ? 'Đang đồng bộ...' : 'Đồng bộ trực tiếp'}</span>
             <RefreshCw className={`w-3 h-3 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} aria-hidden="true" />
           </button>
@@ -73,59 +87,58 @@ export function Header({
             )}
           </button>
 
-        {/* Calendar */}
-        <button
-          className="p-2 rounded text-text-secondary hover:text-text-primary hover:bg-surface-neutral transition-colors hidden sm:block focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50"
-          aria-label="Mở lịch biểu"
-        >
-          <Calendar className="w-5 h-5 stroke-[1.75]" aria-hidden="true" />
-        </button>
-
-        <div className="h-6 w-px bg-hairline"></div>
-
-        {/* User profile */}
-        <div className="flex items-center gap-3 pl-1">
-          {currentUser?.avatar ? (
-            <img
-              src={currentUser.avatar}
-              alt={currentUser.name}
-              className="w-8 h-8 rounded-full object-cover border border-hairline"
-            />
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-sky text-primary flex items-center justify-center font-medium text-xs">
-              {currentUser?.name?.charAt(0) || 'U'}
-            </div>
-          )}
-          <div className="hidden md:block text-left">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-text-primary leading-none">
-                {currentUser?.name || 'Người dùng'}
-              </span>
-              {roleBadgeConfig[currentRole] && (
-                <Badge variant={roleBadgeConfig[currentRole].variant} size="sm">
-                  {roleBadgeConfig[currentRole].label}
-                </Badge>
-              )}
-            </div>
-            <div className="text-[11px] text-text-secondary mt-1 leading-none">
-              {currentUser?.class || currentUser?.department || currentUser?.title || 'Thành viên'}
-            </div>
-          </div>
           <button
-            onClick={logout}
-            className="p-1.5 text-text-secondary hover:text-danger rounded hover:bg-danger-light transition-colors ml-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50"
-            aria-label="Đăng xuất"
+            className="p-2 rounded text-text-secondary hover:text-text-primary hover:bg-surface-neutral transition-colors hidden sm:block focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50"
+            aria-label="Mở lịch biểu"
           >
-            <LogOut className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
+            <Calendar className="w-5 h-5 stroke-[1.75]" aria-hidden="true" />
           </button>
-        </div>
-      </div>
-    </header>
 
-    <NotificationCenter
-      isOpen={isNotificationOpen}
-      onClose={() => setIsNotificationOpen(false)}
-    />
-  </>
+          <div className="h-6 w-px bg-hairline" />
+
+          {/* User profile */}
+          <div className="flex items-center gap-3 pl-1">
+            {currentUser?.avatar ? (
+              <img
+                src={currentUser.avatar}
+                alt={currentUser.name}
+                className="w-8 h-8 rounded-full object-cover border border-hairline"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-sky text-primary flex items-center justify-center font-medium text-xs">
+                {currentUser?.name?.charAt(0) || 'U'}
+              </div>
+            )}
+            <div className="hidden md:block text-left">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-text-primary leading-none">
+                  {currentUser?.name || 'Người dùng'}
+                </span>
+                {currentRole && roleBadgeConfig[currentRole] && (
+                  <Badge variant={roleBadgeConfig[currentRole].variant} size="sm">
+                    {roleBadgeConfig[currentRole].label}
+                  </Badge>
+                )}
+              </div>
+              <div className="text-[11px] text-text-secondary mt-1 leading-none">
+                {currentUser?.class || currentUser?.department || currentUser?.title || 'Thành viên'}
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              className="p-1.5 text-text-secondary hover:text-danger rounded hover:bg-danger-light transition-colors ml-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50"
+              aria-label="Đăng xuất"
+            >
+              <LogOut className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <NotificationCenter
+        isOpen={isNotificationOpen}
+        onClose={() => setIsNotificationOpen(false)}
+      />
+    </>
   );
 }
