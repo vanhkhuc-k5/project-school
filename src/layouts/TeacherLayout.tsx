@@ -17,6 +17,7 @@ import {
   LogOut,
   Menu,
   X,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
@@ -36,6 +37,7 @@ const ROUTE_TO_ID: Record<string, string> = {
   '/teacher/schedule': 'schedule',
   '/teacher/classes': 'classes',
   '/teacher/assignments': 'assignments',
+  '/teacher/messages': 'messages',
   '/teacher/analytics': 'analytics',
   '/teacher/reports': 'reports',
 };
@@ -79,6 +81,7 @@ export function TeacherLayout(): ReactNode {
     { id: 'schedule', label: 'Lịch giảng dạy', icon: Calendar, route: '/teacher/schedule' },
     { id: 'classes', label: 'Lớp học & Điểm danh', icon: Users, route: '/teacher/classes' },
     { id: 'assignments', label: 'Bài tập & Đánh giá', icon: ClipboardCheck, route: '/teacher/assignments' },
+    { id: 'messages', label: 'Tin nhắn', icon: MessageSquare, route: '/teacher/messages' },
     { id: 'analytics', label: 'Phân tích năng lực', icon: BarChart2, route: '/teacher/analytics' },
     { id: 'reports', label: 'Báo cáo học tập', icon: FileText, route: '/teacher/reports' },
   ];

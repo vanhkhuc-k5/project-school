@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { attendanceRepository } from './attendance.repository.js';
 import { usersRepository } from '../users/users.repository.js';
 import { notifyStudentAbsent } from '../notifications/notifications.service.js';
+import { dispatchToUser } from '../notifications/sse.controller.js';
 
 export const attendanceService = {
   /**
@@ -139,6 +140,41 @@ export const attendanceService = {
       }
     } catch (notifErr) {
       console.error('[NotificationService] notifyStudentAbsent failed:', notifErr.message);
+    }
+
+    // G38: Real-time SSE — notify ALL parents immediately for every attendance record
+    try {
+      for (const record of savedRecords) {
+        const studentId = record.student_id || record.studentId;
+        const studentRow = await attendanceRepository.findStudentById(studentId);
+        const parentUserIds = await attendanceRepository.getParentUserIds(studentId);
+
+        for (const parentUserId of parentUserIds) {
+          const statusLabel = record.status === 'PRESENT' ? 'Có mặt'
+            : record.status === 'LATE' ? 'Đi muộn'
+            : record.status === 'ABSENT_EXCUSED' ? 'Vắng có phép'
+            : record.status === 'ABSENT' ? 'Vắng không phép'
+            : record.status === 'EARLY_LEAVE' ? 'Về sớm'
+            : record.status || 'Chưa rõ';
+
+          dispatchToUser(parentUserId, 'ATTENDANCE_RECORDED', {
+            type: 'attendance_recorded',
+            studentId,
+            studentName: studentRow?.name || studentRow?.student_name || 'Học sinh',
+            studentCode: studentRow?.student_code || '',
+            classId,
+            className: targetClass?.name || '',
+            status: record.status,
+            statusLabel,
+            date,
+            recordedAt: new Date().toISOString(),
+            sessionId,
+            message: `Chuyên cần: ${studentRow?.name || 'Học sinh'} đã được điểm danh ${statusLabel} ngày ${date}`,
+          });
+        }
+      }
+    } catch (sseErr) {
+      console.error('[Attendance] SSE dispatch failed:', sseErr.message);
     }
 
     return {

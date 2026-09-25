@@ -71,3 +71,74 @@ export async function getPaymentHealth(req, res, next) {
     next(error);
   }
 }
+
+/**
+ * POST /api/payments/sandbox/simulate-payment
+ * G38: Sandbox simulation — marks an invoice as paid and creates a payment record.
+ * This is for dev/testing only. In production, this would be handled by bank webhook.
+ */
+export async function simulateSandboxPayment(req, res, next) {
+  try {
+    const { invoiceId } = req.body || {};
+
+    if (!invoiceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'invoiceId là bắt buộc.',
+      });
+    }
+
+    // Import tuition repository directly to avoid circular deps
+    const { tuitionRepository } = await import('../tuition/tuition.repository.js');
+    const { nanoid } = await import('nanoid');
+
+    // Find invoice
+    const invoice = await tuitionRepository.findInvoiceById(invoiceId);
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        error: 'Hóa đơn không tồn tại.',
+      });
+    }
+
+    if (invoice.status === 'paid') {
+      return res.status(200).json({
+        success: true,
+        message: 'Hóa đơn đã được thanh toán trước đó.',
+        receiptNo: `BL-SBX-${invoiceId.slice(-8)}`,
+      });
+    }
+
+    const now = new Date().toISOString();
+    const receiptNo = `BL-SBX-${nanoid(8).toUpperCase()}`;
+
+    // Create payment record
+    await tuitionRepository.createPayment({
+      id: `sbx_pay_${nanoid(10)}`,
+      invoiceId,
+      amount: invoice.total || invoice.total_amount || 0,
+      paymentMethod: 'VietQR_Sandbox',
+      transactionReference: `NAPAS247_SBX_${nanoid(16).toUpperCase()}`,
+      paidBy: invoice.student_id,
+      notes: 'Thanh toán sandbox — Giả lập VietQR Napas 247 (Không có tiền thật)',
+    });
+
+    // Mark invoice as paid
+    await tuitionRepository.updateInvoice(invoiceId, {
+      status: 'paid',
+      paidAt: now,
+    });
+
+    console.log(`[Sandbox] Invoice ${invoiceId} marked as paid. Receipt: ${receiptNo}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Giả lập thanh toán thành công!',
+      receiptNo,
+      paidAt: now,
+      amount: invoice.total || invoice.total_amount || 0,
+    });
+  } catch (error) {
+    next(error);
+  }
+}

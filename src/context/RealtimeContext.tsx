@@ -183,15 +183,63 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
           data,
           timestamp: data.timestamp || new Date().toISOString(),
         };
-        
+
         setNotifications((prev) => [notification, ...prev]);
         setUnreadCount((prev) => prev + 1);
-        
+
         if (onNotification) {
           onNotification(notification);
         }
       } catch (err) {
         console.error('[Realtime] Failed to parse assignment event:', err);
+      }
+    });
+
+    // G38: Handle NEW_MESSAGE event from parent/teacher real-time chat
+    eventSource.addEventListener('NEW_MESSAGE', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const notification: Notification = {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type: 'new_message',
+          title: `Tin nhắn mới từ ${data.senderName || 'Người dùng'}`,
+          message: data.preview || data.content || 'Bạn có tin nhắn mới.',
+          data,
+          timestamp: data.timestamp || new Date().toISOString(),
+        };
+
+        setNotifications((prev) => [notification, ...prev]);
+        setUnreadCount((prev) => prev + 1);
+
+        if (onNotification) {
+          onNotification(notification);
+        }
+      } catch (err) {
+        console.error('[Realtime] Failed to parse NEW_MESSAGE event:', err);
+      }
+    });
+
+    // G38: Handle ATTENDANCE_RECORDED event — parent gets instant attendance alert
+    eventSource.addEventListener('ATTENDANCE_RECORDED', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const notification: Notification = {
+          id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type: 'attendance_recorded',
+          title: `Điểm danh: ${data.studentName || 'Học sinh'}`,
+          message: data.message || `Đã được điểm danh ${data.statusLabel || data.status} ngày ${data.date}`,
+          data,
+          timestamp: data.timestamp || new Date().toISOString(),
+        };
+
+        setNotifications((prev) => [notification, ...prev]);
+        setUnreadCount((prev) => prev + 1);
+
+        if (onNotification) {
+          onNotification(notification);
+        }
+      } catch (err) {
+        console.error('[Realtime] Failed to parse ATTENDANCE_RECORDED event:', err);
       }
     });
 

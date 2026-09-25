@@ -26,18 +26,18 @@ export const attendanceRepository = {
   },
 
   /**
-   * Find a student by user_id and return their display name.
+   * Find a student by user_id or student id and return their display name + code.
    * Used by notification service to enrich absent notifications.
    */
   async findStudentById(studentId) {
     if (isPostgresConfigured()) {
       const res = await pgQuery(
-        `SELECT s.id, u.name
+        `SELECT s.id, s.student_code, u.name
          FROM students s
          JOIN users u ON s.user_id = u.id
          WHERE s.id = $1
          UNION
-         SELECT s.id, u.name
+         SELECT s.id, s.student_code, u.name
          FROM students s
          JOIN users u ON s.user_id = u.id
          WHERE u.id = $1`,
@@ -46,17 +46,43 @@ export const attendanceRepository = {
       return res.rows[0] || null;
     } else {
       const row = db.prepare(`
-        SELECT s.id, u.name
+        SELECT s.id, s.student_code, u.name
         FROM students s
         JOIN users u ON s.user_id = u.id
         WHERE s.id = ?
         UNION
-        SELECT s.id, u.name
+        SELECT s.id, s.student_code, u.name
         FROM students s
         JOIN users u ON s.user_id = u.id
         WHERE u.id = ?
       `).get(studentId, studentId);
       return row || null;
+    }
+  },
+
+  /**
+   * Get parent user IDs for a student (linked via parent_students).
+   */
+  async getParentUserIds(studentId) {
+    if (!studentId) return [];
+    if (isPostgresConfigured()) {
+      const res = await pgQuery(`
+        SELECT p.user_id
+        FROM parent_students ps
+        JOIN parents p ON p.id = ps.parent_id
+        JOIN users u ON u.id = p.user_id
+        WHERE ps.student_id = $1 AND u.is_active = TRUE
+      `, [studentId]);
+      return res.rows.map(r => r.user_id);
+    } else {
+      const rows = db.prepare(`
+        SELECT p.user_id
+        FROM parent_students ps
+        JOIN parents p ON p.id = ps.parent_id
+        JOIN users u ON u.id = p.user_id
+        WHERE ps.student_id = ? AND u.is_active = 1
+      `).all(studentId);
+      return rows.map(r => r.user_id);
     }
   },
 

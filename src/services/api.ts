@@ -453,6 +453,32 @@ export const teacherApi = {
       ? (res as unknown as { records: T[] }).records
       : [];
   },
+
+  // ── Messages (G27/G38) ────────────────────────────────────────────────────
+  async getConversations(page = 1, limit = 20): Promise<{ conversations: TeacherConversation[]; pagination: unknown } | null> {
+    const res = await request<{ conversations: TeacherConversation[]; pagination: unknown }>(
+      `/messages/conversations?page=${page}&limit=${limit}`
+    );
+    return res?.success ? res.data as { conversations: TeacherConversation[]; pagination: unknown } : null;
+  },
+
+  async getConversationMessages(conversationId: string, page = 1, limit = 50): Promise<{ messages: TeacherMessage[]; pagination: unknown } | null> {
+    const res = await request<{ messages: TeacherMessage[]; pagination: unknown }>(
+      `/messages/conversations/${conversationId}/messages?page=${page}&limit=${limit}`
+    );
+    return res?.success ? res.data as { messages: TeacherMessage[]; pagination: unknown } : null;
+  },
+
+  async sendReply(conversationId: string, content: string): Promise<StandardResponse> {
+    return request(`/messages/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+  },
+
+  async markConversationRead(conversationId: string): Promise<StandardResponse> {
+    return request(`/messages/conversations/${conversationId}/read`, { method: 'PATCH' });
+  },
 };
 
 // =============================================
@@ -516,6 +542,14 @@ export const parentApi = {
 
   async payTuition(invoiceId: string): Promise<StandardResponse> {
     return request(`/parent/tuition/${invoiceId}/pay`, { method: 'POST' });
+  },
+
+  // G38: Sandbox payment simulation for testing VietQR flow
+  async simulatePayment(invoiceId: string): Promise<StandardResponse> {
+    return request(`/payments/sandbox/simulate-payment`, {
+      method: 'POST',
+      body: JSON.stringify({ invoiceId }),
+    });
   },
 
   async confirmNotice(noticeId: string): Promise<StandardResponse> {
@@ -3390,6 +3424,34 @@ export interface TeacherClassData {
     statusType?: string;
     phone?: string;
   }>;
+}
+
+export interface TeacherConversation {
+  id: string;
+  parentId: string;
+  parentName: string;
+  studentId: string;
+  studentName: string;
+  studentCode: string;
+  teacherId: string;
+  teacherName: string;
+  classId: string;
+  className: string;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+  status: string;
+}
+
+export interface TeacherMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderName: string;
+  senderRole: 'parent' | 'teacher';
+  content: string;
+  createdAt: string;
+  read: boolean;
 }
 
 export interface CreateTeacherAssignmentPayload {

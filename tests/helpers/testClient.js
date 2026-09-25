@@ -278,7 +278,7 @@ export function apiRequest(method, path, body = null, tokenOrOptions = null, por
         path: '/api' + path,
         method,
         headers,
-        timeout: 30000,
+        timeout: 120000,
       },
       (res) => {
         let responseBody = '';
@@ -363,7 +363,7 @@ export const api = {
           path: '/api' + path,
           method: 'POST',
           headers,
-          timeout: 30000,
+          timeout: 120000,
         },
         (res) => {
           let responseBody = '';

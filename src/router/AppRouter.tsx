@@ -54,6 +54,7 @@ const TeacherAssignmentsPage = lazy(() => import('../pages/teacher/TeacherAssign
 const TeacherAnalytics = lazy(() => import('../pages/teacher/TeacherAnalytics').then(m => ({ default: m.TeacherAnalytics })));
 const TeacherReportsPage = lazy(() => import('../pages/teacher/TeacherReportsPage').then(m => ({ default: m.TeacherReportsPage })));
 const TeacherSchedulePage = lazy(() => import('../pages/teacher/TeacherSchedulePage').then(m => ({ default: m.TeacherSchedulePage })));
+const TeacherMessagesPage = lazy(() => import('../pages/teacher/TeacherMessagesPage').then(m => ({ default: m.TeacherMessagesPage })));
 const CreateAssignment = lazy(() => import('../pages/teacher/CreateAssignment').then(m => ({ default: m.CreateAssignment })));
 
 // Parent Pages (lazy loaded)
@@ -259,6 +260,7 @@ export function AppRouter(): React.ReactElement {
           <Route path="assignments/:id/edit" element={<CreateAssignment />} />
           <Route path="analytics" element={<TeacherAnalytics />} />
           <Route path="reports" element={<TeacherReportsPage />} />
+          <Route path="messages" element={<TeacherMessagesPage />} />
         </Route>
 
         {/* ── Parent Routes ───────────────────────────────────────────── */}

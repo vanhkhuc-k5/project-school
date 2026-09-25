@@ -13,7 +13,7 @@ import { Modal } from '../../components/Modal';
 import { useChildSwitcher } from './useChildSwitcher';
 import { ChildSwitcher } from './ChildSwitcher';
 import { parentApi } from '../../services/api';
-import { QrCode, Copy, CreditCard, AlertCircle, CheckCircle2, Loader2, Printer } from 'lucide-react';
+import { QrCode, Copy, CreditCard, AlertCircle, CheckCircle2, Loader2, Printer, Zap } from 'lucide-react';
 
 interface Invoice {
   id: string;
@@ -58,6 +58,8 @@ export function ParentTuitionPage() {
   const [copiedBank, setCopiedBank] = useState(false);
   const [copiedMemo, setCopiedMemo] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [sandboxReceipt, setSandboxReceipt] = useState<string | null>(null);
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {

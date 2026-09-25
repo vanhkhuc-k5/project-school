@@ -7,6 +7,7 @@ import { AppError } from '../../shared/errors/index.js';
 import { MESSAGE_ROLES, ROLE_LABELS } from './messages.types.js';
 import { pgQuery, isPostgresConfigured } from '../../postgres.js';
 import { db } from '../../db.js';
+import { dispatchToUser } from '../notifications/sse.controller.js';
 
 // ── Authorization Helpers ────────────────────────────────────────────────────
 
@@ -266,6 +267,22 @@ export const messageService = {
       metadata: { conversationId: conv.id, studentId },
     });
 
+    // G38: Real-time SSE — notify the teacher immediately
+    try {
+      dispatchToUser(teacherId, 'NEW_MESSAGE', {
+        type: 'new_message',
+        conversationId: conv.id,
+        senderId,
+        senderName,
+        senderRole: actualSenderRole,
+        studentId,
+        content: content.trim(),
+        preview: content.trim().slice(0, 80),
+      });
+    } catch (sseErr) {
+      console.error('[Messages] SSE dispatch failed:', sseErr.message);
+    }
+
     return { conversation: conv, message };
   },
 
@@ -325,6 +342,22 @@ export const messageService = {
     // Update conversation
     await repo.conversationRepo.updateOnMessage(conversationId);
     await repo.conversationRepo.incrementUnreadCount(conversationId, receiverRole);
+
+    // G38: Real-time SSE — notify the receiver (parent or teacher) immediately
+    try {
+      dispatchToUser(receiverId, 'NEW_MESSAGE', {
+        type: 'new_message',
+        conversationId,
+        senderId,
+        senderName: senderName || 'Người dùng',
+        senderRole: actualSenderRole,
+        studentId: conv.studentId,
+        content: content.trim(),
+        preview: content.trim().slice(0, 80),
+      });
+    } catch (sseErr) {
+      console.error('[Messages] SSE dispatch to receiver failed:', sseErr.message);
+    }
 
     return message;
   },

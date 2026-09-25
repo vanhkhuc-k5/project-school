@@ -3,16 +3,18 @@
 // =============================================================================
 // ParentMessagesPage — Parent-teacher messaging
 // Phase 13: Extracted from ParentDashboard.jsx (Tab: messages)
+// Live Operations: Real-time SSE (G38) — instant message reception without page reload
 // =============================================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { useChildSwitcher } from './useChildSwitcher';
 import { ChildSwitcher } from './ChildSwitcher';
 import { parentApi } from '../../services/api';
-import { Send, AlertCircle, Loader2 } from 'lucide-react';
+import { useRealtime } from '../../context/RealtimeContext';
+import { Send, AlertCircle, Loader2, Bell, MessageSquare } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -30,6 +32,52 @@ export function ParentMessagesPage() {
   const [errorData, setErrorData] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [incomingToast, setIncomingToast] = useState<{ name: string; preview: string } | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // G38 Real-time: Listen for NEW_MESSAGE events from teacher replies
+  const { setOnNotification } = useRealtime();
+
+  // Scroll to bottom when messages change
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  // G38: Register SSE notification handler for incoming messages
+  useEffect(() => {
+    const handleIncomingMessage = (notification: { type: string; data?: { studentId?: string; senderName?: string; content?: string; preview?: string } }) => {
+      if (notification.type !== 'new_message') return;
+      const data = notification.data || {};
+      // Only handle messages for the currently selected child
+      if (data.studentId && selectedChildId && data.studentId !== selectedChildId) return;
+
+      // Show toast notification
+      setIncomingToast({
+        name: data.senderName || 'Giáo viên',
+        preview: data.preview || data.content || 'Tin nhắn mới',
+      });
+
+      // Auto-dismiss toast after 4 seconds
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = setTimeout(() => setIncomingToast(null), 4000);
+
+      // Reload messages to show the new one in chat
+      if (selectedChildId) {
+        loadMessages(selectedChildId);
+      }
+    };
+
+    setOnNotification(handleIncomingMessage);
+    return () => {
+      setOnNotification(null);
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    };
+  }, [selectedChildId, setOnNotification]);
 
   const loadMessages = useCallback(async (childId: string) => {
     setIsLoadingData(true);
@@ -99,6 +147,26 @@ export function ParentMessagesPage() {
 
   return (
     <div className="space-y-6">
+      {/* G38 Real-time incoming message toast */}
+      {incomingToast && (
+        <div className="fixed top-20 right-6 z-50 animate-fade-in">
+          <div className="bg-ocean text-white px-5 py-3 rounded-card shadow-whisper border border-ocean/30 flex items-center gap-3 max-w-sm">
+            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+              <MessageSquare className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <div className="text-xs font-semibold flex items-center gap-1.5">
+                <Bell className="w-3.5 h-3.5" />
+                Tin nhắn mới từ {incomingToast.name}
+              </div>
+              <div className="text-[11px] opacity-90 mt-0.5 truncate max-w-xs">
+                {incomingToast.preview}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <div className="text-xs text-text-secondary mb-1">Tin nhắn giáo viên</div>
@@ -170,6 +238,8 @@ export function ParentMessagesPage() {
               );
             })
           )}
+          {/* G38: Scroll anchor for auto-scroll to bottom */}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input area */}
