@@ -453,32 +453,6 @@ export const teacherApi = {
       ? (res as unknown as { records: T[] }).records
       : [];
   },
-
-  // ── Messages (G27/G38) ────────────────────────────────────────────────────
-  async getConversations(page = 1, limit = 20): Promise<{ conversations: TeacherConversation[]; pagination: unknown } | null> {
-    const res = await request<{ conversations: TeacherConversation[]; pagination: unknown }>(
-      `/messages/conversations?page=${page}&limit=${limit}`
-    );
-    return res?.success ? res.data as { conversations: TeacherConversation[]; pagination: unknown } : null;
-  },
-
-  async getConversationMessages(conversationId: string, page = 1, limit = 50): Promise<{ messages: TeacherMessage[]; pagination: unknown } | null> {
-    const res = await request<{ messages: TeacherMessage[]; pagination: unknown }>(
-      `/messages/conversations/${conversationId}/messages?page=${page}&limit=${limit}`
-    );
-    return res?.success ? res.data as { messages: TeacherMessage[]; pagination: unknown } : null;
-  },
-
-  async sendReply(conversationId: string, content: string): Promise<StandardResponse> {
-    return request(`/messages/conversations/${conversationId}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({ content }),
-    });
-  },
-
-  async markConversationRead(conversationId: string): Promise<StandardResponse> {
-    return request(`/messages/conversations/${conversationId}/read`, { method: 'PATCH' });
-  },
 };
 
 // =============================================
@@ -544,14 +518,6 @@ export const parentApi = {
     return request(`/parent/tuition/${invoiceId}/pay`, { method: 'POST' });
   },
 
-  // G38: Sandbox payment simulation for testing VietQR flow
-  async simulatePayment(invoiceId: string): Promise<StandardResponse> {
-    return request(`/payments/sandbox/simulate-payment`, {
-      method: 'POST',
-      body: JSON.stringify({ invoiceId }),
-    });
-  },
-
   async confirmNotice(noticeId: string): Promise<StandardResponse> {
     return request(`/parent/notices/${noticeId}/confirm`, { method: 'POST' });
   },
@@ -586,10 +552,45 @@ export const parentApi = {
     });
   },
 
+  // G38 Teacher ↔ Parent Conversations (2-way real-time chat)
+  async getConversations(page = 1, limit = 50): Promise<{ conversations: TeacherConversation[] }> {
+    const res = await request<{ conversations: TeacherConversation[] }>(
+      `/messages/conversations?page=${page}&limit=${limit}`
+    );
+    return res?.success ? res : { conversations: [] };
+  },
+
+  async getConversationMessages(conversationId: string, page = 1, limit = 100): Promise<{ messages: TeacherMessage[] }> {
+    const res = await request<{ messages: TeacherMessage[] }>(
+      `/messages/conversations/${conversationId}/messages?page=${page}&limit=${limit}`
+    );
+    return res?.success ? res : { messages: [] };
+  },
+
+  async sendReply(conversationId: string, content: string): Promise<StandardResponse> {
+    return request(`/messages/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+  },
+
+  async markConversationRead(conversationId: string): Promise<StandardResponse> {
+    return request(`/messages/conversations/${conversationId}/read`, { method: 'PATCH' });
+  },
+
   // Invoices
   async getInvoices<T = unknown>(studentId: string): Promise<T | null> {
     const res = await request<T>(`/parent/invoices?studentId=${studentId}`);
     return res?.success ? (res as unknown as T) : null;
+  },
+
+  // G38: VietQR Sandbox simulation — dev/test only
+  async simulatePayment(invoiceId: string): Promise<{ success: boolean; receiptNo?: string }> {
+    const res = await request<{ success: boolean; receiptNo?: string }>(
+      `/payments/sandbox/simulate-payment`,
+      { method: 'POST', body: JSON.stringify({ invoiceId }) }
+    );
+    return res?.success ? res : { success: false };
   },
 };
 
@@ -3426,34 +3427,6 @@ export interface TeacherClassData {
   }>;
 }
 
-export interface TeacherConversation {
-  id: string;
-  parentId: string;
-  parentName: string;
-  studentId: string;
-  studentName: string;
-  studentCode: string;
-  teacherId: string;
-  teacherName: string;
-  classId: string;
-  className: string;
-  lastMessage: string | null;
-  lastMessageAt: string | null;
-  unreadCount: number;
-  status: string;
-}
-
-export interface TeacherMessage {
-  id: string;
-  conversationId: string;
-  senderId: string;
-  senderName: string;
-  senderRole: 'parent' | 'teacher';
-  content: string;
-  createdAt: string;
-  read: boolean;
-}
-
 export interface CreateTeacherAssignmentPayload {
   teacherId: string;
   classId: string;
@@ -3582,6 +3555,36 @@ export interface AttendanceRosterStudent {
   existingStatus?: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | null;
   existingNote?: string;
   existingRecordId?: string;
+}
+
+// G38: Teacher ↔ Parent real-time chat types
+export interface TeacherConversation {
+  id: string;
+  studentId: string;
+  studentName?: string;
+  studentCode?: string;
+  parentId: string;
+  parentName?: string;
+  teacherId: string;
+  teacherName?: string;
+  classId?: string;
+  className?: string;
+  lastMessage?: string;
+  lastMessageAt?: string;
+  unreadCount: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface TeacherMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderName: string;
+  senderRole: string;
+  content: string;
+  read: boolean;
+  createdAt?: string;
 }
 
 export interface SaveAttendancePayload {

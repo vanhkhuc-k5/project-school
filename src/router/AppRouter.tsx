@@ -54,8 +54,8 @@ const TeacherAssignmentsPage = lazy(() => import('../pages/teacher/TeacherAssign
 const TeacherAnalytics = lazy(() => import('../pages/teacher/TeacherAnalytics').then(m => ({ default: m.TeacherAnalytics })));
 const TeacherReportsPage = lazy(() => import('../pages/teacher/TeacherReportsPage').then(m => ({ default: m.TeacherReportsPage })));
 const TeacherSchedulePage = lazy(() => import('../pages/teacher/TeacherSchedulePage').then(m => ({ default: m.TeacherSchedulePage })));
-const TeacherMessagesPage = lazy(() => import('../pages/teacher/TeacherMessagesPage').then(m => ({ default: m.TeacherMessagesPage })));
 const CreateAssignment = lazy(() => import('../pages/teacher/CreateAssignment').then(m => ({ default: m.CreateAssignment })));
+const TeacherMessagesPage = lazy(() => import('../pages/teacher/TeacherMessagesPage').then(m => ({ default: m.TeacherMessagesPage })));
 
 // Parent Pages (lazy loaded)
 const ParentDashboardPage = lazy(() => import('../pages/parent/ParentDashboardPage').then(m => ({ default: m.ParentDashboardPage })));

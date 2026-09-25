@@ -37,7 +37,6 @@ const ROUTE_TO_ID: Record<string, string> = {
   '/teacher/schedule': 'schedule',
   '/teacher/classes': 'classes',
   '/teacher/assignments': 'assignments',
-  '/teacher/messages': 'messages',
   '/teacher/analytics': 'analytics',
   '/teacher/reports': 'reports',
 };

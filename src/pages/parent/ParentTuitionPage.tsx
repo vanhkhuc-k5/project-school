@@ -113,10 +113,30 @@ export function ParentTuitionPage() {
       setPaymentSuccess(true);
       showToast('Đã xác nhận thanh toán học phí thành công!');
       setTimeout(() => { setIsQrModalOpen(false); setPaymentSuccess(false); }, 1200);
-      // Reload
       await loadInvoices(selectedChildId!);
     } catch (_err) {
       showToast('Xác nhận thất bại. Vui lòng thử lại.');
+    }
+  };
+
+  // G38: Sandbox payment simulation — dev/test only
+  const handleSandboxPayment = async () => {
+    const invId = invoicesData?.currentInvoice?.id;
+    if (!invId) return;
+    setIsSimulating(true);
+    setSandboxReceipt(null);
+    try {
+      const res = await parentApi.simulatePayment(invId);
+      if (res?.success) {
+        setSandboxReceipt(res.receiptNo || '');
+        setPaymentSuccess(true);
+        showToast('Giả lập thanh toán thành công! Vui lòng kiểm tra biên lai.');
+        await loadInvoices(selectedChildId!);
+      }
+    } catch (_err) {
+      showToast('Giả lập thất bại. Vui lòng thử lại.');
+    } finally {
+      setIsSimulating(false);
     }
   };
 
@@ -321,6 +341,19 @@ export function ParentTuitionPage() {
       {/* VietQR Modal */}
       <Modal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} title="Thanh toán học phí VietQR">
         <div className="space-y-4 text-center">
+          {/* Development Warning Badge */}
+          <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-start gap-3 text-left">
+            <div className="w-7 h-7 rounded-full bg-amber-200 flex items-center justify-center shrink-0 text-xs">⚠️</div>
+            <div>
+              <div className="text-xs font-semibold text-amber-800">
+                Tính năng đang phát triển (Cổng thanh toán Sandbox)
+              </div>
+              <div className="text-[11px] text-amber-700 mt-1">
+                Hệ thống đang trong giai đoạn kết nối thử nghiệm với ngân hàng. Quý phụ huynh vui lòng không chuyển tiền thật vào mã QR này.
+              </div>
+            </div>
+          </div>
+
           <p className="text-xs text-text-secondary">Quét mã QR bằng ứng dụng ngân hàng bất kỳ (Vietcombank, MB, Techcombank...):</p>
           <div className="p-4 bg-white border-2 border-hairline rounded-card inline-block mx-auto shadow-whisper">
             <div className="w-56 h-56 bg-surface-neutral border border-hairline flex flex-col items-center justify-between p-2">
@@ -363,9 +396,33 @@ export function ParentTuitionPage() {
               </span>
             </div>
           </div>
-          <div className="flex justify-center pt-2">
-            <Button variant="primary" size="md" className="w-full justify-center" onClick={handleConfirmPayment}>
+
+          {/* Sandbox Simulation Result */}
+          {sandboxReceipt && (
+            <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg text-left">
+              <div className="flex items-center gap-2 mb-1">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="text-xs font-semibold text-emerald-800">Giả lập thành công!</span>
+              </div>
+              <div className="text-[11px] text-emerald-700">Số biên nhận: <span className="font-mono font-semibold">{sandboxReceipt}</span></div>
+              <div className="text-[11px] text-emerald-700 mt-0.5">Trạng thái hóa đơn đã chuyển sang <strong>ĐÃ THANH TOÁN</strong>.</div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex flex-col gap-2">
+            <Button variant="primary" size="md" className="w-full justify-center" onClick={handleConfirmPayment} disabled={paymentSuccess}>
               {paymentSuccess ? '✓ Đã ghi nhận!' : 'Tôi đã thanh toán'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="md"
+              className="w-full justify-center"
+              icon={isSimulating ? Loader2 : Zap}
+              onClick={handleSandboxPayment}
+              disabled={isSimulating || paymentSuccess}
+            >
+              {isSimulating ? 'Đang giả lập...' : '⚡ Giả lập thanh toán thành công (Thử nghiệm)'}
             </Button>
           </div>
         </div>
