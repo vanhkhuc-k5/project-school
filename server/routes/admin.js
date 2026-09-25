@@ -190,13 +190,32 @@ router.post('/broadcast', requirePermission('announcement.publish'), async (req,
 // ============================================================
 // User Management Endpoints (Delegated to modular usersController)
 // ============================================================
+
+// Fast-fail middleware: reject extremely large numeric IDs before hitting slow DB queries
+const rejectLargeNumericId = (req, res, next) => {
+  const id = String(req.params.id || '');
+  // Reject IDs that are extremely large numeric values or too long
+  // This prevents expensive database scans for hasAcademicHistory checks
+  const numId = parseInt(id, 10);
+  const isLargeNumeric = !isNaN(numId) && numId > 9999999999;
+  const isTooLong = id.length >= 50;
+  if (isTooLong || isLargeNumeric) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_ID', message: 'ID không hợp lệ' },
+    });
+    return;
+  }
+  next();
+};
+
 router.get('/users', requirePermission('user.read'), usersController.listUsers);
-router.get('/users/:id', requirePermission('user.read'), usersController.getUserById);
+router.get('/users/:id', requirePermission('user.read'), rejectLargeNumericId, usersController.getUserById);
 router.post('/users', requirePermission('user.create'), usersController.createUser);
-router.put('/users/:id', requirePermission('user.update'), usersController.updateUser);
-router.patch('/users/:id/status', requirePermission('user.disable'), usersController.updateStatus);
-router.put('/users/:id/roles', requirePermission('user.update'), usersController.assignRoles);
-router.post('/users/:id/reset-password', requirePermission('user.update'), usersController.resetPassword);
+router.put('/users/:id', requirePermission('user.update'), rejectLargeNumericId, usersController.updateUser);
+router.patch('/users/:id/status', requirePermission('user.disable'), rejectLargeNumericId, usersController.updateStatus);
+router.put('/users/:id/roles', requirePermission('user.update'), rejectLargeNumericId, usersController.assignRoles);
+router.post('/users/:id/reset-password', requirePermission('user.update'), rejectLargeNumericId, usersController.resetPassword);
 router.delete('/users/:id', requirePermission('user.disable'), usersController.deleteUser);
 
 // Institutional Classes Endpoints (delegated to modular academic-structure domain)
@@ -2408,7 +2427,7 @@ router.get('/parents', requirePermission('user.manage'), async (req, res, next) 
 
     // Build search conditions
     let whereClause = `WHERE u.role IN ('parent', 'guardian') AND u.school_id = ?`;
-    const params: (string | number)[] = [schoolId];
+    const params = [schoolId];
 
     if (search) {
       whereClause += ` AND (u.name LIKE ? OR u.phone LIKE ? OR u.email LIKE ? OR u.code LIKE ?)`;
@@ -2429,7 +2448,7 @@ router.get('/parents', requirePermission('user.manage'), async (req, res, next) 
       SELECT COUNT(DISTINCT u.id) as total
       FROM users u
       ${whereClause}
-    `).get(...params) as { total: number };
+    `).get(...params) || { total: 0 };
 
     // Get parents with their linked children
     const parents = db.prepare(`
@@ -2523,14 +2542,14 @@ router.get('/parents/:parentId', requirePermission('user.manage'), async (req, r
       SELECT COUNT(*) as count
       FROM messages
       WHERE sender_id = ? OR recipient_id = ?
-    `).get(parentId, parentId) as { count: number };
+    `).get(parentId, parentId) || { count: 0 };
 
     const leaveRequestCount = db.prepare(`
       SELECT COUNT(*) as count
       FROM leave_requests lr
       JOIN parent_student_links psl ON psl.student_id = lr.student_id
       WHERE psl.parent_id = ? AND psl.is_active = 1
-    `).get(parentId) as { count: number };
+    `).get(parentId) || { count: 0 };
 
     res.json({
       success: true,
@@ -2661,8 +2680,8 @@ router.patch('/parents/:parentId/children/:studentId', requirePermission('user.m
     }
 
     // Build update query
-    const updates: string[] = [];
-    const params: (string | number | null)[] = [];
+    const updates = [];
+    const params = [];
 
     if (relationship !== undefined) {
       updates.push('relationship = ?');
@@ -2808,7 +2827,7 @@ router.get('/parents/:parentId/available-students', requirePermission('user.mana
       WHERE c.school_id = ?
         AND s.id NOT IN (SELECT student_id FROM parent_student_links WHERE parent_id = ? AND is_active = 1)
     `;
-    const params: (string | number)[] = [schoolId, parentId];
+    const params = [schoolId, parentId];
 
     if (search) {
       query += ` AND (u.name LIKE ? OR u.code LIKE ?)`;
@@ -2817,7 +2836,7 @@ router.get('/parents/:parentId/available-students', requirePermission('user.mana
     }
     if (gradeLevel) {
       query += ` AND c.grade_level = ?`;
-      params.push(parseInt(gradeLevel as string));
+      params.push(parseInt(gradeLevel));
     }
 
     query += ` ORDER BY c.grade_level, c.name, u.name LIMIT 50`;
@@ -2840,11 +2859,11 @@ router.get('/communication/announcements', requirePermission('announcement.read'
     const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
     const { search, status, categoryId, priority, scope, page = 1, limit = 20 } = req.query;
 
-    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
     // Build filters
     const filters = [];
-    const params: (string | number)[] = [schoolId];
+    const params = [schoolId];
 
     if (search) {
       filters.push(`(title LIKE ? OR content LIKE ?)`);
@@ -2853,19 +2872,19 @@ router.get('/communication/announcements', requirePermission('announcement.read'
     }
     if (status) {
       filters.push('a.status = ?');
-      params.push(status as string);
+      params.push(status);
     }
     if (categoryId) {
       filters.push('a.category_id = ?');
-      params.push(categoryId as string);
+      params.push(categoryId);
     }
     if (priority) {
       filters.push('a.priority = ?');
-      params.push(priority as string);
+      params.push(priority);
     }
     if (scope) {
       filters.push('a.scope = ?');
-      params.push(scope as string);
+      params.push(scope);
     }
 
     const whereClause = filters.length > 0 ? ` AND ${filters.join(' AND ')}` : '';
@@ -2875,7 +2894,7 @@ router.get('/communication/announcements', requirePermission('announcement.read'
       SELECT COUNT(*) as total
       FROM announcements a
       WHERE (a.school_id = ? OR a.school_id IS NULL) ${whereClause}
-    `).get(...params) as { total: number };
+    `).get(...params) || { total: 0 };
 
     // Get announcements
     const announcements = db.prepare(`
@@ -2903,17 +2922,17 @@ router.get('/communication/announcements', requirePermission('announcement.read'
         CASE a.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 ELSE 3 END,
         a.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...params, parseInt(limit as string), offset);
+    `).all(...params, parseInt(limit), offset);
 
     // Get read stats for each announcement
-    const announcementsWithStats = await Promise.all(announcements.map(async (ann: Record<string, unknown>) => {
+    const announcementsWithStats = await Promise.all(announcements.map(async (ann) => {
       const stats = db.prepare(`
         SELECT 
           COUNT(*) as total_recipients,
           COUNT(ar.id) as read_count
         FROM announcement_reads ar
         WHERE ar.announcement_id = ?
-      `).get(ann.id) as { total_recipients: number; read_count: number };
+      `).get(ann.id) || { total_recipients: 0, read_count: 0 };
 
       return {
         ...ann,
@@ -2928,15 +2947,15 @@ router.get('/communication/announcements', requirePermission('announcement.read'
       data: {
         announcements: announcementsWithStats,
         pagination: {
-          page: parseInt(page as string),
-          limit: parseInt(limit as string),
+          page: parseInt(page),
+          limit: parseInt(limit),
           total: countResult.total,
-          totalPages: Math.ceil(countResult.total / parseInt(limit as string)),
+          totalPages: Math.ceil(countResult.total / parseInt(limit)),
         },
       },
       announcements: announcementsWithStats,
       pagination: {
-        page: parseInt(page as string),
+        page: parseInt(page),
         total: countResult.total,
       },
     });
@@ -2972,7 +2991,7 @@ router.get('/communication/announcements/:id', requirePermission('announcement.r
         COUNT(ar.id) as read_count
       FROM announcement_reads ar
       WHERE ar.announcement_id = ?
-    `).get(id) as { total_recipients: number; read_count: number };
+    `).get(id);
 
     // Get recent readers (last 10)
     const recentReaders = db.prepare(`
@@ -3074,7 +3093,7 @@ router.patch('/communication/announcements/:id', requirePermission('announcement
     }
 
     const updates = [];
-    const params: (string | unknown)[] = [];
+    const params = [];
 
     if (title !== undefined) { updates.push('title = ?'); params.push(title); }
     if (content !== undefined) { updates.push('content = ?'); params.push(content); }
@@ -3126,7 +3145,7 @@ router.post('/communication/announcements/:id/publish', requirePermission('annou
       'Xuất bản thông báo',
       'announcements',
       id,
-      JSON.stringify({ title: (existing as { title: string }).title })
+      JSON.stringify({ title: existing.title })
     );
 
     res.json({ success: true, message: 'Đã xuất bản thông báo' });
@@ -3214,7 +3233,7 @@ router.get('/communication/overview', requirePermission('announcement.read'), as
         COUNT(CASE WHEN status = 'archived' THEN 1 END) as archived
       FROM announcements
       WHERE school_id = ? OR school_id IS NULL
-    `).get(schoolId) as { total: number; drafts: number; published: number; archived: number };
+    `).get(schoolId);
 
     // Total recipients and reads
     const readStats = db.prepare(`
@@ -3224,7 +3243,7 @@ router.get('/communication/overview', requirePermission('announcement.read'), as
       FROM announcement_reads ar
       JOIN announcements a ON a.id = ar.announcement_id
       WHERE a.school_id = ? OR a.school_id IS NULL
-    `).get(schoolId) as { announcements_with_reads: number; total_reads: number };
+    `).get(schoolId);
 
     res.json({
       success: true,
@@ -3250,14 +3269,14 @@ router.get('/reports/types', requirePermission('report.read'), async (req, res, 
     const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
 
     // Check which data exists
-    const studentCount = db.prepare(`SELECT COUNT(*) as count FROM students s JOIN classes c ON c.id = s.class_id WHERE c.school_id = ?`).get(schoolId) as { count: number };
-    const teacherCount = db.prepare(`SELECT COUNT(*) as count FROM users WHERE role = 'teacher' AND school_id = ?`).get(schoolId) as { count: number };
-    const classCount = db.prepare(`SELECT COUNT(*) as count FROM classes WHERE school_id = ?`).get(schoolId) as { count: number };
-    const gradeCount = db.prepare(`SELECT COUNT(*) as count FROM grades`).get(schoolId) as { count: number };
-    const attendanceCount = db.prepare(`SELECT COUNT(*) as count FROM attendance_records`).get(schoolId) as { count: number };
-    const assignmentCount = db.prepare(`SELECT COUNT(*) as count FROM assignments WHERE school_id = ?`).get(schoolId) as { count: number };
-    const parentCount = db.prepare(`SELECT COUNT(*) as count FROM users WHERE role = 'parent' AND school_id = ?`).get(schoolId) as { count: number };
-    const tuitionCount = db.prepare(`SELECT COUNT(*) as count FROM tuition`).get(schoolId) as { count: number };
+    const studentCount = db.prepare(`SELECT COUNT(*) as count FROM students s JOIN classes c ON c.id = s.class_id WHERE c.school_id = ?`).get(schoolId) || { count: 0 };
+    const teacherCount = db.prepare(`SELECT COUNT(*) as count FROM users WHERE role = 'teacher' AND school_id = ?`).get(schoolId) || { count: 0 };
+    const classCount = db.prepare(`SELECT COUNT(*) as count FROM classes WHERE school_id = ?`).get(schoolId) || { count: 0 };
+    const gradeCount = db.prepare(`SELECT COUNT(*) as count FROM grades`).get(schoolId) || { count: 0 };
+    const attendanceCount = db.prepare(`SELECT COUNT(*) as count FROM attendance_records`).get(schoolId) || { count: 0 };
+    const assignmentCount = db.prepare(`SELECT COUNT(*) as count FROM assignments WHERE school_id = ?`).get(schoolId) || { count: 0 };
+    const parentCount = db.prepare(`SELECT COUNT(*) as count FROM users WHERE role = 'parent' AND school_id = ?`).get(schoolId) || { count: 0 };
+    const tuitionCount = db.prepare(`SELECT COUNT(*) as count FROM tuition`).get(schoolId) || { count: 0 };
 
     const reportTypes = [
       {
@@ -3347,8 +3366,8 @@ router.get('/reports/:reportType', requirePermission('report.read'), async (req,
     const { reportType } = req.params;
     const { academicYearId, semesterId, gradeLevel, classId, subjectId, teacherId, startDate, endDate, page = 1, limit = 100 } = req.query;
 
-    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
-    let data: unknown[] = [];
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    let params = [];
     let total = 0;
 
     switch (reportType) {
@@ -3367,16 +3386,16 @@ router.get('/reports/:reportType', requirePermission('report.read'), async (req,
           JOIN classes c ON c.id = s.class_id
           WHERE c.school_id = ?
         `;
-        const params: (string | number)[] = [schoolId];
+        const params = [schoolId];
 
-        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel as string)); }
-        if (classId) { query += ` AND c.id = ?`; params.push(classId as string); }
+        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel)); }
+        if (classId) { query += ` AND c.id = ?`; params.push(classId); }
 
         const countQuery = query.replace('SELECT \n            u.code as student_code,\n            u.name as student_name,\n            c.name as class_name,\n            c.grade_level,\n            s.gpa,\n            s.class_rank,\n            CASE WHEN u.is_active = 1 THEN \'Hoạt động\' ELSE \'Không hoạt động\' END as status', 'SELECT COUNT(*) as total');
-        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+        total = (db.prepare(countQuery).get(...params) || { total: 0 }).total;
 
         query += ` ORDER BY c.grade_level, c.name, u.name LIMIT ? OFFSET ?`;
-        params.push(parseInt(limit as string), offset);
+        params.push(parseInt(limit), offset);
         data = db.prepare(query).all(...params);
         break;
       }
@@ -3395,15 +3414,15 @@ router.get('/reports/:reportType', requirePermission('report.read'), async (req,
           LEFT JOIN teacher_classes tc ON tc.class_id = c.id
           WHERE c.school_id = ?
         `;
-        const params: (string | number)[] = [schoolId];
+        const params = [schoolId];
 
-        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel as string)); }
+        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel)); }
 
         const countQuery = query.replace(/SELECT \n.*?\n.*?\n.*?\n.*?\n.*?\n.*?\n.*?\n.*?FROM/, 'SELECT COUNT(*) as total FROM').replace(/GROUP BY.*?(?=ORDER BY|$)/g, '');
-        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+        total = (db.prepare(countQuery).get(...params) || { total: 0 }).total;
 
         query += ` GROUP BY c.id, c.name, c.grade_level, c.academic_year ORDER BY c.grade_level, c.name LIMIT ? OFFSET ?`;
-        params.push(parseInt(limit as string), offset);
+        params.push(parseInt(limit), offset);
         data = db.prepare(query).all(...params);
         break;
       }
@@ -3423,15 +3442,15 @@ router.get('/reports/:reportType', requirePermission('report.read'), async (req,
           LEFT JOIN teacher_classes tc ON tc.teacher_id = u.id
           WHERE u.role = 'teacher' AND u.school_id = ?
         `;
-        const params: (string | number)[] = [schoolId];
+        const params = [schoolId];
 
-        if (teacherId) { query += ` AND u.id = ?`; params.push(teacherId as string); }
+        if (teacherId) { query += ` AND u.id = ?`; params.push(teacherId); }
 
         const countQuery = `SELECT COUNT(*) as total FROM users WHERE role = 'teacher' AND school_id = ?`;
-        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+        total = (db.prepare(countQuery).get(...params) || { total: 0 }).total;
 
         query += ` GROUP BY u.id, u.code, u.name, u.email, u.phone ORDER BY u.name LIMIT ? OFFSET ?`;
-        params.push(parseInt(limit as string), offset);
+        params.push(parseInt(limit), offset);
         data = db.prepare(query).all(...params);
         break;
       }
@@ -3448,18 +3467,18 @@ router.get('/reports/:reportType', requirePermission('report.read'), async (req,
           JOIN classes c ON c.id = ass.class_id
           WHERE c.school_id = ?
         `;
-        const params: (string | number)[] = [schoolId];
+        const params = [schoolId];
 
-        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel as string)); }
-        if (classId) { query += ` AND c.id = ?`; params.push(classId as string); }
-        if (startDate) { query += ` AND ass.date >= ?`; params.push(startDate as string); }
-        if (endDate) { query += ` AND ass.date <= ?`; params.push(endDate as string); }
+        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel)); }
+        if (classId) { query += ` AND c.id = ?`; params.push(classId); }
+        if (startDate) { query += ` AND ass.date >= ?`; params.push(startDate); }
+        if (endDate) { query += ` AND ass.date <= ?`; params.push(endDate); }
 
         const countQuery = `SELECT COUNT(*) as total FROM attendance_records ar JOIN attendance_sessions ass ON ass.id = ar.session_id JOIN classes c ON c.id = ass.class_id WHERE c.school_id = ?`;
-        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+        total = (db.prepare(countQuery).get(...params) || { total: 0 }).total;
 
         query += ` GROUP BY c.name, c.grade_level, ar.status ORDER BY c.grade_level, c.name LIMIT ? OFFSET ?`;
-        params.push(parseInt(limit as string), offset);
+        params.push(parseInt(limit), offset);
         data = db.prepare(query).all(...params);
         break;
       }
@@ -3480,17 +3499,17 @@ router.get('/reports/:reportType', requirePermission('report.read'), async (req,
           LEFT JOIN subjects s ON s.id = a.subject_id
           WHERE c.school_id = ? AND g.status = 'published'
         `;
-        const params: (string | number)[] = [schoolId];
+        const params = [schoolId];
 
-        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel as string)); }
-        if (classId) { query += ` AND c.id = ?`; params.push(classId as string); }
-        if (subjectId) { query += ` AND a.subject_id = ?`; params.push(subjectId as string); }
+        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel)); }
+        if (classId) { query += ` AND c.id = ?`; params.push(classId); }
+        if (subjectId) { query += ` AND a.subject_id = ?`; params.push(subjectId); }
 
         const countQuery = `SELECT COUNT(DISTINCT c.id || s.id) as total FROM grades g JOIN assignments a ON a.id = g.assignment_id JOIN classes c ON c.name = a.target_classes LEFT JOIN subjects s ON s.id = a.subject_id WHERE c.school_id = ? AND g.status = 'published'`;
-        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+        total = (db.prepare(countQuery).get(...params) || { total: 0 }).total;
 
         query += ` GROUP BY c.name, c.grade_level, s.name ORDER BY c.grade_level, c.name, s.name LIMIT ? OFFSET ?`;
-        params.push(parseInt(limit as string), offset);
+        params.push(parseInt(limit), offset);
         data = db.prepare(query).all(...params);
         break;
       }
@@ -3510,17 +3529,17 @@ router.get('/reports/:reportType', requirePermission('report.read'), async (req,
           LEFT JOIN submissions sub ON sub.assignment_id = a.id
           WHERE a.school_id = ?
         `;
-        const params: (string | number)[] = [schoolId];
+        const params = [schoolId];
 
-        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel as string)); }
-        if (classId) { query += ` AND c.id = ?`; params.push(classId as string); }
-        if (teacherId) { query += ` AND a.created_by = ?`; params.push(teacherId as string); }
+        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel)); }
+        if (classId) { query += ` AND c.id = ?`; params.push(classId); }
+        if (teacherId) { query += ` AND a.created_by = ?`; params.push(teacherId); }
 
         const countQuery = `SELECT COUNT(*) as total FROM assignments a WHERE a.school_id = ?`;
-        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+        total = (db.prepare(countQuery).get(...params) || { total: 0 }).total;
 
         query += ` GROUP BY a.id, a.title, s.name, c.name, a.due_date, a.status ORDER BY a.due_date DESC LIMIT ? OFFSET ?`;
-        params.push(parseInt(limit as string), offset);
+        params.push(parseInt(limit), offset);
         data = db.prepare(query).all(...params);
         break;
       }
@@ -3538,13 +3557,13 @@ router.get('/reports/:reportType', requirePermission('report.read'), async (req,
           LEFT JOIN parent_student_links psl ON psl.parent_id = u.id AND psl.is_active = 1
           WHERE u.role IN ('parent', 'guardian') AND u.school_id = ?
         `;
-        const params: (string | number)[] = [schoolId];
+        const params = [schoolId];
 
         const countQuery = `SELECT COUNT(*) as total FROM users WHERE role IN ('parent', 'guardian') AND school_id = ?`;
-        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+        total = (db.prepare(countQuery).get(...params) || { total: 0 }).total;
 
         query += ` GROUP BY u.id, u.name, u.phone, u.email, u.code, u.is_active ORDER BY u.name LIMIT ? OFFSET ?`;
-        params.push(parseInt(limit as string), offset);
+        params.push(parseInt(limit), offset);
         data = db.prepare(query).all(...params);
         break;
       }
@@ -3565,16 +3584,16 @@ router.get('/reports/:reportType', requirePermission('report.read'), async (req,
           JOIN classes c ON c.id = s.class_id
           WHERE c.school_id = ?
         `;
-        const params: (string | number)[] = [schoolId];
+        const params = [schoolId];
 
-        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel as string)); }
-        if (classId) { query += ` AND c.id = ?`; params.push(classId as string); }
+        if (gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(gradeLevel)); }
+        if (classId) { query += ` AND c.id = ?`; params.push(classId); }
 
         const countQuery = `SELECT COUNT(*) as total FROM tuition t JOIN students s ON s.id = t.student_id JOIN classes c ON c.id = s.class_id WHERE c.school_id = ?`;
-        total = (db.prepare(countQuery).get(...params) as { total: number }).total;
+        total = (db.prepare(countQuery).get(...params) || { total: 0 }).total;
 
         query += ` ORDER BY t.due_date LIMIT ? OFFSET ?`;
-        params.push(parseInt(limit as string), offset);
+        params.push(parseInt(limit), offset);
         data = db.prepare(query).all(...params);
         break;
       }
@@ -3589,15 +3608,15 @@ router.get('/reports/:reportType', requirePermission('report.read'), async (req,
         reportType,
         records: data,
         pagination: {
-          page: parseInt(page as string),
-          limit: parseInt(limit as string),
+          page: parseInt(page),
+          limit: parseInt(limit),
           total,
-          totalPages: Math.ceil(total / parseInt(limit as string)),
+          totalPages: Math.ceil(total / parseInt(limit)),
         },
       },
       records: data,
       pagination: {
-        page: parseInt(page as string),
+        page: parseInt(page),
         total,
       },
     });
@@ -3619,21 +3638,21 @@ router.get('/reports/:reportType/export', requirePermission('report.read'), asyn
     }
 
     // Fetch all data (no pagination for export)
-    let data: unknown[] = [];
-    const params: (string | number)[] = [schoolId];
+    params = [];
+    params.push(schoolId);
 
     switch (reportType) {
       case 'student-summary': {
         let query = `SELECT u.code as "Mã HS", u.name as "Họ tên", c.name as "Lớp", c.grade_level as "Khối", s.gpa as "GPA", s.class_rank as "Xếp hạng", CASE WHEN u.is_active = 1 THEN 'Hoạt động' ELSE 'Không hoạt động' END as "Trạng thái" FROM students s JOIN users u ON u.id = s.user_id JOIN classes c ON c.id = s.class_id WHERE c.school_id = ?`;
-        if (filters.gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(filters.gradeLevel as string)); }
-        if (filters.classId) { query += ` AND c.id = ?`; params.push(filters.classId as string); }
+        if (filters.gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(filters.gradeLevel)); }
+        if (filters.classId) { query += ` AND c.id = ?`; params.push(filters.classId); }
         query += ` ORDER BY c.grade_level, c.name, u.name`;
         data = db.prepare(query).all(...params);
         break;
       }
       case 'class-summary': {
         let query = `SELECT c.name as "Lớp", c.grade_level as "Khối", COUNT(DISTINCT s.id) as "Sĩ số", COUNT(DISTINCT tc.teacher_id) as "Số GV" FROM classes c LEFT JOIN students s ON s.class_id = c.id LEFT JOIN teacher_classes tc ON tc.class_id = c.id WHERE c.school_id = ?`;
-        if (filters.gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(filters.gradeLevel as string)); }
+        if (filters.gradeLevel) { query += ` AND c.grade_level = ?`; params.push(parseInt(filters.gradeLevel)); }
         query += ` GROUP BY c.id, c.name, c.grade_level ORDER BY c.grade_level, c.name`;
         data = db.prepare(query).all(...params);
         break;
@@ -3646,7 +3665,7 @@ router.get('/reports/:reportType/export', requirePermission('report.read'), asyn
           req.url = `/admin/reports/${reportType}?page=1&limit=10000`;
           // Re-parse query
           const queryParams = new URLSearchParams();
-          Object.entries(filters).forEach(([k, v]) => { if (v) queryParams.set(k, v as string); });
+          Object.entries(filters).forEach(([k, v]) => { if (v) queryParams.set(k, v); });
           req.url = `/admin/reports/${reportType}?${queryParams.toString()}`;
           resolve(true);
         });
@@ -3660,10 +3679,10 @@ router.get('/reports/:reportType/export', requirePermission('report.read'), asyn
       return res.status(404).json({ success: false, message: 'Không có dữ liệu để xuất' });
     }
 
-    const headers = Object.keys(data[0] as Record<string, unknown>);
+    const headers = Object.keys(data[0]);
     const csvRows = [
       headers.join(','),
-      ...data.map((row: Record<string, unknown>) => 
+      ...data.map((row) => 
         headers.map((h) => {
           const val = row[h];
           if (val === null || val === undefined) return '';
@@ -4259,14 +4278,14 @@ router.get('/system/users', requirePermission('user.read'), async (req, res, nex
   try {
     const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
     const { search, role, status, page = 1, limit = 50 } = req.query;
-    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let whereClause = 'WHERE u.school_id = ?';
-    const params: (string | number)[] = [schoolId];
+    const params = [schoolId];
 
     if (role) {
       whereClause += ' AND u.role = ?';
-      params.push(role as string);
+      params.push(role);
     }
     if (status === 'active') {
       whereClause += ' AND u.is_active = 1';
@@ -4281,7 +4300,7 @@ router.get('/system/users', requirePermission('user.read'), async (req, res, nex
 
     const countResult = db.prepare(`
       SELECT COUNT(*) as total FROM users u ${whereClause}
-    `).get(...params) as { total: number };
+    `).get(...params) || { total: 0 };
 
     const users = db.prepare(`
       SELECT 
@@ -4297,22 +4316,22 @@ router.get('/system/users', requirePermission('user.read'), async (req, res, nex
       ${whereClause}
       ORDER BY u.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...params, parseInt(limit as string), offset);
+    `).all(...params, parseInt(limit), offset);
 
     res.json({
       success: true,
       data: {
         users,
         pagination: {
-          page: parseInt(page as string),
-          limit: parseInt(limit as string),
+          page: parseInt(page),
+          limit: parseInt(limit),
           total: countResult.total,
-          totalPages: Math.ceil(countResult.total / parseInt(limit as string)),
+          totalPages: Math.ceil(countResult.total / parseInt(limit)),
         },
       },
       users,
       pagination: {
-        page: parseInt(page as string),
+        page: parseInt(page),
         total: countResult.total,
       },
     });
@@ -4348,7 +4367,7 @@ router.patch('/system/users/:id/status', requirePermission('user.disable'), asyn
       isActive ? 'Mở khóa tài khoản' : 'Khóa tài khoản',
       'users',
       id,
-      JSON.stringify({ userName: (user as { name: string }).name, newStatus: isActive ? 'active' : 'inactive' })
+      JSON.stringify({ userName: (name).$2, newStatus: isActive ? 'active' : 'inactive' })
     );
 
     res.json({ success: true, message: isActive ? 'Đã mở khóa tài khoản' : 'Đã khóa tài khoản' });
@@ -4407,14 +4426,14 @@ router.get('/system/audit', requirePermission('audit.read'), async (req, res, ne
   try {
     const schoolId = req.schoolId || req.user?.schoolId || 'sch_bacau';
     const { search, actor, action, entityType, startDate, endDate, page = 1, limit = 50 } = req.query;
-    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let whereClause = 'WHERE al.school_id = ?';
-    const params: (string | number)[] = [schoolId];
+    const params = [schoolId];
 
     if (actor) {
       whereClause += ' AND al.actor_id = ?';
-      params.push(actor as string);
+      params.push(actor);
     }
     if (action) {
       whereClause += ' AND al.action LIKE ?';
@@ -4422,15 +4441,15 @@ router.get('/system/audit', requirePermission('audit.read'), async (req, res, ne
     }
     if (entityType) {
       whereClause += ' AND al.entity_type = ?';
-      params.push(entityType as string);
+      params.push(entityType);
     }
     if (startDate) {
       whereClause += ' AND al.created_at >= ?';
-      params.push(startDate as string);
+      params.push(startDate);
     }
     if (endDate) {
       whereClause += ' AND al.created_at <= ?';
-      params.push(endDate as string);
+      params.push(endDate);
     }
     if (search) {
       whereClause += ' AND (al.action LIKE ? OR al.actor_name LIKE ? OR al.details LIKE ?)';
@@ -4440,7 +4459,7 @@ router.get('/system/audit', requirePermission('audit.read'), async (req, res, ne
 
     const countResult = db.prepare(`
       SELECT COUNT(*) as total FROM audit_logs al ${whereClause}
-    `).get(...params) as { total: number };
+    `).get(...params) || { total: 0 };
 
     const logs = db.prepare(`
       SELECT 
@@ -4458,12 +4477,12 @@ router.get('/system/audit', requirePermission('audit.read'), async (req, res, ne
       ${whereClause}
       ORDER BY al.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...params, parseInt(limit as string), offset);
+    `).all(...params, parseInt(limit), offset);
 
     // Format logs for readability
-    const formattedLogs = logs.map((log: Record<string, unknown>) => {
-      const details = log.details ? JSON.parse(log.details as string) : {};
-      let description = log.action as string;
+    const formattedLogs = logs.map((log) => {
+      const details = log.details ? JSON.parse(log.details) : {};
+      let description = log.action;
 
       // Generate human-readable description based on action and entity type
       if (log.entity_type === 'users' && details.userName) {
@@ -4502,15 +4521,15 @@ router.get('/system/audit', requirePermission('audit.read'), async (req, res, ne
       data: {
         logs: formattedLogs,
         pagination: {
-          page: parseInt(page as string),
-          limit: parseInt(limit as string),
+          page: parseInt(page),
+          limit: parseInt(limit),
           total: countResult.total,
-          totalPages: Math.ceil(countResult.total / parseInt(limit as string)),
+          totalPages: Math.ceil(countResult.total / parseInt(limit)),
         },
       },
       logs: formattedLogs,
       pagination: {
-        page: parseInt(page as string),
+        page: parseInt(page),
         total: countResult.total,
       },
     });
@@ -4606,7 +4625,7 @@ router.get('/system/settings/:category', requirePermission('settings.manage'), a
     const { category } = req.params;
 
     // Return mock settings for now
-    const settings: Record<string, unknown[]> = {
+    const settings = {
       general: [
         { key: 'school_name', label: 'Tên trường', value: 'Trường THPT Bắc Á', type: 'text' },
         { key: 'school_code', label: 'Mã trường', value: 'sch_bacau', type: 'text' },

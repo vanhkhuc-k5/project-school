@@ -1,9 +1,22 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { db, initSchema } from './db.js';
 import { config } from './config/env.js';
 import { isPostgresConfigured } from './shared/database/connection.js';
 
 const BCRYPT_ROUNDS = config.BCRYPT_ROUNDS;
+
+/**
+ * Generate a cryptographically secure random password.
+ * @param {number} length - Length of the password
+ * @returns {string} Generated password
+ */
+function generateSecurePassword(length = 12) {
+  const charset = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%';
+  return crypto.randomBytes(length).reduce((acc, byte) => {
+    return acc + charset[byte % charset.length];
+  }, '');
+}
 
 /**
  * Seed database — 2 chế độ:
@@ -54,7 +67,12 @@ export function seedDatabase(mode = 'demo') {
 // ============================================================
 function seedInitMode() {
   console.log('🏫 Seed INIT mode: tạo admin mặc định...');
-  const hash = bcrypt.hashSync('admin@2026', BCRYPT_ROUNDS);
+
+  // Use deterministic password for test/development modes
+  // For production, use random password
+  const isTestMode = process.env.NODE_ENV === 'test' || process.env.DB_PATH === ':memory:';
+  const generatedPassword = generateSecurePassword(12);
+  const hash = bcrypt.hashSync(isTestMode ? '123456' : generatedPassword, BCRYPT_ROUNDS);
 
   db.prepare(`
     INSERT INTO users (id, username, email, password_hash, role, name, code, phone, must_change_password)
@@ -64,7 +82,16 @@ function seedInitMode() {
   // Seed môn học chuẩn THPT
   seedSubjects();
 
-  console.log('✅ Init mode hoàn tất. Đăng nhập: admin / admin@2026 (phải đổi mật khẩu lần đầu)');
+  console.log('✅ Init mode hoàn tất.');
+  if (isTestMode) {
+    console.log('🔐 Tài khoản admin đã được tạo (mật khẩu test: 123456)');
+  } else {
+    console.log('🔐 Tài khoản admin đã được tạo với mật khẩu ngẫu nhiên.');
+    console.log('   Username: admin');
+    console.log(`   Password: ${generatedPassword}`);
+    console.log('⚠️  VUI LÒNG LƯU LẠI MẬT KHẨU NÀY - KHÔNG THỂ KHÔI PHỤC!');
+    console.log('   (Bắt buộc đổi mật khẩu ngay sau khi đăng nhập lần đầu)');
+  }
 }
 
 // ──── Tuition Invoices (shared by both demo and skip-guard paths) ────

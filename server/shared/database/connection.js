@@ -61,9 +61,19 @@ validateDatabaseSafety();
 // Connection Pool Setup
 // ============================================================
 
+/**
+ * Checks if PostgreSQL is configured and should be used.
+ * Reads process.env.NODE_ENV directly at call time (not config time) so that:
+ * - In test mode (NODE_ENV=test), PostgreSQL is always skipped even if .env has DATABASE_URL.
+ * - In production, it correctly uses DATABASE_URL from the system environment.
+ *
+ * NOTE: We read process.env directly because the config object is frozen at module
+ * import time, before the test runner can override NODE_ENV via dotenv's overwrite.
+ */
 export const isPostgresConfigured = () => {
-  // Never use PostgreSQL in test mode — use the isolated in-memory SQLite
-  if (config.NODE_ENV === 'test') return false;
+  // Never use PostgreSQL in test mode — use isolated in-memory SQLite
+  const nodeEnv = (process.env.NODE_ENV || '').trim().toLowerCase();
+  if (nodeEnv === 'test') return false;
   return Boolean(config.DATABASE_URL && config.DATABASE_URL.startsWith('postgres'));
 };
 

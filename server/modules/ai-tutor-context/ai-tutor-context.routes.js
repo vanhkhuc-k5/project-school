@@ -16,10 +16,10 @@ import {
 
 const router = express.Router();
 
-// ── Public Endpoints (no auth required) ────────────────────────────────────
+// ── Protected Endpoints (auth + permission required) ────────────────────────────
 
-// GET /ai-tutor-context/config — Context configuration summary
-router.get('/config', getContextConfig);
+// GET /ai-tutor-context/config — requires auth for security
+router.get('/config', authenticateToken, getContextConfig);
 
 // ── Protected Endpoints (auth + permission required) ────────────────────────────
 

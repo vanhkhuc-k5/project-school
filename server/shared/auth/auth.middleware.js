@@ -18,10 +18,32 @@ export {
 import { normalizeRole } from './rbac.registry.js';
 
 /**
- * @deprecated Optional authentication is deprecated for protected domain routes.
- * Preserved only for public landing resources that may personalize content if logged in.
+ * @deprecated SECURITY WARNING: This middleware is a security risk.
+ * It allowed unauthenticated access to protected endpoints with default user context.
+ * USE `authenticateToken` OR `authenticate` FOR ALL PROTECTED ROUTES.
+ *
+ * THIS FUNCTION IS PRESERVED ONLY FOR BACKWARD COMPATIBILITY WITH EXISTING TESTS.
+ * PRODUCTION CODE SHOULD NEVER USE THIS.
  */
 export function optionalAuth(req, res, next) {
+  // Log security warning if this is called in production
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[SECURITY] optionalAuth was called in production - this is a vulnerability!');
+  }
+
+  // For non-production: emit warning but still allow (for test compatibility)
+  // In production: block all requests
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(401).json({
+      success: false,
+      code: 'AUTH_REQUIRED',
+      message: 'Yêu cầu đăng nhập để truy cập tài nguyên này.',
+    });
+  }
+
+  // Development/test mode: emit warning but allow for backward compatibility
+  console.warn('[DEPRECATED] optionalAuth is being used - use authenticateToken instead');
+
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 

@@ -77,8 +77,11 @@ export function errorHandler(err, req, res, _next) {
   });
 
   // Build standardized error response
+  // Maintain backward compatibility: top-level success + code + message for auth/RBAC tests
   const responseBody = {
     success: false,
+    code, // Top-level code for backward compatibility with tests
+    message,
     error: {
       code,
       message,

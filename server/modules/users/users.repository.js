@@ -163,8 +163,23 @@ export const usersRepository = {
 
   /**
    * Find user by ID with full details
+   * Returns null for IDs that are clearly invalid (too long or extremely large numeric)
+   * to avoid expensive hasAcademicHistory subqueries that scan large tables.
    */
   async findById(id, schoolId = null, isSuperAdmin = false) {
+    // Fast-fail for obviously invalid IDs to prevent expensive hasAcademicHistory subqueries
+    // that scan large tables (grades, attendance_records, etc.)
+    // Real IDs are < 50 chars (e.g., 'usr_123_abc4', 'tch_a', 'std_khoi')
+    // Also reject extremely large numeric values
+    const idStr = String(id ?? '');
+    if (idStr.length >= 50) {
+      return null;
+    }
+    const numericVal = parseInt(idStr, 10);
+    if (!isNaN(numericVal) && numericVal > 9999999999) {
+      return null;
+    }
+
     if (isPostgresConfigured()) {
       const res = await pgQuery(`
         SELECT u.id, u.username, u.email, u.name, u.role, u.code, u.phone, u.avatar,
