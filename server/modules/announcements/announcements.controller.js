@@ -201,3 +201,53 @@ export async function listCategories(req, res, next) {
     next(err);
   }
 }
+
+// ── G39: EMERGENCY BROADCAST ─────────────────────────────────────────────────
+
+export async function emergencyBroadcast(req, res, next) {
+  try {
+    const { title, message, severity, requiresAcknowledgment } = req.body || {};
+
+    if (!title || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'title và message là bắt buộc.',
+      });
+    }
+
+    const validSeverities = ['EMERGENCY', 'CRITICAL', 'WARNING'];
+    if (severity && !validSeverities.includes(severity)) {
+      return res.status(400).json({
+        success: false,
+        error: `severity phải là một trong: ${validSeverities.join(', ')}`,
+      });
+    }
+
+    // Check role permission (admin, principal, vice_principal only)
+    const allowedRoles = ['admin', 'school_admin', 'super_admin', 'principal', 'vice_principal'];
+    if (!allowedRoles.includes(req.user?.role)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Bạn không có quyền phát thông báo khẩn cấp.',
+      });
+    }
+
+    const announcement = await service.createEmergencyBroadcast({
+      title,
+      message,
+      severity: severity || 'WARNING',
+      requiresAcknowledgment: Boolean(requiresAcknowledgment),
+      schoolId: getSchoolId(req),
+      authorId: req.user.id,
+      authorName: req.user.name,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Thông báo khẩn cấp đã được phát tới toàn trường.',
+      announcement,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
