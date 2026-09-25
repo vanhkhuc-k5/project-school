@@ -1012,3 +1012,113 @@ export async function createGradebookLock({ id, classId, semesterId, lockedBy, r
     `).run(id, classId, semesterId, lockedBy, reason, studentCount, now);
   }
 }
+
+/**
+ * Get list of students in a class with their basic info.
+ */
+export async function getClassStudentList(classId, academicYear, semester) {
+  if (isPostgresConfigured()) {
+    const res = await pgQuery(`
+      SELECT 
+        s.id as student_id,
+        s.name,
+        s.code,
+        ce.class_id
+      FROM students s
+      JOIN class_enrollments ce ON s.id = ce.student_id
+      WHERE ce.class_id = $1
+        AND ce.academic_year = $2
+        AND ce.status = 'active'
+      ORDER BY s.name
+    `, [classId, academicYear]);
+    return res.rows;
+  }
+
+  return db.prepare(`
+    SELECT 
+      s.id as student_id,
+      s.name,
+      s.code,
+      ce.class_id
+    FROM students s
+    JOIN class_enrollments ce ON s.id = ce.student_id
+    WHERE ce.class_id = ?
+      AND ce.academic_year = ?
+      AND ce.status = 'active'
+    ORDER BY s.name
+  `).all(classId, academicYear);
+}
+
+/**
+ * Get GPA data for multiple students.
+ */
+export async function getStudentGPAs(studentIds, academicYear, semester) {
+  if (studentIds.length === 0) return [];
+
+  const placeholders = studentIds.map((_, i) => `$${i + 1}`).join(', ');
+
+  if (isPostgresConfigured()) {
+    const res = await pgQuery(`
+      SELECT 
+        g.student_id,
+        AVG(g.raw_score * 1.0 / NULLIF(g.max_score, 0) * 10) as gpa
+      FROM grades g
+      WHERE g.student_id = ANY(ARRAY[${placeholders}])
+        AND g.status IN ('published', 'draft')
+      GROUP BY g.student_id
+    `, studentIds);
+    return res.rows;
+  }
+
+  const placeholdersSql = studentIds.map(() => '?').join(', ');
+  return db.prepare(`
+    SELECT 
+      g.student_id,
+      AVG(g.raw_score * 1.0 / NULLIF(g.max_score, 0) * 10) as gpa
+    FROM grades g
+    WHERE g.student_id IN (${placeholdersSql})
+      AND g.status IN ('published', 'draft')
+    GROUP BY g.student_id
+  `).all(...studentIds);
+}
+
+/**
+ * Get attendance data for multiple students.
+ */
+export async function getStudentAttendances(studentIds, academicYear, semester) {
+  if (studentIds.length === 0) return [];
+
+  const placeholdersSql = studentIds.map(() => '?').join(', ');
+
+  if (isPostgresConfigured()) {
+    const placeholders = studentIds.map((_, i) => `$${i + 1}`).join(', ');
+    const res = await pgQuery(`
+      SELECT 
+        ar.student_id,
+        COUNT(*) as total_records,
+        SUM(CASE WHEN ar.status IN ('PRESENT', 'present', 'present_in_time') THEN 1 ELSE 0 END) as present_count,
+        CASE 
+          WHEN COUNT(*) > 0 THEN (SUM(CASE WHEN ar.status IN ('PRESENT', 'present', 'present_in_time') THEN 1 ELSE 0 END)::float / COUNT(*) * 100)
+          ELSE 0 
+        END as rate
+      FROM attendance_records ar
+      WHERE ar.student_id = ANY(ARRAY[${placeholders}])
+      GROUP BY ar.student_id
+    `, studentIds);
+    return res.rows;
+  }
+
+  return db.prepare(`
+    SELECT 
+      ar.student_id,
+      COUNT(*) as total_records,
+      SUM(CASE WHEN ar.status IN ('PRESENT', 'present', 'present_in_time') THEN 1 ELSE 0 END) as present_count,
+      CASE 
+        WHEN COUNT(*) > 0 THEN (SUM(CASE WHEN ar.status IN ('PRESENT', 'present', 'present_in_time') THEN 1 ELSE 0 END) * 100.0 / COUNT(*))
+        ELSE 0 
+      END as rate
+    FROM attendance_records ar
+    WHERE ar.student_id IN (${placeholdersSql})
+    GROUP BY ar.student_id
+  `).all(...studentIds);
+}

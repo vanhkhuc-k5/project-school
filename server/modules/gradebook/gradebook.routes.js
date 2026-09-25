@@ -198,6 +198,13 @@ router.get(
   ctrl.getStudentReportCard
 );
 
+// POST /api/gradebook/classes/:classId/ai-report-comments
+router.post(
+  '/classes/:classId/ai-report-comments',
+  requirePermission('grade.read'),
+  ctrl.generateAIReportComments
+);
+
 // POST /api/gradebook/classes/:classId/lock
 router.post(
   '/classes/:classId/lock',

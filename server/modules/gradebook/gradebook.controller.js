@@ -410,6 +410,31 @@ export async function getStudentReportCard(req, res) {
 }
 
 /**
+ * POST /api/gradebook/classes/:classId/ai-report-comments
+ * Generate AI-suggested report card comments for all students in a class.
+ * Based on GPA, attendance rate, and conduct grades.
+ */
+export async function generateAIReportComments(req, res) {
+  requirePermission(req, 'grade.read');
+  const { classId } = req.params;
+  const { academic_year, semester, student_ids } = req.body;
+
+  if (!classId) throw AppError.badRequest('classId là bắt buộc');
+
+  const { schoolId } = extractUser(req);
+
+  const result = await service.generateAIReportComments({
+    classId,
+    schoolId,
+    academicYear: academic_year || '2025-2026',
+    semester: semester || 1,
+    studentIds: student_ids || [],
+  });
+
+  res.json(buildResponse(result));
+}
+
+/**
  * POST /api/gradebook/classes/:classId/lock
  * Lock semester gradebook — prevents further grade modifications.
  * Requires explicit confirmation from leadership.

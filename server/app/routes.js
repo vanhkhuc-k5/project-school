@@ -31,6 +31,7 @@ import { importExportRoutes } from '../modules/import-export/index.js';
 import { auditRoutes } from '../modules/audit/index.js';
 import { aiTutorRoutes } from '../modules/ai-tutor/index.js';
 import { aiTutorContextRoutes } from '../modules/ai-tutor-context/index.js';
+import { logbookRoutes } from '../modules/logbook/index.js';
 
 // Legacy routes (migrated incrementally in future goals)
 import studentRoutes from '../routes/student.js';
@@ -131,6 +132,7 @@ export function registerRoutes(app) {
   apiRouter.use('/admin', adminRoutes);
   apiRouter.use('/ai-tutor', aiTutorRoutes);
   apiRouter.use('/ai-tutor-context', aiTutorContextRoutes);
+  apiRouter.use('/logbook', logbookRoutes);
   apiRouter.use('/sync', syncRoutes);
 
   app.use('/api', apiRouter);

@@ -871,3 +871,113 @@ export async function lockClassGradebook({ classId, semesterId, lockedBy, role, 
     reason,
   };
 }
+
+/**
+ * Generate AI-suggested report card comments for students in a class.
+ * Uses template-based comment generation based on GPA, attendance, and conduct.
+ */
+export async function generateAIReportComments({ classId, schoolId, academicYear, semester, studentIds }) {
+  if (!classId) throw AppError.badRequest('classId là bắt buộc');
+
+  // Get all students in the class (or filtered by studentIds)
+  const students = await repo.getClassStudentList(classId, academicYear, semester);
+  
+  const filteredStudents = studentIds.length > 0
+    ? students.filter(s => studentIds.includes(s.student_id))
+    : students;
+
+  // Get GPA data for students
+  const studentGPAs = await repo.getStudentGPAs(
+    filteredStudents.map(s => s.student_id),
+    academicYear,
+    semester
+  );
+
+  // Get attendance data for students
+  const studentAttendances = await repo.getStudentAttendances(
+    filteredStudents.map(s => s.student_id),
+    academicYear,
+    semester
+  );
+
+  // Generate comments for each student
+  const comments = filteredStudents.map(student => {
+    const gpaData = studentGPAs.find(g => g.student_id === student.student_id);
+    const attendanceData = studentAttendances.find(a => a.student_id === student.student_id);
+
+    const gpa = gpaData?.gpa ? parseFloat(gpaData.gpa) : null;
+    const attendanceRate = attendanceData?.rate ? parseFloat(attendanceData.rate) : null;
+
+    // Determine suggested conduct grade based on GPA and attendance
+    let suggestedConduct = 'dat';
+    if (gpa && gpa >= 8.0 && attendanceRate && attendanceRate >= 95) {
+      suggestedConduct = 'tot';
+    } else if (gpa && gpa >= 6.5 && attendanceRate && attendanceRate >= 85) {
+      suggestedConduct = 'kha';
+    } else if ((gpa && gpa < 5) || (attendanceRate && attendanceRate < 70)) {
+      suggestedConduct = 'chua_dat';
+    }
+
+    // Generate 3 comment options
+    const commentOptions = generateReportCardCommentOptions({
+      studentName: student.name,
+      gpa,
+      attendanceRate,
+      suggestedConduct,
+    });
+
+    return {
+      student_id: student.student_id,
+      student_name: student.name,
+      student_code: student.code,
+      gpa,
+      attendance_rate: attendanceRate,
+      suggested_conduct: suggestedConduct,
+      comment_options: commentOptions,
+    };
+  });
+
+  return {
+    class_id: classId,
+    academic_year: academicYear,
+    semester,
+    total_students: comments.length,
+    students: comments,
+  };
+}
+
+/**
+ * Generate 3 report card comment options based on student data.
+ */
+function generateReportCardCommentOptions({ studentName, gpa, attendanceRate, suggestedConduct }) {
+  const name = studentName || 'em';
+  const gpaStr = gpa ? gpa.toFixed(1) : 'trung bình';
+  const attendanceStr = attendanceRate ? `${attendanceRate.toFixed(0)}%` : 'đạt yêu cầu';
+  const year = new Date().getFullYear();
+
+  const templates = {
+    tot: [
+      `Năm học ${year}, ${name} là một học sinh xuất sắc của lớp. ${name} có kết quả học tập rất tốt với điểm trung bình ${gpaStr}, tỷ lệ chuyên cần ${attendanceStr}. ${name} luôn ngoan ngoãn, có ý thức chấp hành tốt nội quy nhà trường, được thầy cô và bạn bè yêu mến. ${name} là tấm gương sáng cho các bạn trong lớp học tập.`,
+      `Kính gửi quý phụ huynh, ${name} đã có một năm học rất thành công. Với sự nỗ lực không ngừng, ${name} đạt kết quả học tập xuất sắc (ĐTB: ${gpaStr}), ý thức kỷ luật tốt, tỷ lệ chuyên cần ${attendanceStr}. Thầy cô mong ${name} tiếp tục phát huy và giữ vững phong độ trong năm học tới.`,
+      `Trong suốt năm học ${year}, ${name} luôn là học sinh gương mẫu. ${name} không chỉ đạt kết quả học tập xuất sắc (ĐTB: ${gpaStr}) mà còn tích cực tham gia các hoạt động của lớp, có tinh thần đoàn kết, giúp đỡ bạn bè. Thầy cô tự hào về những tiến bộ của ${name}.`,
+    ],
+    kha: [
+      `Trong năm học ${year}, ${name} là học sinh khá của lớp. ${name} có kết quả học tập khá tốt với điểm trung bình ${gpaStr}, có ý thức chấp hành nội quy nhà trường, tỷ lệ chuyên cần ${attendanceStr}. ${name} cần phát huy thêm để đạt kết quả cao hơn trong năm học tới.`,
+      `Kính gửi quý phụ huynh, ${name} đã có những tiến bộ đáng ghi nhận trong năm học vừa qua. ĐTB: ${gpaStr}, tỷ lệ chuyên cần ${attendanceStr}. Thầy cô mong ${name} tiếp tục duy trì và phát huy những điểm mạnh, khắc phục những hạn chế để đạt kết quả tốt hơn.`,
+      `${name} là một học sinh có ý thức trong học tập. Kết quả học tập (ĐTB: ${gpaStr}) và tỷ lệ chuyên cần ${attendanceStr} cho thấy ${name} đã nỗ lực trong năm học. Thầy cô khuyến khích ${name} tiếp tục cố gắng và tham gia tích cực hơn vào các hoạt động của lớp.`,
+    ],
+    dat: [
+      `${name} đã hoàn thành các yêu cầu của chương trình học trong năm học ${year}. ĐTB: ${gpaStr}, tỷ lệ chuyên cần ${attendanceStr}. ${name} cần nỗ lực hơn nữa để cải thiện kết quả học tập và ý thức kỷ luật trong năm học tới.`,
+      `Kính gửi quý phụ huynh, ${name} đã hoàn thành chương trình học trong năm ${year}. Tuy nhiên, kết quả học tập (ĐTB: ${gpaStr}) và ý thức chấp hành nội quy vẫn cần được cải thiện. Thầy cô mong quý phụ huynh cùng nhà trường theo dõi sát sao việc học tập của ${name}.`,
+      `${name} cần phấn đấu nhiều hơn trong năm học tới. Thầy cô ghi nhận những nỗ lực của ${name} nhưng kết quả học tập (ĐTB: ${gpaStr}) chưa đáp ứng kỳ vọng. Rất mong quý phụ huynh quan tâm hơn đến việc học tập của ${name} tại nhà.`,
+    ],
+    chua_dat: [
+      `Năm học ${year}, ${name} chưa đạt yêu cầu về học tập (ĐTB: ${gpaStr}) và ý thức kỷ luật. ${name} cần được sự quan tâm sát sao từ gia đình và nhà trường để cải thiện tình hình. Thầy cô mong quý phụ huynh phối hợp cùng nhà trường giúp đỡ ${name} tiến bộ.`,
+      `Kính gửi quý phụ huynh, thầy cô rất lo lắng về kết quả học tập của ${name} trong năm vừa qua. ĐTB: ${gpaStr}, tỷ lệ chuyên cần thấp. Đây là giai đoạn quan trọng cần sự chung sức của gia đình và nhà trường để giúp ${name} vượt qua khó khăn.`,
+      `${name} chưa hoàn thành các yêu cầu cơ bản của chương trình học. Kết quả học tập (ĐTB: ${gpaStr}) chưa đạt yêu cầu. Thầy cô rất mong quý phụ huynh liên hệ để cùng nhà trường tìm giải pháp giúp ${name} cải thiện trong thời gian tới.`,
+    ],
+  };
+
+  return templates[suggestedConduct] || templates.dat;
+}
+

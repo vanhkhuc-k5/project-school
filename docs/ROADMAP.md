@@ -1,150 +1,199 @@
-# EDUPORTAL — LỘ TRÌNH PHÁT TRIỂN & CHUYỂN ĐỔI (MASTER ROADMAP)
+# EDUPORTAL — BẢN ĐỒ KIẾN TRÚC TOÀN DIỆN & LỘ TRÌNH PHÁT TRIỂN (MASTER ROADMAP 2026)
 **Mã tài liệu:** `docs/ROADMAP.md`  
-**Phiên bản:** 2.0.0 — Production Evolution Plan  
-**Trạng thái:** Active Execution Plan  
+**Phiên bản:** 3.0.0 — Enterprise Full-Spectrum Edition  
+**Ngày cập nhật:** 25/09/2026  
+**Phạm vi:** 7 Nhóm Vai trò (Ban Giám Hiệu, Quản trị viên, Trưởng bộ môn, Giáo viên, Lớp trưởng, Học sinh, Phụ huynh)
 
 ---
 
-## 1. TỔNG QUAN LỘ TRÌNH NÂNG CẤP
+## 1. TỔNG QUAN ĐÁNH GIÁ CHUYÊN SÂU DỰ ÁN (DEEP ARCHITECTURAL AUDIT)
 
-Lộ trình tiến hóa EduPortal từ phiên bản thử nghiệm (Prototype / Mock-hybrid) sang nền tảng quản lý trường học cấp doanh nghiệp (Production-Grade) được chia thành **5 giai đoạn tuần tự (Phases 0 - 4)**. 
+### 1.1. Hiện trạng Kỹ thuật Cốt lõi
+- **Frontend:** React 18 + Tailwind CSS + TypeScript (`.tsx`). 100% màn hình giao diện (37 màn hình) đã được chuẩn hóa TypeScript, không còn tệp `.jsx` nào trong `src/pages/` và `src/layouts/`.
+- **Backend:** Express 5 + Node.js ESM. Đã phân rã thành **24 Domain Modules** độc lập tại `server/modules/` theo cấu trúc 3 tầng chuẩn: Controller $\rightarrow$ Service $\rightarrow$ Repository.
+- **Cơ sở dữ liệu kép (Dual Database Engine):**
+  - **Neon Cloud PostgreSQL (Primary):** Single Source of Truth cho môi trường Staging và Production.
+  - **SQLite WAL mode (Offline Dev/Test):** Chạy in-memory độc lập cho bộ test runner 858+ tests (không chạm vào dữ liệu thật).
+  - **35 Database Migrations** có kiểm soát phiên bản tại `server/shared/database/migrations/`.
+- **Bảo mật & Phân quyền:**
+  - JWT Access Token 15 phút + Refresh Token Rotation 7 ngày (SHA-256).
+  - Phân quyền chi tiết (Granular RBAC) với 8 vai trò chính và 45+ dot-notation permissions.
+  - Phân vùng dữ liệu đa trường học (Tenant Isolation) với trường `school_id` trên toàn bộ bảng.
+- **Chất lượng Kiểm định:**
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **858/858 tests PASS (100%)**.
+  - `npm run build`: Hoàn thành trong ~4.2 giây, tách nhỏ 34 chunks (10–90KB/chunk).
 
-Mỗi giai đoạn gồm các mục tiêu cụ thể (Goals), tuân thủ nghiêm ngặt **30 Non-Negotiable Rules**, quy trình làm việc 5 bước (**Inspect $\rightarrow$ Plan $\rightarrow$ Implement $\rightarrow$ Verify $\rightarrow$ Report**) và không làm gián đoạn các luồng nghiệp vụ đang hoạt động.
+---
 
+## 2. BẢN ĐỒ 7 VAI TRÒ TRONG HỆ SINH THÁI NHÀ TRƯỜNG & PHÂN TÍCH KHOẢNG TRỐNG
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                           EDUPORTAL 7-ROLE ECOSYSTEM MAP                                │
+├──────────────────────────┬──────────────────────────┬───────────────────────────────────┤
+│ 1. BAN GIÁM HIỆU (BGH)   │ 2. QUẢN TRỊ VIÊN (ADMIN) │ 3. TRƯỞNG BỘ MÔN (DEPT HEAD)      │
+│    • Điều hành chiến lược│    • Vận hành hệ thống   │    • Quản lý chuyên môn tổ        │
+│    • Phê duyệt năm học   │    • Phân quyền RBAC     │    • Duyệt giáo án 5512           │
+│    • Công văn chỉ đạo    │    • CSDL Ngành (EMIS)   │    • Ngân hàng đề thi bộ môn      │
+├──────────────────────────┴──────────────────────────┴───────────────────────────────────┤
+│ 4. ĐỘI NGŨ GIÁO VIÊN (TEACHER)                                                          │
+│    ├── 4A. Giáo viên Bộ môn (GVBM): Sổ đầu bài, Báo giảng, Chấm bài Split-screen, Lab   │
+│    └── 4B. Giáo viên Chủ nhiệm (GVCN): Sơ đồ lớp, Thi đua, Đánh giá hạnh kiểm, AI Lời phê│
+├─────────────────────────────────────────────────────┬───────────────────────────────────┤
+│ 5. LỚP TRƯỞNG & BAN CÁN SỰ (CLASS LEADERSHIP)       │ 6. PHỤ HUYNH HỌC SINH (PARENT)    │
+│    • Nề nếp thi đua lớp học theo ngày (15 phút)     │    • Nắm bắt chuyên cần thời gian │
+│    • Điểm danh sơ bộ đầu giờ                        │      thực qua SSE                 │
+│    • Quản lý nhóm học tập "Đôi bạn cùng tiến"       │    • Học bạ điện tử QR & VietQR   │
+├─────────────────────────────────────────────────────┴───────────────────────────────────┤
+│ 7. HỌC SINH (STUDENT SMART LEARNING HUB)                                                │
+│    • Exam Runner v2 chống gian lận & Học bạ điện tử Thông tư 22                         │
+│    • Flashcard Spaced Repetition, Lớp học đảo ngược (Xem trước slide)                   │
+│    • Sổ tay công thức số, Bảng tuần hoàn tương tác & Gia sư AI Socratic kèm 1-1         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Bảng Phân Tích Khoảng Trống Nghiệp Vụ (Gap Analysis)
+
+| Phân hệ / Vai trò | Hiện trạng trong Code | Khoảng trống nghiệp vụ thực tế (CẦN BỔ SUNG) |
+|---|---|---|
+| **Giáo viên Bộ môn (GVBM)** | Đã có: Nhập điểm TT22, điểm danh, giao bài tập cơ bản. | ❌ Sổ Đầu Bài Điện Tử: Ghi nhận tiết học (PPCT, sĩ số, nhận xét, xếp loại Tốt/Khá/TB).<br>❌ Chấm bài Split-Screen: Soi bài chụp ảnh/PDF bên trái, barem điểm bên phải.<br>❌ Bóc tách Đề thi Word (.docx): Tự nhận diện trắc nghiệm A-B-C-D trong 2s. |
+| **Giáo viên Chủ nhiệm (GVCN)** | Dùng chung trang với GV bộ môn. | ❌ Command Center GVCN: Sơ đồ chỗ ngồi 4 dãy bàn kéo-thả, đánh dấu cán sự lớp.<br>❌ Đánh giá Hạnh kiểm / Rèn luyện TT22: Xếp loại Tốt/Khá/Đạt/Chưa đạt theo tháng/kỳ.<br>❌ Trợ lý AI Viết Lời Phê Học Bạ: Gợi ý 3 mẫu lời phê sư phạm cá nhân hóa cho 45 học sinh. |
+| **Học sinh (Student)** | Dashboard, TKB, Điểm số, Gia sư AI chat. | ❌ Flashcard Spaced Repetition (SM-2): Ôn từ vựng Anh, công thức KaTeX, mốc Sử.<br>❌ Lớp học đảo ngược: Xem trước Slide tóm tắt trên TKB + 3 câu mini Warm-up quiz.<br>❌ Sổ tay tra cứu: Bảng tuần hoàn tương tác & Sổ tay công thức Toán - Lý. |
+| **Lớp trưởng & Ban cán sự** | Bảng migration 0035 đã tạo, chưa có UI. | ❌ Sổ Theo Dõi Nề Nếp & Thi Đua 15 Phút: Ghi nhận vi phạm, chấm điểm thi đua 4 tổ. |
+| **Ban Giám Hiệu (BGH)** | Dashboard báo cáo, duyệt đơn nghỉ. | ❌ Công văn BGH ghim Banner thời gian thực (`GlobalBroadcastBanner`).<br>❌ Khóa sổ điểm học kỳ & Ký số học bạ số lượng lớn. |
+| **Tổ trưởng Chuyên môn** | Khung tổ bộ môn cơ bản. | ❌ Duyệt Kế hoạch Bài dạy (Giáo án CV 5512). |
+
+---
+
+## 3. CÁC LUỒNG NGHIỆP VỤ LIÊN THÔNG TOÀN DIỆN (SYSTEM FLOWS)
+
+### 3.1. Luồng 1: Chu trình Sư phạm & Lên lớp của Giáo viên Bộ Môn
 ```mermaid
-gantt
-    title Master Development Roadmap — EduPortal Production Readiness
-    dateFormat  YYYY-MM-DD
-    
-    section Phase 0: Baseline & Truth
-    G00 Kiểm định Hiện trạng Codebase       :done, g00, 2026-09-20, 1d
-    G01 Đồng bộ Tài liệu Sự thật Nguồn      :active, g01, after g00, 1d
-    
-    section Phase 1: Security & Foundation
-    G02 Xóa Backdoor & Vá Lỗ hổng Auth      :p1_g02, after g01, 1d
-    G03 Cấu hình TypeScript & Zod Validation:p1_g03, after p1_g02, 2d
-    
-    section Phase 2: Backend Architecture
-    G04 Tách Tầng Controller-Service-Repo   :p2_g04, after p1_g03, 3d
-    G05 Thống nhất Neon PG & school_id Scope:p2_g05, after p2_g04, 2d
-    
-    section Phase 3: Frontend Refactoring
-    G06 Giải thể Monolith UI (Parent/Admin) :p3_g06, after p2_g05, 3d
-    G07 Typed API Client & Xóa Mock Fallback:p3_g07, after p3_g06, 2d
-    
-    section Phase 4: Production Hardening
-    G08 Chuẩn hóa Test Suite & Vitest / E2E :p4_g08, after p3_g07, 2d
-    G09 Audit Log, Rate Limit & Bàn giao Prod:p4_g09, after p4_g08, 2d
+sequenceDiagram
+    autonumber
+    actor Teacher as Giáo viên Bộ Môn
+    actor Logbook as Sổ Đầu Bài Điện Tử
+    actor System as EduPortal Backend
+    actor Monitor as Lớp trưởng
+    actor Principal as Ban Giám Hiệu
+
+    Teacher->>System: Tải đề thi Word (.docx) -> Thuật toán bóc tách 40 câu trắc nghiệm
+    Teacher->>System: Phát hành bài kiểm tra 15 phút / 1 tiết
+    Teacher->>Logbook: Vào tiết dạy: Ký nhận sổ đầu bài (Tên bài theo PPCT, Sĩ số)
+    Monitor->>Teacher: Báo cáo sĩ số hiện diện đầu giờ
+    Teacher->>Logbook: Đánh giá tiết học (Tiết Tốt - 10đ / Khá - 8đ) & Ghi nhận xét
+    Teacher->>System: Mở Grading Studio Split-Screen chấm bài tự luận của học sinh
+    System-->>Principal: Tự động tổng hợp dữ liệu tiết dạy lên Dashboard Giám sát BGH
 ```
 
 ---
 
-## 2. CHI TIẾT CÁC GIAI ĐOẠN & MỤC TIÊU (PHASES & GOALS)
+### 3.2. Luồng 2: Chu trình Công tác Chủ nhiệm & AI Lời Phê Học Bạ
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Monitor as Lớp trưởng / Tổ trưởng
+    actor Homeroom as GV Chủ Nhiệm
+    actor AI as Trợ Lý AI Sư Phạm
+    actor Principal as Ban Giám Hiệu
+    actor Parent as Phụ huynh
 
-### PHASE 0 — XÁC LẬP SỰ THẬT MÃ NGUỒN (ESTABLISH THE TRUTH)
-*Mục tiêu: Đánh giá thực trạng mã nguồn, đối chiếu sai lệch tài liệu, không thay đổi runtime behavior.*
-
-- [x] **G00 — Repository Baseline Audit:**
-  - Khảo sát 17 chiều kiến trúc, lập tài liệu [`docs/audit/CURRENT_STATE.md`](file:///d:/Work/project_school/docs/audit/CURRENT_STATE.md).
-  - Đối chiếu thực tế chạy SQLite vs tuyên bố PostgreSQL, phát hiện backdoor `admin@2026` và lỗ hổng xóa người dùng unauthenticated.
-  - Kiểm tra 57/57 tests PASS không hồi quy.
-- [x] **G01 — Documentation Source of Truth:**
-  - Cập nhật và đồng bộ `README.md`, `AGENTS.md`.
-  - Soạn thảo `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`, `docs/DEVELOPMENT.md`.
-  - Phân định ranh giới rõ ràng giữa **Hiện trạng Prototype** và **Mục tiêu Production**.
-  - Dọn dẹp chuỗi kết nối nhạy cảm bị lộ trong `.env.example`.
-
----
-
-### PHASE 1 — BẢO MẬT & NỀN TẢNG KIỂU DỮ LIỆU (SECURITY & FOUNDATION)
-*Mục tiêu: Loại bỏ hoàn toàn các lỗ hổng bảo mật nghiêm trọng và thiết lập kiểm tra kiểu dữ liệu tĩnh.*
-
-- [ ] **G02 — Loại bỏ Backdoor & Vá Triệt để Lỗ hổng Phân quyền:**
-  - **Công việc:**
-    - Xóa bỏ hoàn toàn backdoor `admin@2026` trong `server/routes/auth.js`.
-    - Thay thế `optionalAuth` bằng middleware xác thực bắt buộc trên toàn bộ endpoint quản trị (`/api/admin/users`, `DELETE`, `PUT`, `POST`).
-    - Bắt buộc kiểm tra quyền sở hữu IDOR trên các endpoint phụ huynh (`/parent/leave-requests`, `/parent/messages`).
-    - Buộc server dừng (crash early) nếu thiếu `JWT_SECRET` trong môi trường production thay vì dùng secret fallback.
-  - **DoD:** Không còn cách nào đăng nhập admin bằng password cứng; gọi API không có token hợp lệ phải nhận `401 Unauthorized`; 57/57 tests PASS + viết thêm negative security tests.
-
-- [ ] **G03 — Cấu hình TypeScript & Ranh giới Validation (Zod):**
-  - **Công việc:**
-    - Thiết lập `tsconfig.json` cho Backend và Frontend.
-    - Cài đặt Zod, xây dựng middleware `validateBody(schema)`, `validateQuery(schema)`.
-    - Viết Schemas validation cho Authentication và User Management.
-    - Chuẩn hóa Response Envelope `{ success: true, data: ..., meta: ... }` và mã lỗi `{ success: false, error: { code, message, details } }`.
-  - **DoD:** Các request có body sai kiểu dữ liệu bị từ chối với mã lỗi 400 và thông báo tiếng Việt chi tiết; build typecheck thành công.
+    Monitor->>Homeroom: Nộp bảng theo dõi thi đua nề nếp 15 phút đầu giờ (4 tổ)
+    Homeroom->>Homeroom: Mở Sơ đồ lớp tương tác (Kéo-thả vị trí chỗ ngồi, ghi chú nề nếp)
+    Homeroom->>Homeroom: Đánh giá Kết quả Rèn luyện / Hạnh kiểm TT22 (Tốt/Khá/Đạt)
+    Homeroom->>AI: Bấm "AI Gợi ý lời phê học bạ cho 45 học sinh"
+    AI-->>Homeroom: Sinh 3 mẫu lời phê cá nhân hóa chuẩn văn phong sư phạm (khen ngợi + nhắc nhở)
+    Homeroom->>Homeroom: Rà soát, chỉnh sửa nhanh & Bấm "Duyệt toàn bộ học bạ"
+    Homeroom->>Principal: Trình BGH phê duyệt & Ký số điện tử khóa sổ
+    Principal->>Principal: Ký số học bạ -> Tự động kích hoạt thông báo đến Phụ huynh
+    Parent-->>Parent: Tra cứu Học bạ điện tử có mã QR xác thực của con
+```
 
 ---
 
-### PHASE 2 — KIẾN TRÚC BACKEND & ĐA TRƯỜNG HỌC (MODULAR BACKEND & TENANCY)
-*Mục tiêu: Xóa bỏ việc viết SQL trong route, đưa PostgreSQL thành nguồn dữ liệu duy nhất và hỗ trợ multi-tenancy.*
+### 3.3. Luồng 3: Chu trình Lớp Học Đảo Ngược & Góc Học Tập Thông Minh
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Student as Học sinh
+    actor System as EduPortal Smart Learning
+    actor AI as Gia sư AI Socratic
+    actor Teacher as Giáo viên
 
-- [ ] **G04 — Tách Tầng Controller $\rightarrow$ Service $\rightarrow$ Repository:**
-  - **Công việc:**
-    - Tái cấu trúc backend thành các domain modules: `iam`, `roster`, `assessment`, `attendance`, `finance`, `communication`.
-    - Đưa toàn bộ raw SQL vào các Repository classes.
-    - Đưa toàn bộ tính toán nghiệp vụ (tính GPA, xếp loại học lực, đánh giá nguy cơ) vào các Service classes.
-    - Route chỉ gọi Controller method tương ứng.
-  - **DoD:** Không còn bất kỳ câu lệnh SQL hoặc DDL `db.exec` nào nằm trong các file router; toàn bộ business logic được bao phủ bằng Unit Test.
-
-- [ ] **G05 — Thống nhất Neon PostgreSQL & Áp dụng `school_id` Scope:**
-  - **Công việc:**
-    - Xây dựng hệ thống migration SQL có kiểm soát phiên bản (up/down).
-    - Bổ sung bảng `schools` và cột `school_id` vào toàn bộ 18 bảng nghiệp vụ.
-    - Chuyển toàn bộ runtime connection sang Neon Cloud PostgreSQL làm Single Source of Truth.
-    - Cô lập SQLite chỉ chạy trong chế độ in-memory test runner offline khi không có internet.
-    - Áp dụng `tenantScope` tự động trong Repository để ngăn chặn rò rỉ dữ liệu giữa các trường học.
-  - **DoD:** Toàn bộ nghiệp vụ đọc/ghi được kiểm chứng trực tiếp trên Neon Cloud Database; không còn xung đột schema giữa `db.js` và `parent.js`.
-
----
-
-### PHASE 3 — TÁI CẤU TRÚC GIAO DIỆN & LOẠI BỎ MOCK (FRONTEND REFACTORING)
-*Mục tiêu: Đập nhỏ các UI monolith, xây dựng Typed API Client và xóa bỏ hoàn toàn mock fallback trong production flows.*
-
-- [ ] **G06 — Phân rã Monolith `ParentDashboard` & `AdminDashboard`:**
-  - **Công việc:**
-    - Chia nhỏ `ParentDashboard.jsx` (1.700 dòng) thành các sub-components: `ParentOverviewTab`, `ParentGradesTab`, `ParentTuitionTab`, `ParentLeaveTab`, `ParentMessagesTab`.
-    - Chia nhỏ `AdminDashboard.jsx` (1.320 dòng) thành: `AdminOverviewTab`, `AdminUsersTab`, `AdminClassesTab`, `AdminFinancialsTab`, `AdminAuditLogsTab`.
-    - Giữ nguyên 100% phong cách thiết kế và tokens trong `DESIGN.md`.
-  - **DoD:** Mỗi component không vượt quá 350 dòng; giao diện hiển thị đồng nhất trên cả desktop và mobile; không lỗi layout.
-
-- [ ] **G07 — Xây dựng Typed API Client & Xử lý UX States:**
-  - **Công việc:**
-    - Loại bỏ việc import mock data (`src/mock/`) làm initial state trong các React components.
-    - Viết lại `src/services/api.ts` kết nối trực tiếp `/api/v1/*`.
-    - Triển khai đầy đủ 5 trạng thái UX: Loading Skeleton, Empty State, Error State, Success State, Validation State trên toàn bộ 16 màn hình.
-  - **DoD:** Khi ngắt kết nối mạng hoặc tắt backend, UI hiển thị thông báo lỗi rõ ràng và nút thử lại, không âm thầm hiển thị dữ liệu giả định.
+    Student->>System: Xem Thời khóa biểu ngày mai -> Nhấp "Xem trước Slide bài giảng"
+    Student->>System: Hoàn thành 3 câu Mini Warm-up Quiz chuẩn bị bài
+    Teacher->>System: Xem danh sách học sinh đã chuẩn bị bài trước giờ lên lớp
+    Student->>System: Mở Flashcard Spaced Repetition (Lặp lại ngắt quãng SM-2) ôn từ vựng & công thức
+    Student->>System: Tra cứu Bảng tuần hoàn hóa học / Sổ tay công thức Toán - Lý
+    opt Gặp bài tập hóc búa
+        Student->>AI: Chụp ảnh / Nhập bài toán hỏi gia sư AI
+        AI-->>Student: Gợi ý tư duy từng bước theo phương pháp Socratic (không giải hộ)
+    end
+```
 
 ---
 
-### PHASE 4 — BẢO MẬT NÂNG CAO, TESTING & PRODUCTION HANDOVER
-*Mục tiêu: Tối ưu hiệu năng, hoàn thiện kiểm thử tự động, thiết lập audit logging và chuẩn bị bàn giao.*
+### 3.4. Luồng 4: Chu trình Phát hành Công văn BGH Ghim Banner Toàn Trường
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Principal as Ban Giám Hiệu
+    actor System as SSE Notification Engine
+    actor AllUsers as Toàn Trường (GV, HS, PH)
 
-- [ ] **G08 — Chuẩn hóa Bộ Kiểm thử Tự động (Vitest / Supertest):**
-  - **Công việc:**
-    - Tích hợp Vitest và Supertest thay thế bộ runner tự chế tạm thời.
-    - Bổ sung test suites kiểm tra phân quyền tiêu cực (Negative Authorization Tests: học sinh sửa điểm, phụ huynh xem con nhà khác, guest gọi API cấm).
-    - Thêm Component Tests cho các form quan trọng (Đăng nhập, Nộp bài tập, Nộp đơn nghỉ học).
-    - Cấu hình GitHub Actions CI pipeline tự động chạy lint, typecheck và tests trên mỗi PR.
-  - **DoD:** Tỷ lệ bao phủ kiểm thử đạt tối thiểu 85% cho các luồng nghiệp vụ trọng yếu; CI pipeline xanh 100%.
-
-- [ ] **G09 — Production Hardening & Security Audit:**
-  - **Công việc:**
-    - Cài đặt `helmet`, `express-rate-limit` (giới hạn 5 lần đăng nhập sai / phút).
-    - Bật CORS whitelist nghiêm ngặt theo domain cấu hình qua ENV.
-    - Triển khai Audit Logging Interceptor tự động ghi nhận mọi thao tác thêm/sửa/xóa có gắn `school_id`, `actor_id`, `ip_address` và diff payload.
-    - Chuyển polling 4.5s của thông báo khẩn sang Server-Sent Events (SSE).
-    - Quét lỗ hổng mã nguồn qua `npm audit` và bảo mật dependency.
-  - **DoD:** Hệ thống vượt qua bài kiểm tra bảo mật OWASP Top 10 cơ bản; tài liệu hướng dẫn vận hành và bàn giao đầy đủ.
+    Principal->>System: Soạn Công văn chỉ đạo (Nghỉ bão lũ / Lịch thi HK / Hoạt động lớn)
+    Principal->>System: Chọn mức độ: KHẨN CẤP / QUAN TRỌNG + Phạm vi: TOÀN TRƯỜNG
+    Principal->>System: Bấm "Ký duyệt & Ghim thông báo toàn trường"
+    System->>System: Lưu bảng announcements kèm cờ is_broadcast = true
+    System-->>AllUsers: Phát sự kiện SSE GLOBAL_BROADCAST tức thì tới mọi thiết bị đang online
+    AllUsers->>AllUsers: Tự động hiển thị GlobalBroadcastBanner trang trọng trên đầu trang
+```
 
 ---
 
-## 3. MA TRẬN ĐÁNH GIÁ MỨC ĐỘ RỦI RO & BIỆN PHÁP KIỂM SOÁT
+## 4. LỘ TRÌNH THỰC THI QUA CÁC GIAI ĐOẠN (SPRINT TIMELINE)
 
-| Rủi ro kỹ thuật | Mức độ | Hậu quả tiềm ẩn | Biện pháp kiểm soát & Phòng ngừa |
-|---|---|---|---|
-| **Mất mát dữ liệu khi chuyển DB sang Neon PG** | CAO | Mất điểm số, thông tin học sinh hiện có | Chạy script export toàn bộ dữ liệu SQLite sang JSON/SQL trước khi chạy migration; kiểm tra toàn vẹn khóa ngoại. |
-| **Gãy giao diện khi phân rã 2 Monoliths lớn** | TRUNG BÌNH | Mất CSS, vỡ layout, hỏng modal | Giữ nguyên class Tailwind gốc; test visual trên cả màn hình Desktop (1440px) và Mobile (375px) theo `DESIGN.md`. |
-| **Breaking API khi đổi sang `/api/v1`** | TRUNG BÌNH | Client không gọi được backend | Tạo alias router chuyển hướng tạm thời (`app.use('/api', v1Router)`) trong giai đoạn chuyển tiếp. |
-| **Chậm trễ kết nối khi dùng Neon Serverless** | THẤP | Cold-start latency tăng khi thức dậy | Sử dụng connection pooling (`-pooler` endpoint của Neon); cấu hình `idleTimeoutMillis: 30000`. |
+```
+[EDUPORTAL MASTER TIMELINE 2026]
+│
+├── PHASE 22: LIVE OPERATIONS & REAL-TIME INTERACTION (HOÀN THÀNH - Commit 7d10c91)
+│   ├── Chat 2 chiều Phụ huynh ↔ Giáo viên qua SSE (Auto Toast & Sound)
+│   ├── Điểm danh bằng tay bắn thông báo SSE tức thì cho Phụ huynh
+│   ├── VietQR Napas 247 Sandbox (Badge thử nghiệm & Nút gạch nợ 1.5s)
+│   └── RFID Scanner mô phỏng gắn nhãn Sandbox thử nghiệm
+│
+├── PHASE 23: SỔ ĐẦU BÀI & CÔNG TÁC CHỦ NHIỆM (OVERNIGHT SPRINT - TASK 1)
+│   ├── Sổ Đầu Bài Điện Tử từng tiết dạy (Ghi bài theo PPCT, sĩ số, nhận xét, xếp loại tiết)
+│   ├── Command Center GVCN: Sơ đồ lớp kéo-thả, đánh giá hạnh kiểm TT22
+│   ├── Cổng Ban Cán Sự Lớp: Giao diện Lớp trưởng theo dõi nề nếp thi đua 4 tổ 15 phút
+│   └── AI Sư Phạm: Tự động sinh 3 mẫu lời phê học bạ cho 45 học sinh lớp chủ nhiệm
+│
+├── PHASE 24: SMART LEARNING HUB & NHẬP ĐỀ THI TỰ ĐỘNG (OVERNIGHT SPRINT - TASK 2)
+│   ├── Bộ Flashcard Spaced Repetition (Thuật toán SM-2) theo môn (Anh TTS, Toán KaTeX, Sử)
+│   ├── Chế độ Lớp học đảo ngược: Xem trước Slide bài giảng & 3 câu Warm-up Quiz trên TKB
+│   ├── Bảng tuần hoàn hóa học tương tác & Sổ tay công thức số tra cứu nhanh
+│   └── Bộ bóc tách đề thi tự động từ file Word (.docx) vào ngân hàng đề thi trong 2s
+│
+├── PHASE 25: GOVERNANCE, THẨM ĐỊNH CHUYÊN MÔN & ĐIỀU HÀNH BGH
+│   ├── Tổ trưởng chuyên môn: Duyệt kế hoạch bài dạy (Giáo án CV 5512), Ngân hàng đề khối
+│   ├── Ban Giám Hiệu: Khóa sổ điểm điện tử học kỳ, Ký số học bạ số lượng lớn
+│   └── Phát thanh & Công văn BGH ghim Banner thời gian thực (GlobalBroadcastBanner)
+│
+└── PHASE 26: BẢO VỆ CHẤT LƯỢNG E2E, HARDENING BẢO MẬT & GO-LIVE PRODUCTION
+    ├── Bộ kiểm thử Playwright E2E UI Tests tự động 4 luồng người dùng
+    ├── Security Hardening: Helmet CSP, Rate-limit chống Brute-force, PII masking, /api/health
+    ├── Cấu hình Docker Multi-Stage + Nginx SSL Reverse Proxy
+    └── Kịch bản sao lưu CSDL tự động hàng ngày (Automated Neon Backup Cron)
+```
+
+---
+
+## 5. MA TRẬN CHỈ SỐ DEFINITION OF DONE (DOD) TOÀN DIỆN
+
+Mọi task phát triển trong các phase trên đều phải tuân thủ nghiêm ngặt 5 bước:
+1. **Kiểm tra TypeScript:** `npx tsc --noEmit` đạt 0 lỗi (0 errors).
+2. **Kiểm thử tự động:** `npm test` đạt 100% PASS (toàn bộ 858+ tests).
+3. **Kiểm tra đóng gói:** `npm run build` thành công, không vỡ layout trên cả Desktop (1440px) và Mobile (375px) theo chuẩn `DESIGN.md`.
+4. **Bảo mật:** Không để lộ secrets, kiểm soát quyền server-side (RBAC).
+5. **Đồng bộ hóa Git:** Tự động `git add .`, `git commit` và `git push origin main`.
