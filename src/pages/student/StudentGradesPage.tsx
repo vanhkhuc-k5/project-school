@@ -8,7 +8,7 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
-import { studentApi, gradebookApi } from '../../services/api';
+import { studentApi, gradebookApi, type StudentReportCardResponse } from '../../services/api';
 import { useSync } from '../../context/SyncContext';
 import {
   Award,
@@ -440,6 +440,11 @@ export function StudentGradesPage() {
   const [reviewMessage, setReviewMessage] = useState('');
   const [isSendingReview, setIsSendingReview] = useState(false);
   const [reviewSent, setReviewSent] = useState(false);
+
+  // E-Report Card (Học Bạ Điện Tử)
+  const [reportCard, setReportCard] = useState<StudentReportCardResponse | null>(null);
+  const [reportCardLoading, setReportCardLoading] = useState(false);
+  const [showReportCardModal, setShowReportCardModal] = useState(false);
 
   const fetchGrades = useCallback(async (period: string) => {
     setLoading(true);
