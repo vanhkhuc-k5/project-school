@@ -1,23 +1,24 @@
 # =============================================================================
-# EduPortal Docker Compose — Development & Production Configuration
+# EduPortal Docker Compose — Production Configuration (G53)
 # =============================================================================
 
 services:
-  # PostgreSQL Database
+  # -------------------------------------------------------------------------
+  # PostgreSQL Database (Neon Cloud recommended for production)
+  # -------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     container_name: eduportal-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: eduportal
-      POSTGRES_USER: eduportal
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eduportal_dev_password_change_in_prod}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+      POSTGRES_USER: ${POSTGRES_USER:-eduportal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"  # Only accessible locally
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./server/database/migrations:/docker-entrypoint-initdb.d/migrations:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U eduportal -d eduportal"]
       interval: 10s
@@ -25,76 +26,79 @@ services:
       retries: 5
     networks:
       - eduportal-network
+    profiles:
+      - with-db
 
-  # Redis (for session cache and pub/sub in production)
-  redis:
-    image: redis:7-alpine
-    container_name: eduportal-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - eduportal-network
-
-  # EduPortal Backend + Frontend
+  # -------------------------------------------------------------------------
+  # EduPortal Backend API
+  # -------------------------------------------------------------------------
   app:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runner
     container_name: eduportal-app
     restart: unless-stopped
     environment:
-      # Database
-      DATABASE_URL: postgresql://eduportal:${POSTGRES_PASSWORD:-eduportal_dev_password_change_in_prod}@postgres:5432/eduportal
-      # Redis
-      REDIS_URL: redis://redis:6379
-      # JWT
-      JWT_SECRET: ${JWT_SECRET:-change_this_secret_in_production_min_32_chars}
-      # API
-      API_URL: http://localhost:3000/api
+      # Database - use Neon Cloud in production
+      DATABASE_URL: ${DATABASE_URL:-postgresql://eduportal:${POSTGRES_PASSWORD:-change_me}@postgres:5432/eduportal}
+      # For SQLite fallback (not recommended in production)
+      DB_PATH: ${DB_PATH:-/app/data/eduportal.sqlite}
+      # JWT Security
+      JWT_SECRET: ${JWT_SECRET:-change_this_secret_min_32_chars}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+      # Server
       NODE_ENV: production
-      PORT: 3000
-    ports:
-      - "3000:3000"
+      PORT: 5000
+      # CORS Origins (comma-separated)
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://portal.yourschool.edu.vn}
+      # AI Tutor (optional)
+      AI_TUTOR_ENABLED: ${AI_TUTOR_ENABLED:-false}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+    volumes:
+      - app_data:/app/data  # Persistent data directory
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
+        required: false
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5000/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 20s
     networks:
       - eduportal-network
+    profiles:
+      - with-app
 
-  # Nginx Reverse Proxy (optional, for production)
+  # -------------------------------------------------------------------------
+  # Nginx Reverse Proxy with Frontend
+  # -------------------------------------------------------------------------
   nginx:
     image: nginx:alpine
     container_name: eduportal-nginx
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_conf:/etc/nginx/conf.d
+      - nginx_ssl:/etc/nginx/ssl:ro
+      - nginx_cache:/var/cache/nginx
+      - app_dist:/usr/share/nginx/html:ro  # Read-only frontend dist
     depends_on:
-      - app
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - eduportal-network
     profiles:
-      - production
+      - with-nginx
 
 networks:
   eduportal-network:
@@ -103,5 +107,9 @@ networks:
 volumes:
   postgres_data:
     driver: local
-  redis_data:
+  app_data:
     driver: local
+  nginx_conf:
+  nginx_ssl:
+  nginx_cache:
+  app_dist:
