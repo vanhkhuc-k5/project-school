@@ -412,28 +412,60 @@ function AuditTab() {
 }
 
 // ============================================================================
-// Health Tab Component
+// Health Tab Component (Enhanced)
 // ============================================================================
 
-function HealthTab() {
-  const [health, setHealth] = useState<{
+interface SystemHealth {
+  status: string;
+  service?: string;
+  environment: string;
+  version: string;
+  timestamp: string;
+  uptime?: {
+    seconds: number;
+    human: string;
+  };
+  memory?: {
+    heapUsed: number;
+    heapTotal: number;
+    percentage: number;
+  };
+  database?: {
     status: string;
-    timestamp: string;
-    services: { api: { status: string; latency?: string }; database: { status: string } };
-    environment: string;
-    version: string;
-  } | null>(null);
+    latencyMs: number;
+  };
+  checkDuration?: number;
+}
+
+function HealthTab() {
+  const [health, setHealth] = useState<SystemHealth | null>(null);
+  const [detailedHealth, setDetailedHealth] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(false);
 
   const fetchHealth = async () => {
+    setChecking(true);
     setLoading(true);
     try {
+      // Fetch basic health
       const data = await api.getSystemHealth();
       setHealth(data);
+      
+      // Fetch detailed health
+      try {
+        const detailed = await fetch('/api/health/detailed');
+        if (detailed.ok) {
+          const detailedData = await detailed.json();
+          setDetailedHealth(detailedData);
+        }
+      } catch {
+        // Detailed health is optional
+      }
     } catch {
-      // Handle silently
+      setHealth(null);
     } finally {
       setLoading(false);
+      setChecking(false);
     }
   };
 
@@ -441,102 +473,192 @@ function HealthTab() {
     fetchHealth();
   }, []);
 
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(fetchHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'ok':
+      case 'healthy':
+        return { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700', icon: CheckCircle };
+        break;
+      case 'degraded':
+        return { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-700', icon: AlertTriangle };
+        break;
+      default:
+        return { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', icon: XCircle };
+    }
+  };
+
+  const statusColors = getStatusColor(health?.status || 'error');
+
   return (
     <div className="space-y-4">
+      {/* Header with refresh button */}
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-[#0F3D5C]">Trạng thái hệ thống</h3>
+        <h3 className="font-semibold text-[#0F3D5C]">Giám sát hệ thống</h3>
         <button
           onClick={fetchHealth}
-          disabled={loading}
-          className="px-3 py-1.5 bg-[#1C6FA8] text-white rounded-lg hover:bg-[#0F3D5C] flex items-center gap-2"
+          disabled={checking}
+          className="px-4 py-2 bg-[#1C6FA8] text-white rounded-lg hover:bg-[#0F3D5C] flex items-center gap-2 disabled:opacity-50"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Làm mới
+          <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
+          Kiểm tra kết nối
         </button>
       </div>
 
       {health ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Overall Status */}
-          <div className={`p-6 rounded-xl border ${
-            health.status === 'ok' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
-          }`}>
-            <div className="flex items-center gap-3">
-              {health.status === 'ok' ? (
-                <CheckCircle className="w-8 h-8 text-green-600" />
-              ) : (
-                <XCircle className="w-8 h-8 text-red-600" />
-              )}
-              <div>
-                <div className="text-2xl font-bold text-[#0F3D5C]">
-                  {health.status === 'ok' ? 'Hoạt động tốt' : 'Có lỗi'}
+        <>
+          {/* Main Status Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Overall Status */}
+            <div className={`p-6 rounded-xl border ${statusColors.bg} ${statusColors.border}`}>
+              <div className="flex items-center gap-3">
+                {React.createElement(statusColors.icon, { className: `w-8 h-8 ${statusColors.text}` })}
+                <div>
+                  <div className="text-lg font-bold text-[#0F3D5C]">
+                    {health.status === 'ok' ? 'Hoạt động tốt' : health.status === 'degraded' ? 'Giảm hiệu suất' : 'Có lỗi'}
+                  </div>
+                  <div className="text-xs text-[#6B7280]">
+                    {new Date(health.timestamp).toLocaleString('vi-VN')}
+                  </div>
                 </div>
-                <div className="text-xs text-[#6B7280]">
-                  Cập nhật: {new Date(health.timestamp).toLocaleString('vi-VN')}
+              </div>
+            </div>
+
+            {/* Uptime */}
+            <div className="p-4 bg-white border border-gray-200 rounded-xl">
+              <div className="flex items-center gap-3 mb-3">
+                <Clock className="w-6 h-6 text-blue-600" />
+                <span className="font-medium text-[#0F3D5C]">Uptime</span>
+              </div>
+              <div className="text-2xl font-bold text-[#374151]">
+                {health.uptime?.human || 'N/A'}
+              </div>
+              <div className="text-xs text-[#6B7280]">
+                Phiên bản {health.version}
+              </div>
+            </div>
+
+            {/* Database */}
+            <div className="p-4 bg-white border border-gray-200 rounded-xl">
+              <div className="flex items-center gap-3 mb-3">
+                <Database className="w-6 h-6 text-purple-600" />
+                <span className="font-medium text-[#0F3D5C]">Database</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {health.database?.status === 'healthy' ? (
+                  <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" /> OK
+                  </span>
+                ) : (
+                  <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded flex items-center gap-1">
+                    <XCircle className="w-3 h-3" /> Lỗi
+                  </span>
+                )}
+                <span className="text-xs text-[#6B7280]">
+                  {health.database?.latencyMs || 0}ms
+                </span>
+              </div>
+            </div>
+
+            {/* Memory */}
+            <div className="p-4 bg-white border border-gray-200 rounded-xl">
+              <div className="flex items-center gap-3 mb-3">
+                <Activity className="w-6 h-6 text-orange-600" />
+                <span className="font-medium text-[#0F3D5C]">Bộ nhớ</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        (health.memory?.percentage || 0) > 80 ? 'bg-red-500' :
+                        (health.memory?.percentage || 0) > 60 ? 'bg-yellow-500' : 'bg-green-500'
+                      }`}
+                      style={{ width: `${health.memory?.percentage || 0}%` }}
+                    />
+                  </div>
                 </div>
+                <span className="text-xs font-medium text-[#374151]">
+                  {health.memory?.percentage || 0}%
+                </span>
+              </div>
+              <div className="text-xs text-[#6B7280] mt-1">
+                {formatBytes((health.memory?.heapUsed || 0) * 1024 * 1024)} / {formatBytes((health.memory?.heapTotal || 0) * 1024 * 1024)}
               </div>
             </div>
           </div>
 
-          {/* API Status */}
-          <div className="p-4 bg-white border border-gray-200 rounded-xl">
-            <div className="flex items-center gap-3 mb-3">
-              <Server className="w-6 h-6 text-blue-600" />
-              <span className="font-medium text-[#0F3D5C]">API</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {health.services.api.status === 'ok' ? (
-                <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded flex items-center gap-1">
-                  <CheckCircle className="w-3 h-3" /> OK
-                </span>
-              ) : (
-                <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded flex items-center gap-1">
-                  <XCircle className="w-3 h-3" /> Lỗi
-                </span>
-              )}
-              <span className="text-xs text-[#6B7280]">{health.services.api.latency || '< 100ms'}</span>
-            </div>
-          </div>
-
-          {/* Database Status */}
-          <div className="p-4 bg-white border border-gray-200 rounded-xl">
-            <div className="flex items-center gap-3 mb-3">
-              <Database className="w-6 h-6 text-purple-600" />
-              <span className="font-medium text-[#0F3D5C]">Database</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {health.services.database.status === 'ok' ? (
-                <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded flex items-center gap-1">
-                  <CheckCircle className="w-3 h-3" /> OK
-                </span>
-              ) : (
-                <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded flex items-center gap-1">
-                  <XCircle className="w-3 h-3" /> Lỗi
-                </span>
-              )}
+          {/* Environment Details */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <h4 className="font-medium text-[#0F3D5C] mb-3">Chi tiết môi trường</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <span className="text-[#6B7280]">Môi trường:</span>
+                <span className="ml-2 font-medium text-[#374151]">{health.environment}</span>
+              </div>
+              <div>
+                <span className="text-[#6B7280]">Service:</span>
+                <span className="ml-2 font-medium text-[#374151]">{health.service}</span>
+              </div>
+              <div>
+                <span className="text-[#6B7280]">Phiên bản:</span>
+                <span className="ml-2 font-medium text-[#374151]">{health.version}</span>
+              </div>
+              <div>
+                <span className="text-[#6B7280]">Ping:</span>
+                <span className="ml-2 font-medium text-[#374151]">{health.checkDuration}ms</span>
+              </div>
             </div>
           </div>
 
-          {/* Environment Info */}
-          <div className="p-4 bg-white border border-gray-200 rounded-xl">
-            <div className="flex items-center gap-3 mb-3">
-              <Activity className="w-6 h-6 text-orange-600" />
-              <span className="font-medium text-[#0F3D5C]">Môi trường</span>
+          {/* Security Features */}
+          {detailedHealth && (
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <h4 className="font-medium text-[#0F3D5C] mb-3">Bảo mật (OWASP Top 10)</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-green-600" />
+                  <span className="text-sm text-[#374151]">Helmet CSP</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-green-600" />
+                  <span className="text-sm text-[#374151]">Rate Limiting</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-green-600" />
+                  <span className="text-sm text-[#374151]">PII Masking</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-green-600" />
+                  <span className="text-sm text-[#374151]">CORS Config</span>
+                </div>
+              </div>
             </div>
-            <div className="text-sm text-[#374151]">
-              <div>Phiên bản: <strong>{health.version}</strong></div>
-              <div>Chế độ: <strong>{health.environment}</strong></div>
-            </div>
-          </div>
-        </div>
+          )}
+        </>
       ) : loading ? (
         <div className="p-8 text-center">
           <RefreshCw className="w-8 h-8 text-[#1C6FA8] mx-auto animate-spin" />
+          <p className="mt-2 text-sm text-[#6B7280]">Đang kiểm tra hệ thống...</p>
         </div>
       ) : (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
-          <XCircle className="w-6 h-6 text-red-600" />
-          <span className="text-red-800">Không thể lấy trạng thái hệ thống</span>
+        <div className="p-6 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
+          <XCircle className="w-6 h-6 text-red-600 flex-shrink-0" />
+          <div>
+            <p className="text-red-800 font-medium">Không thể kết nối đến máy chủ</p>
+            <p className="text-sm text-red-600">Vui lòng kiểm tra server đang chạy</p>
+          </div>
         </div>
       )}
     </div>

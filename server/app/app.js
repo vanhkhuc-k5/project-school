@@ -1,6 +1,7 @@
 /**
  * Express Application Setup & Middleware Orchestration
  * G49 — Environment Separation
+ * G50 — OWASP Top 10 Security Hardening
  *
  * IMPORTANT: The app singleton is NOT exported here to allow callers to
  * control initialization order (e.g., setting DB_PATH before importing app).
@@ -13,6 +14,32 @@ import { requestLogger, logger } from '../shared/logging/index.js';
 import { errorHandler, notFoundHandler, requestIdMiddleware } from '../shared/errors/index.js';
 import { registerRoutes } from './routes.js';
 import { config } from '../config/env.js';
+import {
+  getHelmetMiddleware,
+  apiRateLimiter,
+  authRateLimiter,
+  configureTrustProxy,
+  getRequestSizeLimits,
+  maskPII,
+} from '../middleware/security.js';
+
+/**
+ * Format uptime seconds to human readable string
+ */
+function formatUptime(seconds) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+  
+  return parts.join(' ');
+}
 
 /**
  * Create Express application with environment-specific settings
@@ -21,26 +48,14 @@ export function createApp() {
   const app = express();
 
   // =============================================================================
-  // SECURITY HEADERS (Production-grade)
+  // TRUST PROXY (First - for correct IP detection)
   // =============================================================================
-  if (config.IS_PRODUCTION) {
-    app.use((req, res, next) => {
-      // Prevent clickjacking
-      res.setHeader('X-Frame-Options', 'DENY');
-      // XSS protection
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('X-XSS-Protection', '1; mode=block');
-      // Strict transport security
-      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-      // Content security policy (adjust as needed)
-      res.setHeader('Content-Security-Policy', "default-src 'self'");
-      // Referrer policy
-      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-      // Remove powered-by header
-      res.removeHeader('X-Powered-By');
-      next();
-    });
-  }
+  configureTrustProxy(app);
+
+  // =============================================================================
+  // SECURITY HEADERS - Helmet (OWASP Top 10)
+  // =============================================================================
+  app.use(getHelmetMiddleware());
 
   // =============================================================================
   // REQUEST ID TRACKING (First middleware)
@@ -48,22 +63,24 @@ export function createApp() {
   app.use(requestIdMiddleware);
 
   // =============================================================================
+  // RATE LIMITING (OWASP Top 10 - Brute Force Protection)
+  // =============================================================================
+  app.use('/api', apiRateLimiter); // 100 req/min for general API
+
+  // =============================================================================
   // CORS CONFIGURATION (Environment-specific)
   // =============================================================================
   const corsOptions = {
-    origin: config.IS_PRODUCTION 
-      ? config.CORS_ORIGINS  // Strict in production
-      : config.CORS_ORIGINS, // Configured origins in other envs
+    origin: config.CORS_ORIGINS,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Id-Token'],
-    credentials: config.IS_PRODUCTION, // Require credentials in production
+    credentials: true,
     maxAge: 86400, // 24 hours for preflight cache
   };
 
   // Development: more permissive for local testing
   if (config.IS_DEVELOPMENT) {
     corsOptions.origin = (origin, callback) => {
-      // Allow requests with no origin (curl, Postman, etc.)
       if (!origin || config.CORS_ORIGINS.includes(origin)) {
         callback(null, true);
       } else {
@@ -76,13 +93,11 @@ export function createApp() {
   app.use(cors(corsOptions));
 
   // =============================================================================
-  // BODY PARSING
+  // BODY PARSING (With size limits)
   // =============================================================================
-  // JSON body parser with size limit
-  app.use(express.json({ limit: '10mb' }));
-  
-  // URL-encoded body parser
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  const sizeLimits = getRequestSizeLimits();
+  app.use(express.json({ limit: sizeLimits.jsonLimit }));
+  app.use(express.urlencoded({ extended: true, limit: sizeLimits.urlencodedLimit }));
 
   // =============================================================================
   // REQUEST LOGGING (Environment-specific verbosity)
@@ -90,21 +105,68 @@ export function createApp() {
   app.use(requestLogger);
 
   // =============================================================================
-  // PUBLIC HEALTH CHECK ENDPOINTS (must be before apiRouter to ensure accessibility)
+  // PUBLIC HEALTH CHECK ENDPOINTS (must be before apiRouter)
   // =============================================================================
-  app.get('/api/health', (req, res) => {
-    res.json({
-      status: 'ok',
-      service: 'EduPortal Modular Monolith Backend',
-      environment: config.NODE_ENV,
-      version: process.env.npm_package_version || '1.0.0',
-      time: new Date().toISOString(),
-      requestId: req.id,
-    });
+  app.get('/api/health', async (req, res) => {
+    const startMemory = process.memoryUsage();
+    const startTime = Date.now();
+    
+    try {
+      // Check database connectivity
+      let dbStatus = 'healthy';
+      let dbLatency = 0;
+      
+      try {
+        const dbStart = Date.now();
+        // Import dynamically to avoid circular deps
+        const { db } = await import('../shared/database/index.js');
+        db.get('SELECT 1'); // Simple ping
+        dbLatency = Date.now() - dbStart;
+      } catch (dbErr) {
+        dbStatus = 'unhealthy';
+      }
+      
+      const memoryUsage = process.memoryUsage();
+      const uptimeSeconds = process.uptime();
+      
+      const healthData = {
+        status: dbStatus === 'healthy' ? 'ok' : 'degraded',
+        service: 'EduPortal Modular Monolith Backend',
+        environment: config.NODE_ENV,
+        version: process.env.npm_package_version || '1.0.0',
+        timestamp: new Date().toISOString(),
+        uptime: {
+          seconds: Math.floor(uptimeSeconds),
+          human: formatUptime(uptimeSeconds),
+        },
+        memory: {
+          heapUsed: Math.round(memoryUsage.heapUsed / 1024 / 1024), // MB
+          heapTotal: Math.round(memoryUsage.heapTotal / 1024 / 1024), // MB
+          percentage: Math.round((memoryUsage.heapUsed / memoryUsage.heapTotal) * 100),
+        },
+        database: {
+          status: dbStatus,
+          latencyMs: dbLatency,
+        },
+        checkDuration: Date.now() - startTime,
+      };
+      
+      const statusCode = dbStatus === 'healthy' ? 200 : 503;
+      res.status(statusCode).json(healthData);
+    } catch (error) {
+      res.status(503).json({
+        status: 'error',
+        service: 'EduPortal Backend',
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
   });
 
-  // Detailed health check for monitoring
-  app.get('/api/health/detailed', (req, res) => {
+  // Detailed health check for monitoring dashboards
+  app.get('/api/health/detailed', async (req, res) => {
+    const memoryUsage = process.memoryUsage();
+    
     res.json({
       status: 'ok',
       environment: config.NODE_ENV,
@@ -115,12 +177,32 @@ export function createApp() {
       database: {
         usingPostgres: config.isPostgresConfigured(),
         usingSqlite: config.isSqliteOnly(),
+        type: config.isPostgresConfigured() ? 'postgresql' : 'sqlite',
       },
       features: {
         aiTutor: config.AI_TUTOR_ENABLED,
         aiProvider: config.AI_PROVIDER,
       },
+      memory: {
+        heapUsed: memoryUsage.heapUsed,
+        heapTotal: memoryUsage.heapTotal,
+        heapUsedMB: Math.round(memoryUsage.heapUsed / 1024 / 1024),
+        heapTotalMB: Math.round(memoryUsage.heapTotal / 1024 / 1024),
+        external: memoryUsage.external,
+        rss: memoryUsage.rss,
+      },
+      uptime: {
+        seconds: process.uptime(),
+        human: formatUptime(process.uptime()),
+        startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+      },
+      security: {
+        helmet: true,
+        rateLimiting: true,
+        piiMasking: true,
+      },
       requestId: req.id,
+      timestamp: new Date().toISOString(),
     });
   });
 

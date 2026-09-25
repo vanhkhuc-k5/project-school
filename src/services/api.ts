@@ -2363,25 +2363,26 @@ export const adminApi = {
   async getSystemHealth(): Promise<{
     status: string;
     timestamp: string;
-    services: { api: { status: string }; database: { status: string } };
     environment: string;
     version: string;
+    uptime?: { seconds: number; human: string };
+    memory?: { heapUsed: number; heapTotal: number; percentage: number };
+    database?: { status: string; latencyMs: number };
+    checkDuration?: number;
   } | null> {
+    // Call the direct health endpoint
     const res = await request<{
       status: string;
       timestamp: string;
-      services: { api: { status: string }; database: { status: string } };
       environment: string;
       version: string;
-    }>('/admin/system/health');
-    if (res?.success) {
-      return res as unknown as {
-        status: string;
-        timestamp: string;
-        services: { api: { status: string }; database: { status: string } };
-        environment: string;
-        version: string;
-      };
+      uptime?: { seconds: number; human: string };
+      memory?: { heapUsed: number; heapTotal: number; percentage: number };
+      database?: { status: string; latencyMs: number };
+      checkDuration?: number;
+    }>('/api/health');
+    if (res?.success && res.data) {
+      return res.data;
     }
     return null;
   },
