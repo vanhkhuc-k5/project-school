@@ -1,17 +1,28 @@
 // =============================================================================
-// AdminLayout — G42 Responsive & Accessibility
+// AdminLayout — G42 Responsive & Accessibility (TypeScript)
 // Admin portal layout with keyboard navigation and mobile support
 // =============================================================================
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
-import { BarChart2, BookOpen, Users, Award, FileText, Shield, Settings, LogOut, Bell, Menu, X } from 'lucide-react';
+import { BarChart2, BookOpen, Users, Award, FileText, Shield, Settings, LogOut, Bell, Menu, X, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
 import { GlobalBroadcastBanner } from '../components/GlobalBroadcastBanner';
 
+// ── Type Definitions ──────────────────────────────────────────────────────────
+
+type MenuId = 'overview' | 'curriculum' | 'teachers' | 'students' | 'reports' | 'roles' | 'announcements' | 'settings';
+
+interface NavItem {
+  id: MenuId;
+  label: string;
+  icon: LucideIcon;
+  route: string;
+}
+
 // Map of routes to menu IDs
-const ROUTE_TO_ID = {
+const ROUTE_TO_ID: Record<string, MenuId> = {
   '/admin': 'overview',
   '/admin/overview': 'overview',
   '/admin/curriculum': 'curriculum',
@@ -25,13 +36,13 @@ const ROUTE_TO_ID = {
 };
 
 // Active route detection
-function useActiveRoute() {
+function useActiveRoute(): MenuId {
   const location = useLocation();
   return ROUTE_TO_ID[location.pathname] || 'overview';
 }
 
 // Mobile menu hook
-function useMobileMenu() {
+function useMobileMenu(): { isOpen: boolean; toggle: () => void; close: () => void } {
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -48,18 +59,20 @@ function useMobileMenu() {
   return { isOpen, toggle: () => setIsOpen(!isOpen), close: () => setIsOpen(false) };
 }
 
-export function AdminLayout() {
-  const { currentUser, logout } = useAuth();
-  const navigate = useNavigate();
-  const activeTab = useActiveRoute();
-  const { isOpen: isMobileMenuOpen, toggle: toggleMobileMenu, close: closeMobileMenu } = useMobileMenu();
+// ── Sidebar Content ────────────────────────────────────────────────────────────
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-  };
-
-  const mainNavItems = [
+function SidebarContent({
+  activeTab,
+  onNavigate,
+  onLogout,
+  currentUser,
+}: {
+  activeTab: MenuId;
+  onNavigate: (route: string) => void;
+  onLogout: () => void;
+  currentUser?: { name?: string; avatar?: string; title?: string } | null;
+}): React.ReactElement {
+  const mainNavItems: NavItem[] = [
     { id: 'overview', label: 'Tổng quan toàn trường', icon: BarChart2, route: '/admin/overview' },
     { id: 'curriculum', label: 'Thiết lập Học vụ', icon: BookOpen, route: '/admin/academic' },
     { id: 'teachers', label: 'Quản lý giáo viên', icon: Users, route: '/admin/teachers' },
@@ -67,19 +80,17 @@ export function AdminLayout() {
     { id: 'reports', label: 'Báo cáo & Thông báo', icon: FileText, route: '/admin/reports' },
   ];
 
-  const systemNavItems = [
+  const systemNavItems: NavItem[] = [
     { id: 'roles', label: 'Phân quyền & Tài khoản', icon: Shield, route: '/admin/roles' },
     { id: 'announcements', label: 'Quản lý Thông báo', icon: Bell, route: '/admin/announcements' },
     { id: 'settings', label: 'Cài đặt hệ thống', icon: Settings, route: '/admin/settings' },
   ];
 
-  const handleNavigation = (route) => {
-    navigate(route);
-    closeMobileMenu();
-  };
+  const avatarSrc = currentUser?.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=120&h=120';
+  const displayName = currentUser?.name || 'GS.TS Vũ Hoài Nam';
+  const displayTitle = currentUser?.title || 'Hiệu trưởng • BGH';
 
-  // Sidebar content
-  const SidebarContent = () => (
+  return (
     <div className="flex flex-col h-full">
       {/* Brand */}
       <div className="h-16 px-6 flex items-center gap-3 hairline-b bg-white shrink-0">
@@ -101,7 +112,7 @@ export function AdminLayout() {
           return (
             <button
               key={item.id}
-              onClick={() => handleNavigation(item.route)}
+              onClick={() => onNavigate(item.route)}
               aria-current={isActive ? 'page' : undefined}
               className={`w-full flex items-center gap-3 px-3.5 py-3 rounded text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50 ${
                 isActive
@@ -109,7 +120,7 @@ export function AdminLayout() {
                   : 'text-text-secondary hover:text-text-primary hover:bg-hairline/40'
               }`}
             >
-              <Icon className={`w-5 h-5 stroke-[1.75] ${isActive ? 'text-primary' : 'text-text-secondary'}`} aria-hidden="true" />
+              <Icon className={`w-5 h-5 stroke-[1.75] ${isActive ? 'text-primary' : 'text-text-secondary'}`} aria-hidden={true} />
               <span>{item.label}</span>
             </button>
           );
@@ -127,7 +138,7 @@ export function AdminLayout() {
           return (
             <button
               key={item.id}
-              onClick={() => handleNavigation(item.route)}
+              onClick={() => onNavigate(item.route)}
               aria-current={isActive ? 'page' : undefined}
               className={`w-full flex items-center gap-3 px-3.5 py-3 rounded text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50 ${
                 isActive
@@ -135,7 +146,7 @@ export function AdminLayout() {
                   : 'text-text-secondary hover:text-text-primary hover:bg-hairline/40'
               }`}
             >
-              <Icon className={`w-5 h-5 stroke-[1.75] ${isActive ? 'text-primary' : 'text-text-secondary'}`} aria-hidden="true" />
+              <Icon className={`w-5 h-5 stroke-[1.75] ${isActive ? 'text-primary' : 'text-text-secondary'}`} aria-hidden={true} />
               <span>{item.label}</span>
             </button>
           );
@@ -147,22 +158,18 @@ export function AdminLayout() {
         <div className="p-3 bg-white rounded-card border border-hairline flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <img
-              src={currentUser?.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=120&h=120'}
+              src={avatarSrc}
               alt=""
               aria-hidden="true"
               className="w-8 h-8 rounded-full object-cover border border-hairline"
             />
             <div>
-              <div className="text-xs font-medium text-text-primary leading-tight">
-                {currentUser?.name || 'GS.TS Vũ Hoài Nam'}
-              </div>
-              <div className="text-[11px] text-text-secondary mt-0.5">
-                {currentUser?.title || 'Hiệu trưởng • BGH'}
-              </div>
+              <div className="text-xs font-medium text-text-primary leading-tight">{displayName}</div>
+              <div className="text-[11px] text-text-secondary mt-0.5">{displayTitle}</div>
             </div>
           </div>
           <button
-            onClick={handleLogout}
+            onClick={onLogout}
             title="Đăng xuất"
             aria-label="Đăng xuất"
             className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-text-secondary hover:text-danger rounded hover:bg-danger-light transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50"
@@ -173,6 +180,25 @@ export function AdminLayout() {
       </div>
     </div>
   );
+}
+
+// ── Main Layout ────────────────────────────────────────────────────────────────
+
+export function AdminLayout(): React.ReactElement {
+  const { currentUser, logout } = useAuth();
+  const navigate = useNavigate();
+  const activeTab = useActiveRoute();
+  const { isOpen: isMobileMenuOpen, toggle: toggleMobileMenu, close: closeMobileMenu } = useMobileMenu();
+
+  const handleLogout = async (): Promise<void> => {
+    await logout();
+    navigate('/login');
+  };
+
+  const handleNavigate = (route: string): void => {
+    navigate(route);
+    closeMobileMenu();
+  };
 
   return (
     <>
@@ -190,7 +216,12 @@ export function AdminLayout() {
           className="hidden lg:flex w-64 bg-surface-neutral flex-col justify-between shrink-0"
           aria-label="Thanh điều hướng"
         >
-          <SidebarContent />
+          <SidebarContent
+            activeTab={activeTab}
+            onNavigate={handleNavigate}
+            onLogout={handleLogout}
+            currentUser={currentUser}
+          />
         </aside>
 
         {/* Mobile Sidebar Overlay */}
@@ -205,7 +236,12 @@ export function AdminLayout() {
               className="lg:hidden fixed inset-y-0 left-0 w-72 bg-surface-neutral z-50 shadow-xl"
               aria-label="Menu điều hướng"
             >
-              <SidebarContent />
+              <SidebarContent
+                activeTab={activeTab}
+                onNavigate={handleNavigate}
+                onLogout={handleLogout}
+                currentUser={currentUser}
+              />
             </aside>
           </>
         )}
@@ -226,12 +262,12 @@ export function AdminLayout() {
                 <Menu className="w-6 h-6" />
               )}
             </button>
-            
+
             <div className="flex items-center gap-2">
               <img src="/assets/logo.png" alt="EduPortal Logo" className="w-7 h-7" />
               <span className="font-medium text-primary">EduPortal</span>
             </div>
-            
+
             <div className="w-11" />
           </div>
         </div>
@@ -261,3 +297,5 @@ export function AdminLayout() {
     </>
   );
 }
+
+export default AdminLayout;

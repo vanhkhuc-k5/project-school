@@ -8,7 +8,7 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
-import { studentApi } from '../../services/api';
+import { studentApi, gradebookApi } from '../../services/api';
 import { useSync } from '../../context/SyncContext';
 import {
   Award,
@@ -25,6 +25,8 @@ import {
   Loader2,
   Info,
   TrendingDown,
+  QrCode,
+  Download,
 } from 'lucide-react';
 
 // ── Thông tư 22 grade categories ─────────────────────────────────────────────

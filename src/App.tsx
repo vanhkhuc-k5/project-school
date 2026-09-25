@@ -1,7 +1,7 @@
 // =============================================================================
-// App.jsx — G39 Real Routing
+// App.tsx — G39 Real Routing (TypeScript)
 // Bridges legacy stateful navigation callbacks into router navigation.
-// All routing is handled by AppRouter in main.jsx; this module is kept minimal.
+// All routing is handled by AppRouter in main.tsx; this module is kept minimal.
 // =============================================================================
 
 import React from 'react';
@@ -40,4 +40,5 @@ export function useLegacyNavigation() {
 
 // Re-export everything from AppRouter for backward compatibility
 export { AppRouter } from './router/AppRouter';
-export { ProtectedRoute } from './router/AppRouter';
+import { ProtectedRoute as ProtectedRouteComp } from './router/AppRouter';
+export { ProtectedRouteComp as ProtectedRoute };

@@ -878,3 +878,137 @@ export async function getAuditLogs({ filters = {} }) {
     ORDER BY created_at DESC LIMIT ? OFFSET ?
   `).all(...params, limit, offset);
 }
+
+// ---------------------------------------------------------------------------
+// ADDITIONAL REPOSITORY FUNCTIONS FOR TT22 ENGINE
+// ---------------------------------------------------------------------------
+
+/**
+ * Get a student by ID.
+ */
+export async function getStudentById(studentId) {
+  if (isPostgresConfigured()) {
+    const res = await pgQuery(`
+      SELECT s.*, u.name, u.email, c.name as class_name
+      FROM students s
+      JOIN users u ON u.id = s.user_id
+      LEFT JOIN classes c ON c.id = s.class_id
+      WHERE s.id = $1
+    `, [studentId]);
+    return res.rows[0] || null;
+  }
+  return db.prepare(`
+    SELECT s.*, u.name, u.email, c.name as class_name
+    FROM students s
+    JOIN users u ON u.id = s.user_id
+    LEFT JOIN classes c ON c.id = s.class_id
+    WHERE s.id = ?
+  `).get(studentId) || null;
+}
+
+/**
+ * Get all grades for a specific student.
+ */
+export async function getStudentGrades(studentId, academicYearId, semesterId) {
+  const where = ['g.student_id = ?'];
+  const params = [studentId];
+
+  if (academicYearId) { where.push('g.academic_year_id = ?'); params.push(academicYearId); }
+  if (semesterId) { where.push('(g.semester_id = ? OR g.semester = ?)'); params.push(semesterId, semesterId); }
+
+  const whereClause = where.join(' AND ');
+
+  if (isPostgresConfigured()) {
+    const res = await pgQuery(`
+      SELECT g.*, gc.code as category_code, gc.name as category_name,
+             s.name as subject_name, s.code as subject_code, s.evaluation_type
+      FROM grades g
+      LEFT JOIN grade_categories gc ON gc.id = g.grade_category_id
+      LEFT JOIN subjects s ON s.id = g.subject_id
+      WHERE ${whereClause}
+      ORDER BY s.name ASC, g.graded_at ASC
+    `, params);
+    return res.rows;
+  }
+  return db.prepare(`
+    SELECT g.*, gc.code as category_code, gc.name as category_name,
+           s.name as subject_name, s.code as subject_code
+    FROM grades g
+    LEFT JOIN grade_categories gc ON gc.id = g.grade_category_id
+    LEFT JOIN subjects s ON s.id = g.subject_id
+    WHERE ${whereClause}
+    ORDER BY s.name ASC, g.graded_at ASC
+  `).all(...params);
+}
+
+/**
+ * Get list of subjects (for grading subject detection).
+ */
+export async function listSubjects({ schoolId } = {}) {
+  if (isPostgresConfigured()) {
+    const sql = schoolId
+      ? `SELECT * FROM subjects WHERE school_id = $1 ORDER BY name ASC`
+      : `SELECT * FROM subjects ORDER BY name ASC`;
+    const res = await pgQuery(sql, schoolId ? [schoolId] : []);
+    return res.rows;
+  }
+  const sql = schoolId
+    ? `SELECT * FROM subjects WHERE school_id = ? ORDER BY name ASC`
+    : `SELECT * FROM subjects ORDER BY name ASC`;
+  return schoolId
+    ? db.prepare(sql).all(schoolId)
+    : db.prepare(sql).all();
+}
+
+/**
+ * Get student attendance rate for an academic year.
+ */
+export async function getStudentAttendanceRate(studentId, academicYearId) {
+  const where = ['student_id = ?'];
+  const params = [studentId];
+  if (academicYearId) { where.push('academic_year_id = ?'); params.push(academicYearId); }
+
+  const whereClause = where.join(' AND ');
+
+  if (isPostgresConfigured()) {
+    const res = await pgQuery(`
+      SELECT AVG(CASE WHEN status = 'PRESENT' THEN 100.0 ELSE 0 END) as attendance_rate
+      FROM attendance_records WHERE ${whereClause}
+    `, params);
+    return res.rows[0] || { attendance_rate: null };
+  }
+  return db.prepare(`
+    SELECT AVG(CASE WHEN status = 'PRESENT' THEN 100.0 ELSE 0 END) as attendance_rate
+    FROM attendance_records WHERE ${whereClause}
+  `).get(...params) || { attendance_rate: null };
+}
+
+/**
+ * Get school info.
+ */
+export async function getSchoolById(schoolId) {
+  if (isPostgresConfigured()) {
+    const res = await pgQuery(`SELECT * FROM schools WHERE id = $1`, [schoolId]);
+    return res.rows[0] || null;
+  }
+  return db.prepare(`SELECT * FROM schools WHERE id = ?`).get(schoolId) || null;
+}
+
+/**
+ * Create a gradebook lock record.
+ */
+export async function createGradebookLock({ id, classId, semesterId, lockedBy, reason, studentCount }) {
+  const now = new Date().toISOString();
+
+  if (isPostgresConfigured()) {
+    await pgQuery(`
+      INSERT INTO gradebook_locks (id, class_id, semester_id, locked_by, reason, student_count, locked_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [id, classId, semesterId, lockedBy, reason, studentCount, now]);
+  } else {
+    db.prepare(`
+      INSERT INTO gradebook_locks (id, class_id, semester_id, locked_by, reason, student_count, locked_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, classId, semesterId, lockedBy, reason, studentCount, now);
+  }
+}

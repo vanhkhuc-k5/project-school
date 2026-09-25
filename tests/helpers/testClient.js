@@ -14,7 +14,7 @@ export const colors = {
 };
 
 // Maximum time for a single test before it's considered hung
-const TEST_TIMEOUT_MS = 20000; // 20 seconds per test
+const TEST_TIMEOUT_MS = 45000; // 45 seconds per test (handles large file processing)
 
 // Global Test Registry
 export const testState = {

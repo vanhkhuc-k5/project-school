@@ -12,7 +12,7 @@ interface BadgeProps {
   children?: React.ReactNode;
   variant?: BadgeVariant;
   size?: BadgeSize;
-  icon?: LucideIcon;
+  icon?: React.ElementType;
   className?: string;
 }
 

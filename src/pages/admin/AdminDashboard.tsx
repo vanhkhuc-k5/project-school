@@ -1,5 +1,5 @@
 // =============================================================================
-// AdminDashboard — Admin V2 Phase 01: Command Center
+// AdminDashboard — Admin V2 Phase 01: Command Center (TypeScript)
 // Uses REAL data from dashboard API. No fake numbers.
 // =============================================================================
 import React, { useState, useEffect, useCallback } from 'react';
@@ -7,15 +7,13 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
-import { dashboardApi } from '../../services/api';
+import { dashboardApi, DashboardMetrics } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import {
   Users,
   Briefcase,
   UserRound,
   Layers,
-  TrendingUp,
-  TrendingDown,
   AlertTriangle,
   Info,
   AlertCircle,
@@ -23,23 +21,64 @@ import {
   Clock,
   CheckCircle2,
   Bell,
-  Shield,
-  FileText,
-  ChevronRight,
-  Loader2,
-  X,
-  ArrowRight,
   ShieldCheck,
+  ChevronRight,
+  ArrowRight,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+// ── Type Definitions ───────────────────────────────────────────────────────────
+
+type Priority = 'critical' | 'warning' | 'info';
+type Alert = DashboardMetrics['alerts'][number];
+
+interface MetricCardProps {
+  icon: LucideIcon;
+  label: string;
+  value: number | undefined;
+  subValue?: string;
+  variant?: 'default' | 'highlighted' | 'success' | 'warning' | 'danger';
+  onClick?: () => void;
+  loading?: boolean;
+}
+
+interface AttendanceSummary {
+  total: number;
+  present: number;
+  absent: number;
+  late: number;
+  excused: number;
+}
+
+interface AttendanceRates {
+  present: number;
+  absent: number;
+  late: number;
+  excused: number;
+}
+
+interface AttendanceData {
+  date?: string;
+  summary: AttendanceSummary;
+  rates: AttendanceRates;
+}
+
+interface AssignmentsData {
+  total?: number;
+  draft?: number;
+  published?: number;
+  closed?: number;
+  overdue?: number;
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function formatNumber(num) {
+function formatNumber(num: number | undefined | null): string {
   if (num === null || num === undefined) return '—';
   return num.toLocaleString('vi-VN');
 }
 
-function formatRelativeTime(dateStr) {
+function formatRelativeTime(dateStr: string | undefined | null): string {
   if (!dateStr) return '—';
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
@@ -52,7 +91,7 @@ function formatRelativeTime(dateStr) {
   return new Date(dateStr).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
 }
 
-function formatDate(dateStr) {
+function formatDate(dateStr: string | undefined | null): string {
   if (!dateStr) return '—';
   return new Date(dateStr).toLocaleDateString('vi-VN', {
     day: '2-digit', month: '2-digit', year: 'numeric',
@@ -61,8 +100,8 @@ function formatDate(dateStr) {
 
 // ── Priority Badge ─────────────────────────────────────────────────────────────
 
-function PriorityBadge({ priority }) {
-  const config = {
+function PriorityBadge({ priority }: { priority: Priority }): React.ReactElement {
+  const config: Record<Priority, { variant: 'danger' | 'warning' | 'info'; icon: LucideIcon; label: string }> = {
     critical: { variant: 'danger', icon: AlertTriangle, label: 'Khẩn cấp' },
     warning: { variant: 'warning', icon: AlertCircle, label: 'Cảnh báo' },
     info: { variant: 'info', icon: Info, label: 'Thông tin' },
@@ -76,11 +115,11 @@ function PriorityBadge({ priority }) {
   );
 }
 
-// ── Metric Card ───────────────────────────────────────────────────────────────
+// ── Metric Card ────────────────────────────────────────────────────────────────
 
-function MetricCard({ icon: Icon, label, value, subValue, variant = 'default', onClick, loading }) {
+function MetricCard({ icon: Icon, label, value, subValue, variant = 'default', onClick, loading }: MetricCardProps): React.ReactElement {
   const baseClasses = 'relative overflow-hidden transition-all hover:shadow-whisper';
-  const variantClasses = {
+  const variantClasses: Record<string, string> = {
     default: 'bg-white border border-hairline',
     highlighted: 'bg-ocean/5 border border-ocean/30',
     success: 'bg-success-light/30 border border-success/20',
@@ -151,7 +190,7 @@ function MetricCard({ icon: Icon, label, value, subValue, variant = 'default', o
 
 // ── Attendance Card ────────────────────────────────────────────────────────────
 
-function AttendanceCard({ attendance, loading }) {
+function AttendanceCard({ attendance, loading }: { attendance: AttendanceData | undefined; loading: boolean }): React.ReactElement {
   if (loading) {
     return (
       <Card className="min-h-[200px]" padding="p-5">
@@ -167,7 +206,8 @@ function AttendanceCard({ attendance, loading }) {
     );
   }
 
-  const { summary, rates } = attendance || { summary: { total: 0, present: 0, absent: 0, late: 0, excused: 0 }, rates: { present: 0, absent: 0, late: 0, excused: 0 } };
+  const summary = attendance?.summary ?? { total: 0, present: 0, absent: 0, late: 0, excused: 0 };
+  const rates = attendance?.rates ?? { present: 0, absent: 0, late: 0, excused: 0 };
 
   const stats = [
     { label: 'Có mặt', value: summary.present, rate: rates.present, color: 'text-success', bg: 'bg-success-light' },
@@ -181,7 +221,7 @@ function AttendanceCard({ attendance, loading }) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-base font-medium text-text-primary">Điểm danh hôm nay</h3>
-          <p className="text-xs text-text-secondary mt-0.5">{formatDate(summary?.date)} • {formatNumber(summary?.total)} học sinh</p>
+          <p className="text-xs text-text-secondary mt-0.5">{formatDate(attendance?.date)} • {formatNumber(summary.total)} học sinh</p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => {}}>
           Chi tiết
@@ -200,9 +240,9 @@ function AttendanceCard({ attendance, loading }) {
   );
 }
 
-// ── Assignments Card ───────────────────────────────────────────────────────────
+// ── Assignments Card ────────────────────────────────────────────────────────────
 
-function AssignmentsCard({ assignments, loading }) {
+function AssignmentsCard({ assignments, loading }: { assignments: AssignmentsData | undefined; loading: boolean }): React.ReactElement {
   if (loading) {
     return (
       <Card className="min-h-[200px]" padding="p-5">
@@ -216,9 +256,9 @@ function AssignmentsCard({ assignments, loading }) {
     );
   }
 
-  const { total = 0, draft = 0, published = 0, closed = 0, overdue = 0 } = assignments || {};
+  const { total = 0, draft = 0, published = 0, closed = 0, overdue = 0 } = assignments ?? {};
 
-  const rows = [
+  const rows: Array<{ label: string; value: number; variant: string }> = [
     { label: 'Đã đăng', value: published, variant: 'success' },
     { label: 'Bản nháp', value: draft, variant: 'neutral' },
     { label: 'Đã đóng', value: closed, variant: 'text-secondary' },
@@ -250,9 +290,9 @@ function AssignmentsCard({ assignments, loading }) {
   );
 }
 
-// ── Action Center ─────────────────────────────────────────────────────────────
+// ── Action Center ──────────────────────────────────────────────────────────────
 
-function ActionCenterCard({ actionCenter, loading }) {
+function ActionCenterCard({ actionCenter, loading }: { actionCenter: DashboardMetrics['actionCenter'] | undefined; loading: boolean }): React.ReactElement {
   const navigate = useNavigate();
 
   if (loading) {
@@ -270,16 +310,16 @@ function ActionCenterCard({ actionCenter, loading }) {
     {
       id: 'homeroom',
       label: 'Lớp chưa có GVCN',
-      count: actionCenter?.classesWithoutHomeroom?.length || 0,
+      count: actionCenter?.classesWithoutHomeroom?.length ?? 0,
       icon: Layers,
       color: 'text-warning-dark',
       bg: 'bg-warning-light',
-      action: () => navigate('/admin/curriculum'),
+      action: () => navigate('/admin/academic'),
     },
     {
       id: 'no-assignment',
       label: 'GV chưa có phân công',
-      count: actionCenter?.teachersWithoutAssignment?.length || 0,
+      count: actionCenter?.teachersWithoutAssignment?.length ?? 0,
       icon: Briefcase,
       color: 'text-warning-dark',
       bg: 'bg-warning-light',
@@ -288,7 +328,7 @@ function ActionCenterCard({ actionCenter, loading }) {
     {
       id: 'no-parent',
       label: 'HS chưa liên kết phụ huynh',
-      count: actionCenter?.studentsWithoutParent?.length || 0,
+      count: actionCenter?.studentsWithoutParent?.length ?? 0,
       icon: Users,
       color: 'text-warning-dark',
       bg: 'bg-warning-light',
@@ -297,7 +337,7 @@ function ActionCenterCard({ actionCenter, loading }) {
     {
       id: 'absence',
       label: 'HS nghỉ nhiều',
-      count: actionCenter?.excessiveAbsence?.length || 0,
+      count: actionCenter?.excessiveAbsence?.length ?? 0,
       icon: AlertCircle,
       color: 'text-primary',
       bg: 'bg-sky',
@@ -352,9 +392,9 @@ function ActionCenterCard({ actionCenter, loading }) {
   );
 }
 
-// ── Alerts Section ─────────────────────────────────────────────────────────────
+// ── Alerts Section ──────────────────────────────────────────────────────────────
 
-function AlertsSection({ alerts, loading }) {
+function AlertsSection({ alerts, loading }: { alerts: Alert[] | undefined; loading: boolean }): React.ReactElement {
   if (loading) {
     return (
       <Card className="min-h-[120px]" padding="p-5">
@@ -410,7 +450,7 @@ function AlertsSection({ alerts, loading }) {
 
 // ── Data Quality Card ──────────────────────────────────────────────────────────
 
-function DataQualityCard({ dataQuality, loading }) {
+function DataQualityCard({ dataQuality, loading }: { dataQuality: DashboardMetrics['dataQuality'] | undefined; loading: boolean }): React.ReactElement {
   const navigate = useNavigate();
 
   if (loading) {
@@ -425,12 +465,29 @@ function DataQualityCard({ dataQuality, loading }) {
     );
   }
 
-  const { healthScore = 100, healthStatus = 'good', issues = {}, totalStudents = 0, totalTeachers = 0, totalClasses = 0 } = dataQuality || {};
-  const totalIssues = (issues.classesWithoutHomeroom || 0) + (issues.teachersWithoutAssignment || 0) + (issues.studentsWithoutParent || 0) + (issues.overdueAssignments || 0);
+  const dq = dataQuality as DashboardMetrics['dataQuality'] | null | undefined;
+  const healthScore = dq?.healthScore ?? 100;
+  const healthStatus = dq?.healthStatus ?? 'good';
+  const totalStudents = dq?.totalStudents ?? 0;
+  const totalTeachers = dq?.totalTeachers ?? 0;
+  const totalClasses = dq?.totalClasses ?? 0;
+  const issueRecords = dq?.issues as { classesWithoutHomeroom?: number; teachersWithoutAssignment?: number; studentsWithoutParent?: number; overdueAssignments?: number } ?? { classesWithoutHomeroom: 0, teachersWithoutAssignment: 0, studentsWithoutParent: 0, overdueAssignments: 0 };
+  const classesWithoutHomeroom = issueRecords.classesWithoutHomeroom ?? 0;
+  const teachersWithoutAssignment = issueRecords.teachersWithoutAssignment ?? 0;
+  const studentsWithoutParent = issueRecords.studentsWithoutParent ?? 0;
+  const overdueAssignments = issueRecords.overdueAssignments ?? 0;
+  const totalIssues = classesWithoutHomeroom + teachersWithoutAssignment + studentsWithoutParent + overdueAssignments;
 
   const healthColor = healthStatus === 'good' ? 'text-success' : healthStatus === 'warning' ? 'text-warning-dark' : 'text-danger';
   const healthBg = healthStatus === 'good' ? 'bg-success-light' : healthStatus === 'warning' ? 'bg-warning-light' : 'bg-danger-light';
   const healthLabel = healthStatus === 'good' ? 'Tốt' : healthStatus === 'warning' ? 'Cần cải thiện' : 'Nghiêm trọng';
+
+  const qualityIssues = [
+    { label: 'Lớp chưa GVCN', value: classesWithoutHomeroom, isWarning: classesWithoutHomeroom > 0 },
+    { label: 'GV chưa phân công', value: teachersWithoutAssignment, isWarning: teachersWithoutAssignment > 0 },
+    { label: 'HS chưa phụ huynh', value: studentsWithoutParent, isWarning: studentsWithoutParent > 0 },
+    { label: 'Bài tập quá hạn', value: overdueAssignments, isWarning: overdueAssignments > 0 },
+  ];
 
   return (
     <Card className="min-h-[160px]" padding="p-5">
@@ -455,38 +512,31 @@ function DataQualityCard({ dataQuality, loading }) {
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="flex items-center justify-between p-2 bg-surface-neutral rounded-lg">
-          <span className="text-text-secondary">Lớp chưa GVCN</span>
-          <span className={`font-medium ${issues.classesWithoutHomeroom > 0 ? 'text-warning-dark' : 'text-text-primary'}`}>
-            {issues.classesWithoutHomeroom || 0}
-          </span>
-        </div>
-        <div className="flex items-center justify-between p-2 bg-surface-neutral rounded-lg">
-          <span className="text-text-secondary">GV chưa phân công</span>
-          <span className={`font-medium ${issues.teachersWithoutAssignment > 0 ? 'text-warning-dark' : 'text-text-primary'}`}>
-            {issues.teachersWithoutAssignment || 0}
-          </span>
-        </div>
-        <div className="flex items-center justify-between p-2 bg-surface-neutral rounded-lg">
-          <span className="text-text-secondary">HS chưa phụ huynh</span>
-          <span className={`font-medium ${issues.studentsWithoutParent > 0 ? 'text-warning-dark' : 'text-text-primary'}`}>
-            {issues.studentsWithoutParent || 0}
-          </span>
-        </div>
-        <div className="flex items-center justify-between p-2 bg-surface-neutral rounded-lg">
-          <span className="text-text-secondary">Bài tập quá hạn</span>
-          <span className={`font-medium ${issues.overdueAssignments > 0 ? 'text-danger' : 'text-text-primary'}`}>
-            {issues.overdueAssignments || 0}
-          </span>
-        </div>
+        {qualityIssues.map((issue) => (
+          <div key={issue.label} className="flex items-center justify-between p-2 bg-surface-neutral rounded-lg">
+            <span className="text-text-secondary">{issue.label}</span>
+            <span className={`font-medium ${issue.isWarning ? (issue.label.includes('Bài tập') ? 'text-danger' : 'text-warning-dark') : 'text-text-primary'}`}>
+              {issue.value}
+            </span>
+          </div>
+        ))}
       </div>
     </Card>
   );
 }
 
-// ── Recent Activity ───────────────────────────────────────────────────────────
+// ── Recent Activity ────────────────────────────────────────────────────────────
 
-function RecentActivityCard({ activities, loading }) {
+interface ActivityItem {
+  id: string;
+  text: string;
+  actor?: string;
+  time?: string;
+  badge?: string;
+  badgeType?: string;
+}
+
+function RecentActivityCard({ activities, loading }: { activities: ActivityItem[] | undefined; loading: boolean }): React.ReactElement {
   if (loading) {
     return (
       <Card className="min-h-[200px]" padding="p-5">
@@ -540,9 +590,18 @@ function RecentActivityCard({ activities, loading }) {
   );
 }
 
-// ── Recent Announcements ──────────────────────────────────────────────────────
+// ── Recent Announcements ────────────────────────────────────────────────────────
 
-function RecentAnnouncementsCard({ announcements, loading }) {
+interface RecentAnnouncement {
+  id: string;
+  title: string;
+  content?: string;
+  priority?: string;
+  author?: string;
+  publishedAt?: string;
+}
+
+function RecentAnnouncementsCard({ announcements, loading }: { announcements: RecentAnnouncement[] | undefined; loading: boolean }): React.ReactElement {
   if (loading) {
     return (
       <Card className="min-h-[200px]" padding="p-5">
@@ -600,48 +659,17 @@ function RecentAnnouncementsCard({ announcements, loading }) {
   );
 }
 
-// ── Empty State ──────────────────────────────────────────────────────────────
-
-function EmptyState({ message, icon: Icon = Info }) {
-  return (
-    <Card className="min-h-[200px]" padding="p-8">
-      <div className="flex flex-col items-center justify-center text-center py-8">
-        <Icon className="w-12 h-12 text-text-secondary/30 mb-3" />
-        <p className="text-sm text-text-secondary">{message}</p>
-      </div>
-    </Card>
-  );
-}
-
-// ── Error State ──────────────────────────────────────────────────────────────
-
-function ErrorState({ message, onRetry }) {
-  return (
-    <Card className="min-h-[160px]" padding="p-6">
-      <div className="flex flex-col items-center justify-center text-center py-6">
-        <AlertTriangle className="w-10 h-10 text-danger mb-3" />
-        <p className="text-sm text-danger mb-3">{message || 'Không thể tải dữ liệu'}</p>
-        {onRetry && (
-          <Button variant="secondary" size="sm" onClick={onRetry} leftIcon={<RefreshCw className="w-4 h-4" />}>
-            Thử lại
-          </Button>
-        )}
-      </div>
-    </Card>
-  );
-}
-
 // ── Main Dashboard Component ────────────────────────────────────────────────
 
-export function AdminDashboard() {
+export function AdminDashboard(): React.ReactElement {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  const [metrics, setMetrics] = useState(null);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [lastRefresh, setLastRefresh] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  const loadMetrics = useCallback(async () => {
+  const loadMetrics = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError(null);
     try {
@@ -654,21 +682,26 @@ export function AdminDashboard() {
       }
     } catch (err) {
       console.error('Dashboard load error:', err);
-      setError(err.message || 'Lỗi khi tải dữ liệu dashboard');
+      const msg = err instanceof Error ? err.message : 'Lỗi khi tải dữ liệu dashboard';
+      setError(msg);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadMetrics();
+    void loadMetrics();
   }, [loadMetrics]);
 
-  const handleRefresh = () => {
-    loadMetrics();
+  const handleRefresh = (): void => {
+    void loadMetrics();
   };
 
-  const { quickStats, attendance, assignments, actionCenter, alerts, dataQuality, recentActivity, recentAnnouncements } = metrics || {};
+  const { quickStats, attendance, assignments, actionCenter, alerts, dataQuality, recentActivity, recentAnnouncements } = metrics ?? {};
+
+  const refreshTime = lastRefresh
+    ? lastRefresh.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+    : 'Đang tải...';
 
   return (
     <div className="space-y-6">
@@ -679,15 +712,16 @@ export function AdminDashboard() {
             Command Center
           </h1>
           <p className="text-sm text-text-secondary mt-1">
-            {currentUser?.name || 'Quản trị viên'} •{' '}
-            {lastRefresh ? `Cập nhật lúc ${lastRefresh.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : 'Đang tải...'}
+            {currentUser?.name || 'Quản trị viên'} • Cập nhật lúc {refreshTime}
           </p>
         </div>
         <Button
           variant="secondary"
           onClick={handleRefresh}
           disabled={loading}
-          leftIcon={<RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
+          icon={RefreshCw}
+          iconPosition="left"
+          className={loading ? '[&_svg]:animate-spin' : ''}
         >
           Làm mới
         </Button>
@@ -737,7 +771,7 @@ export function AdminDashboard() {
           value={quickStats?.classes?.total}
           subValue={quickStats?.classes?.label}
           loading={loading}
-          onClick={() => navigate('/admin/curriculum')}
+          onClick={() => navigate('/admin/academic')}
         />
       </div>
 

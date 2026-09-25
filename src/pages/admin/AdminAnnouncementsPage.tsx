@@ -1,5 +1,5 @@
-// =============================================================================
-// Admin Announcements Management Page — G25 Production Announcements
+﻿// =============================================================================
+// Admin Announcements Management Page — G25 Production Announcements (TypeScript)
 // =============================================================================
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '../../components/Card';
@@ -7,6 +7,8 @@ import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
 import { adminApi } from '../../services/api';
+import { Announcement, AnnouncementCategory, AnnouncementStatus, AnnouncementPriority, AnnouncementScope } from '../../types/domain';
+import type { LucideIcon } from 'lucide-react';
 import {
   Bell,
   Plus,
@@ -15,13 +17,11 @@ import {
   Trash2,
   Send,
   Archive,
-  Clock,
   AlertTriangle,
   Info,
   Megaphone,
   Loader2,
   RefreshCw,
-  X,
   ChevronLeft,
   ChevronRight,
   Filter,
@@ -31,21 +31,60 @@ import {
   Eye,
 } from 'lucide-react';
 
-// ── Constants ────────────────────────────────────────────────────────────────
+// ── Type Definitions ───────────────────────────────────────────────────────────
 
-const PRIORITY_CONFIG = {
+interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+type PriorityKey = AnnouncementPriority;
+type StatusKey = AnnouncementStatus;
+type ScopeKey = AnnouncementScope;
+
+interface PriorityConfig {
+  label: string;
+  variant: 'danger' | 'warning' | 'info';
+  icon: LucideIcon;
+}
+
+interface StatusConfig {
+  label: string;
+  variant: 'neutral' | 'success' | 'warning';
+}
+
+interface ScopeConfig {
+  label: string;
+  icon: LucideIcon;
+}
+
+interface AnnouncementFormState {
+  title: string;
+  content: string;
+  summary: string;
+  scope: ScopeKey;
+  priority: PriorityKey;
+  categoryId: string;
+  scheduledPublishAt: string;
+}
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+
+const PRIORITY_CONFIG: Record<PriorityKey, PriorityConfig> = {
   urgent: { label: 'Khẩn cấp', variant: 'danger', icon: AlertTriangle },
   important: { label: 'Quan trọng', variant: 'warning', icon: Info },
   normal: { label: 'Thông thường', variant: 'info', icon: Bell },
 };
 
-const STATUS_CONFIG = {
+const STATUS_CONFIG: Record<StatusKey, StatusConfig> = {
   draft: { label: 'Bản nháp', variant: 'neutral' },
   published: { label: 'Đã đăng', variant: 'success' },
   archived: { label: 'Lưu trữ', variant: 'warning' },
 };
 
-const SCOPE_CONFIG = {
+const SCOPE_CONFIG: Record<ScopeKey, ScopeConfig> = {
   all: { label: 'Toàn trường', icon: Megaphone },
   student: { label: 'Học sinh', icon: BookOpen },
   teacher: { label: 'Giáo viên', icon: Users },
@@ -54,9 +93,9 @@ const SCOPE_CONFIG = {
   class: { label: 'Lớp học', icon: Users },
 };
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatDate(dateStr) {
+function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
   return new Date(dateStr).toLocaleString('vi-VN', {
     day: '2-digit', month: '2-digit', year: 'numeric',
@@ -64,7 +103,7 @@ function formatDate(dateStr) {
   });
 }
 
-function formatRelative(dateStr) {
+function formatRelative(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
@@ -77,27 +116,39 @@ function formatRelative(dateStr) {
   return formatDate(dateStr);
 }
 
-// ── Announcement Form ───────────────────────────────────────────────────────
+// ── Announcement Form ──────────────────────────────────────────────────────────
 
-function AnnouncementForm({ announcement, categories, onSubmit, onCancel, loading }) {
+function AnnouncementForm({
+  announcement,
+  categories,
+  onSubmit,
+  onCancel,
+  loading,
+}: {
+  announcement?: Announcement | null;
+  categories: AnnouncementCategory[];
+  onSubmit: (data: Record<string, unknown>) => void;
+  onCancel: () => void;
+  loading: boolean;
+}): React.ReactElement {
   const isEdit = Boolean(announcement?.id);
-  const [form, setForm] = useState({
-    title: announcement?.title || '',
-    content: announcement?.content || '',
-    summary: announcement?.summary || '',
-    scope: announcement?.scope || 'all',
-    priority: announcement?.priority || 'normal',
-    categoryId: announcement?.categoryId || '',
+  const [form, setForm] = useState<AnnouncementFormState>({
+    title: announcement?.title ?? '',
+    content: announcement?.content ?? '',
+    summary: announcement?.summary ?? '',
+    scope: (announcement?.scope ?? 'all') as ScopeKey,
+    priority: (announcement?.priority ?? 'normal') as PriorityKey,
+    categoryId: announcement?.categoryId ?? '',
     scheduledPublishAt: announcement?.scheduledPublishAt
       ? announcement.scheduledPublishAt.slice(0, 16)
       : '',
   });
 
-  const handleChange = (field, value) => {
+  const handleChange = (field: keyof AnnouncementFormState, value: string): void => {
     setForm(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
     if (!form.title.trim()) return;
     onSubmit({
@@ -212,7 +263,19 @@ function AnnouncementForm({ announcement, categories, onSubmit, onCancel, loadin
 
 // ── Announcement Item Row ───────────────────────────────────────────────────
 
-function AnnouncementRow({ ann, onEdit, onPublish, onArchive, onDelete }) {
+function AnnouncementRow({
+  ann,
+  onEdit,
+  onPublish,
+  onArchive,
+  onDelete,
+}: {
+  ann: Announcement;
+  onEdit: (ann: Announcement) => void;
+  onPublish: (ann: Announcement) => void;
+  onArchive: (ann: Announcement) => void;
+  onDelete: (ann: Announcement) => void;
+}): React.ReactElement {
   const priorityCfg = PRIORITY_CONFIG[ann.priority] || PRIORITY_CONFIG.normal;
   const scopeCfg = SCOPE_CONFIG[ann.scope] || SCOPE_CONFIG.all;
   const PriorityIcon = priorityCfg.icon;
@@ -234,7 +297,7 @@ function AnnouncementRow({ ann, onEdit, onPublish, onArchive, onDelete }) {
           {ann.summary && (
             <p className="text-sm text-gray-500 mt-1 line-clamp-1">{ann.summary}</p>
           )}
-          <p className="text-xs text-gray-400 mt-1 line-clamp-1">{ann.content?.substring(0, 100)}{ann.content?.length > 100 ? '…' : ''}</p>
+          <p className="text-xs text-gray-400 mt-1 line-clamp-1">{ann.content?.substring(0, 100)}{ann.content && ann.content.length > 100 ? '…' : ''}</p>
           <div className="flex items-center gap-4 mt-2 text-xs text-gray-400 flex-wrap">
             <span className="flex items-center gap-1">
               <ScopeIcon className="w-3 h-3" />
@@ -242,7 +305,7 @@ function AnnouncementRow({ ann, onEdit, onPublish, onArchive, onDelete }) {
             </span>
             {ann.authorName && <span>Tạo bởi: {ann.authorName}</span>}
             <span>{ann.publishedAt ? `Đăng: ${formatRelative(ann.publishedAt)}` : ann.scheduledPublishAt ? `Hẹn: ${formatDate(ann.scheduledPublishAt)}` : `Tạo: ${formatRelative(ann.createdAt)}`}</span>
-            {ann.readCount > 0 && <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{ann.readCount} lượt đọc</span>}
+            {ann.readCount !== undefined && ann.readCount > 0 && <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{ann.readCount} lượt đọc</span>}
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
@@ -286,24 +349,23 @@ function AnnouncementRow({ ann, onEdit, onPublish, onArchive, onDelete }) {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-// Named export (used by AppRouter)
-export function AdminAnnouncementsPage() {
-  const [announcements, setAnnouncements] = useState([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
+export function AdminAnnouncementsPage(): React.ReactElement {
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, limit: 20, total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [categories, setCategories] = useState([]);
+  const [error, setError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<AnnouncementCategory[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [scopeFilter, setScopeFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [editingAnn, setEditingAnn] = useState(null);
+  const [editingAnn, setEditingAnn] = useState<Announcement | null>(null);
   const [formLoading, setFormLoading] = useState(false);
-  const [actionLoading, setActionLoading] = useState(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
-  const loadAnnouncements = useCallback(async (page = 1) => {
+  const loadAnnouncements = useCallback(async (page = 1): Promise<void> => {
     setLoading(true);
     setError(null);
     try {
@@ -315,8 +377,8 @@ export function AdminAnnouncementsPage() {
         priority: priorityFilter || undefined,
         scope: scopeFilter || undefined,
       });
-      setAnnouncements(result.announcements || []);
-      setPagination(result.pagination || { page, limit: 20, total: 0, totalPages: 0 });
+      setAnnouncements(result.announcements);
+      setPagination(result.pagination);
     } catch (err) {
       setError('Không thể tải danh sách thông báo.');
       console.error(err);
@@ -325,26 +387,26 @@ export function AdminAnnouncementsPage() {
     }
   }, [search, statusFilter, priorityFilter, scopeFilter]);
 
-  const loadCategories = useCallback(async () => {
+  const loadCategories = useCallback(async (): Promise<void> => {
     try {
       const cats = await adminApi.getAnnouncementCategories();
       setCategories(cats);
     } catch (err) {
-      console.warn('Could not load categories:', err.message);
+      console.warn('Could not load categories:', (err as Error).message);
     }
   }, []);
 
   useEffect(() => {
-    loadAnnouncements(1);
-    loadCategories();
+    void loadAnnouncements(1);
+    void loadCategories();
   }, [loadAnnouncements, loadCategories]);
 
-  const handleSearch = (e) => {
+  const handleSearch = (e: React.FormEvent): void => {
     e.preventDefault();
-    loadAnnouncements(1);
+    void loadAnnouncements(1);
   };
 
-  const handleFormSubmit = async (data) => {
+  const handleFormSubmit = async (data: Record<string, unknown>): Promise<void> => {
     setFormLoading(true);
     try {
       if (editingAnn?.id) {
@@ -354,58 +416,58 @@ export function AdminAnnouncementsPage() {
       }
       setShowForm(false);
       setEditingAnn(null);
-      loadAnnouncements(pagination.page);
+      void loadAnnouncements(pagination.page);
     } catch (err) {
-      alert('Lỗi khi lưu thông báo: ' + (err.message || 'Vui lòng thử lại.'));
+      window.alert('Lỗi khi lưu thông báo: ' + ((err as Error).message || 'Vui lòng thử lại.'));
     } finally {
       setFormLoading(false);
     }
   };
 
-  const handlePublish = async (ann) => {
+  const handlePublish = async (ann: Announcement): Promise<void> => {
     setActionLoading(ann.id);
     try {
       await adminApi.publishAnnouncement(ann.id);
-      loadAnnouncements(pagination.page);
+      void loadAnnouncements(pagination.page);
     } catch (err) {
-      alert('Lỗi khi đăng thông báo: ' + (err.message || 'Vui lòng thử lại.'));
+      window.alert('Lỗi khi đăng thông báo: ' + ((err as Error).message || 'Vui lòng thử lại.'));
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleArchive = async (ann) => {
-    if (!confirm('Lưu trữ thông báo này?')) return;
+  const handleArchive = async (ann: Announcement): Promise<void> => {
+    if (!window.confirm('Lưu trữ thông báo này?')) return;
     setActionLoading(ann.id);
     try {
       await adminApi.archiveAnnouncement(ann.id);
-      loadAnnouncements(pagination.page);
+      void loadAnnouncements(pagination.page);
     } catch (err) {
-      alert('Lỗi khi lưu trữ: ' + (err.message || 'Vui lòng thử lại.'));
+      window.alert('Lỗi khi lưu trữ: ' + ((err as Error).message || 'Vui lòng thử lại.'));
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleDelete = async (ann) => {
-    if (!confirm(`Xóa thông báo "${ann.title}"? Hành động này không thể hoàn tác.`)) return;
+  const handleDelete = async (ann: Announcement): Promise<void> => {
+    if (!window.confirm(`Xóa thông báo "${ann.title}"? Hành động này không thể hoàn tác.`)) return;
     setActionLoading(ann.id);
     try {
       await adminApi.deleteAnnouncement(ann.id);
-      loadAnnouncements(pagination.page);
+      void loadAnnouncements(pagination.page);
     } catch (err) {
-      alert('Lỗi khi xóa: ' + (err.message || 'Vui lòng thử lại.'));
+      window.alert('Lỗi khi xóa: ' + ((err as Error).message || 'Vui lòng thử lại.'));
     } finally {
       setActionLoading(null);
     }
   };
 
-  const openEdit = (ann) => {
+  const openEdit = (ann: Announcement): void => {
     setEditingAnn(ann);
     setShowForm(true);
   };
 
-  const openCreate = () => {
+  const openCreate = (): void => {
     setEditingAnn(null);
     setShowForm(true);
   };
@@ -424,7 +486,7 @@ export function AdminAnnouncementsPage() {
               <p className="text-sm text-gray-500">{pagination.total} thông báo</p>
             </div>
           </div>
-          <Button onClick={openCreate} leftIcon={<Plus className="w-4 h-4" />}>
+          <Button onClick={openCreate} icon={Plus} iconPosition="left">
             Tạo thông báo
           </Button>
         </div>
@@ -445,14 +507,14 @@ export function AdminAnnouncementsPage() {
                   className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
                 />
               </div>
-              <Button type="submit" variant="secondary" leftIcon={<Search className="w-4 h-4" />}>
+              <Button type="submit" variant="secondary" icon={Search}>
                 Tìm
               </Button>
               <Button
                 type="button"
                 variant="ghost"
                 onClick={() => setShowFilters(!showFilters)}
-                leftIcon={<Filter className="w-4 h-4" />}
+                icon={Filter}
               >
                 Lọc
               </Button>
@@ -517,7 +579,7 @@ export function AdminAnnouncementsPage() {
           <Card className="py-8 text-center border-red-200 bg-red-50">
             <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
             <p className="text-red-600 mb-3">{error}</p>
-            <Button variant="secondary" onClick={() => loadAnnouncements(1)} leftIcon={<RefreshCw className="w-4 h-4" />}>
+            <Button variant="secondary" onClick={() => void loadAnnouncements(1)} icon={RefreshCw}>
               Thử lại
             </Button>
           </Card>
@@ -533,7 +595,7 @@ export function AdminAnnouncementsPage() {
                 ? 'Không có thông báo nào phù hợp với bộ lọc.'
                 : 'Tạo thông báo đầu tiên để thông báo cho học sinh, giáo viên hoặc phụ huynh.'}
             </p>
-            <Button onClick={openCreate} leftIcon={<Plus className="w-4 h-4" />}>Tạo thông báo</Button>
+            <Button onClick={openCreate} icon={Plus} iconPosition="left">Tạo thông báo</Button>
           </Card>
         )}
 
@@ -564,8 +626,8 @@ export function AdminAnnouncementsPage() {
                 variant="secondary"
                 size="sm"
                 disabled={pagination.page <= 1}
-                onClick={() => loadAnnouncements(pagination.page - 1)}
-                leftIcon={<ChevronLeft className="w-4 h-4" />}
+                onClick={() => void loadAnnouncements(pagination.page - 1)}
+                icon={ChevronLeft}
               >
                 Trước
               </Button>
@@ -573,8 +635,8 @@ export function AdminAnnouncementsPage() {
                 variant="secondary"
                 size="sm"
                 disabled={pagination.page >= pagination.totalPages}
-                onClick={() => loadAnnouncements(pagination.page + 1)}
-                rightIcon={<ChevronRight className="w-4 h-4" />}
+                onClick={() => void loadAnnouncements(pagination.page + 1)}
+                icon={ChevronRight}
               >
                 Sau
               </Button>

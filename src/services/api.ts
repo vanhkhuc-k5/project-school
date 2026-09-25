@@ -4167,6 +4167,96 @@ export interface GradeListResponse {
   totalPages: number;
 }
 
+// =============================================================================
+// TT22 ACADEMIC EVALUATION TYPES
+// =============================================================================
+
+export type AcademicClassification = 'Tot' | 'Kha' | 'Dat' | 'ChuaDat';
+export type HonorTitle = 'XuatSac' | 'Gioi' | null;
+export type ConductRating = 'Tot' | 'Kha' | 'Dat' | null;
+
+export interface SubjectScore {
+  subjectId: string;
+  subjectName: string;
+  subjectCode: string;
+  hk1Score: number | null;
+  hk2Score: number | null;
+  yearlyScore: number | null;
+  isGradingSubject: boolean;
+  gradingResult: 'dat' | 'chua_dat' | null;
+  comment: string | null;
+}
+
+export interface StudentEvaluation {
+  studentId: string;
+  studentName: string;
+  studentCode: string;
+  subjectScores: SubjectScore[];
+  yearlyGPA: number | null;
+  academicClassification: AcademicClassification;
+  academicClassificationLabel: string;
+  conductRating: ConductRating;
+  conductRatingLabel: string | null;
+  honorTitle: HonorTitle;
+  honorTitleLabel: string | null;
+  honorTitleReason: string;
+  classificationDetails: Record<string, unknown>;
+  attendanceRate: number;
+  violationCount: number;
+  homeroomTeacherComment: string | null;
+}
+
+export interface ClassAcademicSummary {
+  totalStudents: number;
+  academicDistribution: { Tot: number; Kha: number; Dat: number; ChuaDat: number };
+  conductDistribution: { Tot: number; Kha: number; Dat: number };
+  honorDistribution: { XuatSac: number; Gioi: number };
+  averageYearlyGPA: number | null;
+  classificationRate: number | null;
+  passRate: number | null;
+}
+
+export interface ClassAcademicSummaryResponse {
+  classId: string;
+  academicYearId: string | undefined;
+  semesterId: string | undefined;
+  students: StudentEvaluation[];
+  summary: ClassAcademicSummary | null;
+  generatedAt: string;
+}
+
+export interface StudentReportCardResponse {
+  student: {
+    id: string;
+    name: string;
+    code: string;
+    birthDate: string;
+    gender: string;
+    className: string;
+  };
+  school: {
+    id: string;
+    name: string;
+    address?: string;
+    phone?: string;
+  };
+  academicYear: string;
+  semesterId: string | undefined;
+  evaluation: StudentEvaluation;
+  verificationCode: string;
+  generatedAt: string;
+}
+
+export interface GradebookLockResponse {
+  lockId: string;
+  classId: string;
+  semesterId: string | null;
+  lockedBy: string;
+  lockedAt: string;
+  studentCount: number;
+  reason: string;
+}
+
 export interface GradeSnapshotListResponse {
   snapshots: GradeSnapshot[];
   total: number;
@@ -4339,6 +4429,57 @@ export const gradebookApi = {
     ).toString();
     const res = await request<GradeSnapshotListResponse>(`/gradebook/snapshots${query ? `?${query}` : ''}`);
     return res?.success ? res.data as GradeSnapshotListResponse : null;
+  },
+
+  // --- TT22 Academic Evaluation ---
+  async getClassAcademicSummary(params: {
+    classId: string;
+    academicYearId?: string;
+    semesterId?: string;
+  }): Promise<ClassAcademicSummaryResponse | null> {
+    const query = new URLSearchParams({
+      ...(params.academicYearId ? { academicYearId: params.academicYearId } : {}),
+      ...(params.semesterId ? { semesterId: params.semesterId } : {}),
+    }).toString();
+    const res = await request<ClassAcademicSummaryResponse>(
+      `/gradebook/classes/${params.classId}/summary${query ? `?${query}` : ''}`
+    );
+    return res?.success ? res.data as ClassAcademicSummaryResponse : null;
+  },
+
+  async getStudentReportCard(params: {
+    studentId: string;
+    academicYearId?: string;
+    semesterId?: string;
+  }): Promise<StudentReportCardResponse | null> {
+    const query = new URLSearchParams({
+      ...(params.academicYearId ? { academicYearId: params.academicYearId } : {}),
+      ...(params.semesterId ? { semesterId: params.semesterId } : {}),
+    }).toString();
+    const res = await request<StudentReportCardResponse>(
+      `/gradebook/students/${params.studentId}/report-card${query ? `?${query}` : ''}`
+    );
+    return res?.success ? res.data as StudentReportCardResponse : null;
+  },
+
+  async lockClassGradebook(params: {
+    classId: string;
+    semesterId?: string;
+    confirmationText: string;
+    reason?: string;
+  }): Promise<GradebookLockResponse | null> {
+    const res = await request<GradebookLockResponse>(
+      `/gradebook/classes/${params.classId}/lock`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          semesterId: params.semesterId,
+          confirmationText: params.confirmationText,
+          reason: params.reason,
+        }),
+      }
+    );
+    return res?.success ? res.data as GradebookLockResponse : null;
   },
 };
 

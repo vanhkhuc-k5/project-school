@@ -115,7 +115,8 @@ student_import1@school.edu.vn,Pass123!,Nguyen Van Import1,0912345001,2010-01-15,
     });
 
     test('PREVIEW: File too large rejected', async () => {
-      const largeContent = 'a'.repeat(6 * 1024 * 1024);
+      // 2MB of data — sufficient to exceed the 1MB limit without excessive processing time
+      const largeContent = 'a'.repeat(2 * 1024 * 1024);
       const base64Content = Buffer.from(largeContent).toString('base64');
       
       const res = await api.post('/import/preview', {

@@ -3,7 +3,7 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
-import { teacherApi, attendanceApi, gradebookApi, type TeacherAssignedClass, type AttendanceRosterStudent } from '../../services/api';
+import { teacherApi, attendanceApi, gradebookApi, type TeacherAssignedClass, type AttendanceRosterStudent, type ClassAcademicSummaryResponse, type StudentEvaluation } from '../../services/api';
 import { useSync } from '../../context/SyncContext';
 import {
   Users,
@@ -23,6 +23,9 @@ import {
   AlertCircle,
   Loader2,
   ChevronDown,
+  Lock,
+  RefreshCw,
+  FileText,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -396,6 +399,387 @@ function GradebookMatrixTab({ classId, className, students, searchQuery }) {
   );
 }
 
+// =============================================================================
+// AcademicSummaryTab — TT22 Academic Evaluation Summary & E-Report Card
+// Features: Class summary, student classification, honor titles, lock workflow
+// =============================================================================
+
+interface AcademicSummaryTabProps {
+  classId: string;
+  className: string;
+  data: ClassAcademicSummaryResponse | null;
+  loading: boolean;
+  error: string | null;
+  lockConfirmText: string;
+  onLockConfirmChange: (v: string) => void;
+  isLocking: boolean;
+  lockSuccess: string | null;
+  onLock: () => void;
+  onRefresh: () => void;
+}
+
+function AcademicSummaryTab({
+  classId,
+  className,
+  data,
+  loading,
+  error,
+  lockConfirmText,
+  onLockConfirmChange,
+  isLocking,
+  lockSuccess,
+  onLock,
+  onRefresh,
+}: AcademicSummaryTabProps): React.JSX.Element {
+  const [expandedStudent, setExpandedStudent] = React.useState<string | null>(null);
+  const [reportModal, setReportModal] = React.useState<StudentEvaluation | null>(null);
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => <div key={i} className="h-24 bg-surface-neutral rounded-card animate-pulse" />)}
+        </div>
+        <div className="h-64 bg-surface-neutral rounded-card animate-pulse" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card padding="p-8" className="text-center">
+        <AlertCircle className="w-10 h-10 text-danger mx-auto mb-3" />
+        <p className="text-sm text-danger font-medium mb-3">{error}</p>
+        <Button variant="secondary" size="sm" icon={RefreshCw} onClick={onRefresh}>
+          Thử lại
+        </Button>
+      </Card>
+    );
+  }
+
+  if (!data || data.students.length === 0) {
+    return (
+      <Card padding="p-8" className="text-center">
+        <Award className="w-10 h-10 text-text-secondary mx-auto mb-3 opacity-50" />
+        <p className="text-sm text-text-secondary">Chưa có dữ liệu học lực cho lớp này.</p>
+      </Card>
+    );
+  }
+
+  const { students, summary } = data;
+
+  const classificationColors: Record<string, string> = {
+    Tot: 'bg-success-light text-success border border-success/20',
+    Kha: 'bg-info/10 text-ocean border border-ocean/20',
+    Dat: 'bg-warning-light text-warning-dark border border-warning/20',
+    ChuaDat: 'bg-danger-light text-danger border border-danger/20',
+  };
+
+  const classificationLabels: Record<string, string> = {
+    Tot: 'Tốt',
+    Kha: 'Khá',
+    Dat: 'Đạt',
+    ChuaDat: 'Chưa đạt',
+  };
+
+  const honorColors: Record<string, string> = {
+    XuatSac: 'bg-yellow-50 text-yellow-700 border border-yellow-300',
+    Gioi: 'bg-blue-50 text-blue-700 border border-blue-200',
+  };
+
+  const honorLabels: Record<string, string> = {
+    XuatSac: '🌟 Xuất sắc',
+    Gioi: '🏆 Giỏi',
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* ── Class Summary Cards ── */}
+      {summary && (
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <Card padding="p-4" className="text-center">
+            <div className="text-2xl font-bold text-primary">{summary.totalStudents}</div>
+            <div className="text-xs text-text-secondary mt-1">Tổng HS</div>
+          </Card>
+          <Card padding="p-4" className="text-center">
+            <div className="text-2xl font-bold text-success">{summary.academicDistribution.Tot}</div>
+            <div className="text-xs text-text-secondary mt-1">Mức Tốt</div>
+          </Card>
+          <Card padding="p-4" className="text-center">
+            <div className="text-2xl font-bold text-ocean">{summary.academicDistribution.Kha}</div>
+            <div className="text-xs text-text-secondary mt-1">Mức Khá</div>
+          </Card>
+          <Card padding="p-4" className="text-center">
+            <div className="text-2xl font-bold text-warning-dark">{summary.academicDistribution.Dat}</div>
+            <div className="text-xs text-text-secondary mt-1">Mức Đạt</div>
+          </Card>
+          <Card padding="p-4" className="text-center">
+            <div className="text-2xl font-bold text-danger">{summary.academicDistribution.ChuaDat}</div>
+            <div className="text-xs text-text-secondary mt-1">Chưa Đạt</div>
+          </Card>
+        </div>
+      )}
+
+      {/* ── Action Bar ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs text-text-secondary">
+          <span className="font-medium text-primary">{className}</span>
+          {summary && (
+            <span>• Tỷ lệ đạt: <strong className="text-success">{summary.classificationRate}%</strong></span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" icon={RefreshCw} onClick={onRefresh}>
+            Làm mới
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={Download}
+            onClick={() => {
+              const headers = ['STT', 'Mã HS', 'Họ tên', 'ĐTBmcn', 'Xếp loại HL', 'Xếp loại RL', 'Danh hiệu'];
+              const rows = students.map((s, i) => [
+                i + 1, s.studentCode, s.studentName,
+                s.yearlyGPA?.toFixed(1) ?? '—',
+                classificationLabels[s.academicClassification] ?? s.academicClassification,
+                s.conductRatingLabel ?? '—',
+                s.honorTitleLabel ?? '—',
+              ]);
+              const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+              const bom = '\uFEFF'; // UTF-8 BOM for Vietnamese
+              const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `BANG_TONG_HOP_${className.replace(/\s+/g, '_')}_HK.csv`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Xuất Bảng Tổng Hợp MOET
+          </Button>
+        </div>
+      </div>
+
+      {/* ── Lock Confirmation ── */}
+      {lockSuccess ? (
+        <Card padding="p-4" className="border border-success/30 bg-success-light/20">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-success">{lockSuccess}</p>
+              <p className="text-xs text-success/70 mt-0.5">Điểm số đã bị khóa và không thể chỉnh sửa.</p>
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <Card padding="p-4" className="border border-amber-200 bg-amber-50/30">
+          <div className="flex items-start gap-3">
+            <Lock className="w-4 h-4 text-warning-dark mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-warning-dark">Khóa sổ điểm học kỳ</p>
+              <p className="text-xs text-warning-dark/80 mt-1 mb-3">
+                Sau khi khóa, điểm số không thể chỉnh sửa. Cần xác nhận bằng văn bản: <strong>XÁC NHẬN KHÓA SỔ</strong>
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={lockConfirmText}
+                  onChange={e => onLockConfirmChange(e.target.value)}
+                  placeholder="Nhập XÁC NHẬN KHÓA SỔ"
+                  className="h-9 px-3 border border-amber-300 rounded text-xs w-64 focus:outline-none focus:border-warning-dark bg-white"
+                />
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={Lock}
+                  disabled={lockConfirmText !== 'XÁC NHẬN KHÓA SỔ'}
+                  loading={isLocking}
+                  onClick={onLock}
+                >
+                  Khóa sổ điểm
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* ── Student Table ── */}
+      <Card padding="p-0" className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-surface-neutral hairline-b">
+                <th className="py-3 px-4 text-left font-medium text-text-secondary w-8">STT</th>
+                <th className="py-3 px-4 text-left font-medium text-text-secondary">Họ tên</th>
+                <th className="py-3 px-4 text-center font-medium text-text-secondary">Mã HS</th>
+                <th className="py-3 px-4 text-center font-medium text-text-secondary">ĐTBmcn</th>
+                <th className="py-3 px-4 text-center font-medium text-text-secondary">Xếp loại HL</th>
+                <th className="py-3 px-4 text-center font-medium text-text-secondary">Xếp loại RL</th>
+                <th className="py-3 px-4 text-center font-medium text-text-secondary">Danh hiệu</th>
+                <th className="py-3 px-4 text-center font-medium text-text-secondary w-16">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {students.map((student, i) => (
+                <React.Fragment key={student.studentId}>
+                  <tr className={`hairline-b hover:bg-surface-neutral/40 transition-colors ${expandedStudent === student.studentId ? 'bg-sky/10' : ''}`}>
+                    <td className="py-3 px-4 text-text-secondary">{i + 1}</td>
+                    <td className="py-3 px-4 font-medium text-text-primary">{student.studentName}</td>
+                    <td className="py-3 px-4 text-center font-mono text-text-secondary">{student.studentCode || '—'}</td>
+                    <td className="py-3 px-4 text-center font-semibold">
+                      {student.yearlyGPA !== null ? (
+                        <span className={student.yearlyGPA >= 8.5 ? 'text-success' : student.yearlyGPA >= 5.0 ? 'text-ocean' : 'text-danger'}>
+                          {student.yearlyGPA.toFixed(1)}
+                        </span>
+                      ) : (
+                        <span className="text-text-secondary">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`inline-block px-2 py-1 rounded-pill text-[11px] font-medium ${classificationColors[student.academicClassification] || ''}`}>
+                        {classificationLabels[student.academicClassification] ?? student.academicClassification}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {student.conductRatingLabel && (
+                        <Badge variant={student.conductRating === 'Tot' ? 'success' : student.conductRating === 'Kha' ? 'info' : 'warning'} size="sm">
+                          {student.conductRatingLabel}
+                        </Badge>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {student.honorTitleLabel && (
+                        <span className={`inline-block px-2 py-1 rounded-pill text-[11px] font-semibold ${honorColors[student.honorTitle] || ''}`}>
+                          {student.honorTitleLabel}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setExpandedStudent(expandedStudent === student.studentId ? null : student.studentId)}
+                      >
+                        {expandedStudent === student.studentId ? 'Thu gọn' : 'Chi tiết'}
+                      </Button>
+                    </td>
+                  </tr>
+                  {expandedStudent === student.studentId && (
+                    <tr className="bg-sky/5">
+                      <td colSpan={8} className="px-4 py-3">
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-5 gap-3">
+                            {student.subjectScores.slice(0, 5).map(sub => (
+                              <div key={sub.subjectId} className="bg-white rounded border border-hairline p-2">
+                                <div className="text-[11px] font-medium text-text-primary truncate">{sub.subjectName}</div>
+                                <div className="text-sm font-semibold mt-1">
+                                  {sub.yearlyScore !== null ? sub.yearlyScore.toFixed(1) : '—'}
+                                </div>
+                                <div className="text-[10px] text-text-secondary mt-0.5">
+                                  HK1: {sub.hk1Score?.toFixed(1) ?? '—'} · HK2: {sub.hk2Score?.toFixed(1) ?? '—'}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="text-xs text-text-secondary">
+                              {student.honorTitleReason}
+                            </div>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              icon={FileText}
+                              onClick={() => setReportModal(student)}
+                            >
+                              Xem Học Bạ
+                            </Button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* ── Report Card Modal ── */}
+      <Modal
+        isOpen={Boolean(reportModal)}
+        onClose={() => setReportModal(null)}
+        title={`Học Bạ Điện Tử — ${reportModal?.studentName || ''}`}
+        size="2xl"
+      >
+        {reportModal && (
+          <div className="space-y-4">
+            <div className="border border-hairline rounded-card p-4 bg-surface-neutral/20 text-center">
+              <h3 className="text-sm font-bold text-primary uppercase tracking-wide">Trường THCS Bắc Au</h3>
+              <h2 className="text-base font-bold text-text-primary mt-2">HỌC BẠ ĐIỆN TỬ</h2>
+              <p className="text-xs text-text-secondary mt-1">Năm học: {new Date().getFullYear()} - {new Date().getFullYear() + 1}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="text-xs">
+                <div className="font-medium text-text-primary">{reportModal.studentName}</div>
+                <div className="text-text-secondary">Mã HS: {reportModal.studentCode || '—'}</div>
+              </div>
+              <div className="text-xs text-right">
+                <div className={`inline-block px-3 py-1 rounded-pill text-xs font-semibold ${classificationColors[reportModal.academicClassification] || ''}`}>
+                  Xếp loại HL: {classificationLabels[reportModal.academicClassification]}
+                </div>
+                {reportModal.honorTitleLabel && (
+                  <div className={`mt-1 inline-block px-3 py-1 rounded-pill text-xs font-semibold ${honorColors[reportModal.honorTitle] || ''}`}>
+                    {reportModal.honorTitleLabel}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border border-hairline">
+                <thead>
+                  <tr className="bg-surface-neutral hairline-b">
+                    <th className="py-2 px-3 text-left font-medium text-text-secondary">Môn học</th>
+                    <th className="py-2 px-3 text-center font-medium text-text-secondary">ĐTBmhk1</th>
+                    <th className="py-2 px-3 text-center font-medium text-text-secondary">ĐTBmhk2</th>
+                    <th className="py-2 px-3 text-center font-medium text-text-secondary">ĐTBmcn</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportModal.subjectScores.map(sub => (
+                    <tr key={sub.subjectId} className="hairline-b">
+                      <td className="py-2 px-3 text-text-primary">{sub.subjectName}</td>
+                      <td className="py-2 px-3 text-center">{sub.hk1Score?.toFixed(1) ?? '—'}</td>
+                      <td className="py-2 px-3 text-center">{sub.hk2Score?.toFixed(1) ?? '—'}</td>
+                      <td className={`py-2 px-3 text-center font-semibold ${sub.yearlyScore !== null && sub.yearlyScore < 5 ? 'text-danger' : 'text-success'}`}>
+                        {sub.yearlyScore?.toFixed(1) ?? '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center justify-between border-t pt-3">
+              <div className="text-xs text-text-secondary">
+                <div>Điểm trung bình cả năm: <strong className="text-primary">{reportModal.yearlyGPA?.toFixed(1) ?? '—'}</strong></div>
+                <div className="mt-1">Xếp loại RL: <strong>{reportModal.conductRatingLabel ?? '—'}</strong></div>
+              </div>
+              <div className="text-xs text-text-secondary">
+                Mã xác thực: <span className="font-mono text-ocean">EDUPORTAL-{data?.generatedAt ? new Date(data.generatedAt).toLocaleDateString('vi-VN').replace(/\//g, '') : 'XXXX'}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
 export function TeacherClassesPage() {
   const { lastSync, triggerSync } = useSync();
   const [classData, setClassData] = useState<{
@@ -442,6 +826,14 @@ export function TeacherClassesPage() {
   const [isSavingAttendance, setIsSavingAttendance] = useState(false);
   const [attendanceSaveResult, setAttendanceSaveResult] = useState(null); // { success, message }
 
+  // ── TT22 Academic Evaluation State ──
+  const [summaryTabData, setSummaryTabData] = useState<ClassAcademicSummaryResponse | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [lockConfirmText, setLockConfirmText] = useState('');
+  const [isLocking, setIsLocking] = useState(false);
+  const [lockSuccess, setLockSuccess] = useState<string | null>(null);
+
   const fetchClass = async (cid?: string) => {
     setIsLoading(true);
     setErrorMessage(null);
@@ -461,6 +853,23 @@ export function TeacherClassesPage() {
       setIsLoading(false);
     }
   };
+
+  // Load TT22 Academic Summary
+  const loadAcademicSummary = useCallback(async (classId) => {
+    if (!classId) return;
+    setSummaryLoading(true);
+    setSummaryError(null);
+    setLockSuccess(null);
+    setLockConfirmText('');
+    try {
+      const data = await gradebookApi.getClassAcademicSummary({ classId });
+      setSummaryTabData(data);
+    } catch (err) {
+      setSummaryError(err instanceof Error ? err.message : 'Không thể tải tổng hợp học lực');
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, []);
 
   // Load roster + existing session from canonical attendance endpoint
   const loadAttendanceRoster = useCallback(async (classId, date, period) => {
@@ -495,6 +904,13 @@ export function TeacherClassesPage() {
   useEffect(() => {
     fetchClass(selectedClassId);
   }, [selectedClassId, lastSync]);
+
+  // Load TT22 summary when selected class changes
+  useEffect(() => {
+    if (selectedClassId) {
+      loadAcademicSummary(selectedClassId);
+    }
+  }, [selectedClassId, loadAcademicSummary]);
 
   // Reload roster when class, date, or period changes (only when on attendance tab)
   useEffect(() => {
@@ -729,6 +1145,17 @@ export function TeacherClassesPage() {
                 }`}
               >
                 Ma trận điểm (TT22)
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('summary')}
+                className={`px-4 py-2 rounded text-xs transition-all ${
+                  activeTab === 'summary'
+                    ? 'bg-white text-primary font-medium shadow-whisper border border-hairline'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                Tổng Kết &amp; Học Bạ
               </button>
             </div>
 
@@ -1050,6 +1477,41 @@ export function TeacherClassesPage() {
           className={classData?.classes?.find((c) => c.id === selectedClassId)?.name || selectedClassId}
           students={classData?.students || []}
           searchQuery={searchQuery}
+        />
+      )}
+
+      {/* TAB 4: TT22 ACADEMIC SUMMARY & REPORT CARD */}
+      {activeTab === 'summary' && (
+        <AcademicSummaryTab
+          classId={selectedClassId}
+          className={classData?.classes?.find((c) => c.id === selectedClassId)?.name || ''}
+          data={summaryTabData}
+          loading={summaryLoading}
+          error={summaryError}
+          lockConfirmText={lockConfirmText}
+          onLockConfirmChange={setLockConfirmText}
+          isLocking={isLocking}
+          lockSuccess={lockSuccess}
+          onLock={async () => {
+            if (lockConfirmText !== 'XÁC NHẬN KHÓA SỔ') return;
+            setIsLocking(true);
+            try {
+              const result = await gradebookApi.lockClassGradebook({
+                classId: selectedClassId,
+                confirmationText: lockConfirmText,
+                reason: 'Khóa sổ điểm học kỳ theo quy trình BGH',
+              });
+              if (result) {
+                setLockSuccess(`Đã khóa sổ thành công cho ${result.studentCount} học sinh.`);
+                setLockConfirmText('');
+              }
+            } catch (e) {
+              setLockSuccess(null);
+            } finally {
+              setIsLocking(false);
+            }
+          }}
+          onRefresh={() => loadAcademicSummary(selectedClassId)}
         />
       )}
         </>

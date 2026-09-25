@@ -350,3 +350,88 @@ export async function getGradeAudit(req, res) {
   const logs = await service.getGradeAuditLogs({ filters: req.query });
   res.json(buildResponse(logs));
 }
+
+// ---------------------------------------------------------------------------
+// CLASS SUMMARY & REPORT CARD (TT22 Evaluation Engine)
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/gradebook/classes/:classId/summary
+ * Get TT22 academic summary for an entire class.
+ * Computes ĐTBmcn, classification, conduct, and honors for all students.
+ */
+export async function getClassAcademicSummary(req, res) {
+  requirePermission(req, 'grade.read');
+  const { userId, schoolId, role } = extractUser(req);
+  const { classId } = req.params;
+  const { academicYearId, semesterId } = req.query;
+
+  if (!classId) throw AppError.badRequest('classId là bắt buộc.');
+
+  const result = await service.getClassAcademicSummary({
+    teacherId: userId,
+    classId,
+    academicYearId: academicYearId || undefined,
+    semesterId: semesterId || undefined,
+    role,
+    schoolId,
+  });
+
+  res.json(buildResponse(result));
+}
+
+/**
+ * GET /api/gradebook/students/:studentId/report-card
+ * Get full e-report card for one student.
+ */
+export async function getStudentReportCard(req, res) {
+  requirePermission(req, 'grade.read');
+  const { userId, schoolId, role } = extractUser(req);
+  const { studentId } = req.params;
+  const { academicYearId, semesterId } = req.query;
+
+  // Students can only view their own report card
+  if (role === 'student') {
+    const requestingStudentId = req.user?.studentId || userId;
+    if (studentId !== requestingStudentId) {
+      throw AppError.forbidden('Bạn chỉ có thể xem học bạ của mình.');
+    }
+  }
+
+  const result = await service.getStudentReportCard({
+    studentId,
+    academicYearId: academicYearId || undefined,
+    semesterId: semesterId || undefined,
+    role,
+    schoolId,
+  });
+
+  res.json(buildResponse(result));
+}
+
+/**
+ * POST /api/gradebook/classes/:classId/lock
+ * Lock semester gradebook — prevents further grade modifications.
+ * Requires explicit confirmation from leadership.
+ */
+export async function lockClassGradebook(req, res) {
+  requirePermission(req, 'grade.publish');
+  const { userId, role } = extractUser(req);
+  const { classId } = req.params;
+  const { semesterId, confirmationText, reason } = req.body;
+
+  if (!classId) throw AppError.badRequest('classId là bắt buộc.');
+  if (confirmationText !== 'XÁC NHẬN KHÓA SỔ') {
+    throw AppError.badRequest('Văn bản xác nhận không đúng. Cần nhập chính xác: XÁC NHẬN KHÓA SỔ');
+  }
+
+  const result = await service.lockClassGradebook({
+    classId,
+    semesterId: semesterId || undefined,
+    lockedBy: userId,
+    role,
+    reason: reason || 'Khóa sổ điểm học kỳ theo quy trình BGH',
+  });
+
+  res.json(buildResponse(result));
+}

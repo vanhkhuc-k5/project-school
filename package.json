@@ -24,6 +24,8 @@
     "lint:fix": "eslint src server tests --fix",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
+    "verify": "node scripts/pre-push-verify.js",
+    "pre-push": "node scripts/pre-push-verify.js",
     
     "-- DEVELOPMENT --": "",
     "dev:all": "concurrently \"npm run server\" \"npm run dev\"",

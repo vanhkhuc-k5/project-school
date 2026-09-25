@@ -1,3 +1,6 @@
+// =============================================================================
+// LoginPage — G39 Real Routing (TypeScript)
+// =============================================================================
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/Button';
@@ -17,15 +20,43 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { getDemoAccounts, getDemoLabel } from '../../lib/demo-accounts';
 
-// Resolve demo accounts for current environment (null = hidden in production)
-const DEMO_ACCOUNTS = getDemoAccounts();
-const DEMO_LABEL = getDemoLabel();
+// ── Type Definitions ───────────────────────────────────────────────────────────
 
-export function LoginPage({ onLoginSuccess }) {
+type RoleId = 'student' | 'teacher' | 'parent' | 'admin';
+
+interface DemoAccount {
+  code: string;
+  pass: string;
+  name: string;
+}
+
+interface DemoAccounts {
+  student?: DemoAccount;
+  teacher?: DemoAccount;
+  parent?: DemoAccount;
+  admin?: DemoAccount;
+  leadership?: DemoAccount;
+}
+
+interface RoleTab {
+  id: RoleId;
+  label: string;
+  icon: LucideIcon;
+  placeholder: string;
+  tip: string;
+  testAccount: DemoAccount | null;
+}
+
+// Resolve demo accounts for current environment (null = hidden in production)
+const DEMO_ACCOUNTS: DemoAccounts | null = getDemoAccounts();
+const DEMO_LABEL: string = getDemoLabel();
+
+export function LoginPage({ onLoginSuccess }: { onLoginSuccess?: (role: RoleId) => void }): React.ReactElement {
   const { login } = useAuth();
-  const [selectedRole, setSelectedRole] = useState('student');
+  const [selectedRole, setSelectedRole] = useState<RoleId>('student');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -34,11 +65,10 @@ export function LoginPage({ onLoginSuccess }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [showTestAccounts, setShowTestAccounts] = useState(false);
 
-  const isStaging = import.meta.env?.NODE_ENV === 'staging';
-  const isProduction = import.meta.env?.NODE_ENV === 'production';
+  const isStaging: boolean = (import.meta as { env?: Record<string, unknown> }).env?.NODE_ENV === 'staging';
 
-  const roleTabs = useMemo(() => {
-    const tips = {
+  const roleTabs = useMemo((): RoleTab[] => {
+    const tips: Record<RoleId, string> = {
       student: isStaging
         ? 'Dành cho học sinh: Sử dụng mã định danh học sinh (VD: stg_student) hoặc email trường cấp.'
         : 'Dành cho học sinh: Sử dụng mã định danh học sinh (VD: teststudent1) hoặc email trường cấp.',
@@ -52,14 +82,15 @@ export function LoginPage({ onLoginSuccess }) {
         ? 'Dành cho Ban Giám Hiệu & Quản trị viên hệ thống có chữ ký số và phân quyền quản lý cấp cao. Tài khoản: stg_admin'
         : 'Dành cho Ban Giám Hiệu & Quản trị viên hệ thống có chữ ký số và phân quyền quản lý cấp cao.',
     };
-    const placeholders = {
+
+    const placeholders: Record<RoleId, string> = {
       student: isStaging ? 'VD: stg_student hoặc email học sinh' : 'VD: teststudent1 hoặc email học sinh',
       teacher: isStaging ? 'VD: stg_teacher hoặc email giáo viên' : 'VD: testteacher1 hoặc email giáo viên',
       parent: isStaging ? 'VD: stg_parent hoặc email phụ huynh' : 'VD: testparent1 hoặc email phụ huynh',
       admin: isStaging ? 'VD: stg_admin hoặc email quản trị' : 'VD: testadmin hoặc email quản trị',
     };
 
-    const tabs = [
+    const tabs: Array<{ id: RoleId; label: string; icon: LucideIcon }> = [
       { id: 'student', label: 'Học sinh', icon: GraduationCap },
       { id: 'teacher', label: 'Giáo viên', icon: Briefcase },
       { id: 'parent',  label: 'Phụ huynh', icon: Users },
@@ -67,7 +98,9 @@ export function LoginPage({ onLoginSuccess }) {
     ];
 
     return tabs.map((tab) => ({
-      ...tab,
+      id: tab.id,
+      label: tab.label,
+      icon: tab.icon,
       placeholder: placeholders[tab.id],
       tip: tips[tab.id],
       // testAccount is null in production unless explicitly enabled
@@ -75,12 +108,12 @@ export function LoginPage({ onLoginSuccess }) {
     }));
   }, [isStaging]);
 
-  const handleRoleSelect = (roleId) => {
+  const handleRoleSelect = (roleId: RoleId): void => {
     setSelectedRole(roleId);
     setErrorMessage('');
   };
 
-  const fillTestAccount = (roleId) => {
+  const fillTestAccount = (roleId: RoleId): void => {
     const tab = roleTabs.find((r) => r.id === roleId);
     // Skip if no demo account for this environment/role
     if (!tab?.testAccount) return;
@@ -90,8 +123,8 @@ export function LoginPage({ onLoginSuccess }) {
     setErrorMessage('');
   };
 
-  const handleLogin = async (e) => {
-    e?.preventDefault();
+  const handleLogin = async (e?: React.FormEvent): Promise<void> => {
+    if (e) e.preventDefault();
     if (!identifier.trim()) {
       setErrorMessage('Vui lòng nhập Email hoặc Mã định danh');
       return;
@@ -107,7 +140,7 @@ export function LoginPage({ onLoginSuccess }) {
       const result = await login(selectedRole, identifier.trim(), password.trim());
       if (result?.success) {
         const targetRole = result.user?.role || selectedRole;
-        onLoginSuccess?.(targetRole);
+        onLoginSuccess?.(targetRole as RoleId);
       } else {
         setErrorMessage(result?.message || 'Tài khoản hoặc mật khẩu không chính xác');
       }
@@ -120,7 +153,7 @@ export function LoginPage({ onLoginSuccess }) {
 
   const currentTabInfo = roleTabs.find((r) => r.id === selectedRole);
   // Count how many roles have demo accounts in this environment
-  const demoAccountCount = roleTabs.filter((t) => t.testAccount !== null).length;
+  const demoAccountCount: number = roleTabs.filter((t) => t.testAccount !== null).length;
 
   return (
     <div className="min-h-screen bg-[#F8F9FB] flex flex-col justify-between">
@@ -424,3 +457,5 @@ export function LoginPage({ onLoginSuccess }) {
     </div>
   );
 }
+
+export default LoginPage;

@@ -1,5 +1,5 @@
 // =============================================================================
-// ParentLayout — G42 Responsive & Accessibility
+// ParentLayout — G42 Responsive & Accessibility (TypeScript)
 // Parent portal layout with mobile navigation and keyboard support
 // =============================================================================
 
@@ -10,8 +10,19 @@ import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
 import { GlobalBroadcastBanner } from '../components/GlobalBroadcastBanner';
 
+// ── Type Definitions ──────────────────────────────────────────────────────────
+
+type MenuId = 'home' | 'grades' | 'schedule' | 'leave' | 'tuition' | 'notices' | 'messages';
+
+interface NavItem {
+  id: MenuId;
+  label: string;
+  icon: React.ElementType;
+  route: string;
+}
+
 // Map of routes to menu IDs
-const ROUTE_TO_ID = {
+const ROUTE_TO_ID: Record<string, MenuId> = {
   '/parent': 'home',
   '/parent/dashboard': 'home',
   '/parent/grades': 'grades',
@@ -23,13 +34,13 @@ const ROUTE_TO_ID = {
 };
 
 // Active route detection
-function useActiveRoute() {
+function useActiveRoute(): MenuId {
   const location = useLocation();
   return ROUTE_TO_ID[location.pathname] || 'home';
 }
 
 // Mobile menu hook
-function useMobileMenu() {
+function useMobileMenu(): { isOpen: boolean; toggle: () => void; close: () => void } {
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -46,18 +57,20 @@ function useMobileMenu() {
   return { isOpen, toggle: () => setIsOpen(!isOpen), close: () => setIsOpen(false) };
 }
 
-export function ParentLayout() {
-  const { currentUser, logout } = useAuth();
-  const navigate = useNavigate();
-  const activeTab = useActiveRoute();
-  const { isOpen: isMobileMenuOpen, toggle: toggleMobileMenu, close: closeMobileMenu } = useMobileMenu();
+// ── Sidebar Content ────────────────────────────────────────────────────────────
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-  };
-
-  const menuItems = [
+function SidebarContent({
+  activeTab,
+  onNavigate,
+  onLogout,
+  currentUser,
+}: {
+  activeTab: MenuId;
+  onNavigate: (route: string) => void;
+  onLogout: () => void;
+  currentUser?: { name?: string; avatar?: string } | null;
+}): React.ReactElement {
+  const menuItems: NavItem[] = [
     { id: 'home', label: 'Trang chủ', icon: Home, route: '/parent/dashboard' },
     { id: 'grades', label: 'Kết quả học tập', icon: Award, route: '/parent/grades' },
     { id: 'schedule', label: 'Lịch học & Thi', icon: Calendar, route: '/parent/schedule' },
@@ -67,13 +80,10 @@ export function ParentLayout() {
     { id: 'messages', label: 'Tin nhắn giáo viên', icon: MessageSquare, route: '/parent/messages' },
   ];
 
-  const handleNavigation = (route) => {
-    navigate(route);
-    closeMobileMenu();
-  };
+  const avatarSrc = currentUser?.avatar || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=120&h=120';
+  const displayName = currentUser?.name || 'Bác Nguyễn Văn Thành';
 
-  // Sidebar content (shared between desktop and mobile)
-  const SidebarContent = () => (
+  return (
     <div className="flex flex-col h-full">
       {/* Brand */}
       <div className="h-16 px-6 flex items-center gap-3 border-b border-hairline bg-white shrink-0">
@@ -92,7 +102,7 @@ export function ParentLayout() {
           return (
             <button
               key={item.id}
-              onClick={() => handleNavigation(item.route)}
+              onClick={() => onNavigate(item.route)}
               aria-current={isActive ? 'page' : undefined}
               className={`w-full flex items-center gap-3 px-3.5 py-3 rounded text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50 ${
                 isActive
@@ -100,7 +110,7 @@ export function ParentLayout() {
                   : 'text-text-secondary hover:text-text-primary hover:bg-hairline/40'
               }`}
             >
-              <Icon className={`w-5 h-5 stroke-[1.75] ${isActive ? 'text-primary' : 'text-text-secondary'}`} aria-hidden="true" />
+              <Icon className={`w-5 h-5 stroke-[1.75] ${isActive ? 'text-primary' : 'text-text-secondary'}`} aria-hidden={true} />
               <span>{item.label}</span>
             </button>
           );
@@ -121,22 +131,20 @@ export function ParentLayout() {
         <div className="p-3 bg-white rounded-card border border-hairline flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <img
-              src={currentUser?.avatar || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=120&h=120'}
+              src={avatarSrc}
               alt=""
               aria-hidden="true"
               className="w-9 h-9 rounded-full object-cover border border-hairline"
             />
             <div>
-              <div className="text-xs font-medium text-text-primary leading-tight">
-                {currentUser?.name || 'Bác Nguyễn Văn Thành'}
-              </div>
+              <div className="text-xs font-medium text-text-primary leading-tight">{displayName}</div>
               <div className="text-[11px] text-text-secondary mt-0.5">
                 Phụ huynh em Khôi
               </div>
             </div>
           </div>
           <button
-            onClick={handleLogout}
+            onClick={onLogout}
             className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-text-secondary hover:text-danger rounded hover:bg-danger-light transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50"
             aria-label="Đăng xuất"
           >
@@ -146,6 +154,25 @@ export function ParentLayout() {
       </div>
     </div>
   );
+}
+
+// ── Main Layout ────────────────────────────────────────────────────────────────
+
+export function ParentLayout(): React.ReactElement {
+  const { currentUser, logout } = useAuth();
+  const navigate = useNavigate();
+  const activeTab = useActiveRoute();
+  const { isOpen: isMobileMenuOpen, toggle: toggleMobileMenu, close: closeMobileMenu } = useMobileMenu();
+
+  const handleLogout = async (): Promise<void> => {
+    await logout();
+    navigate('/login');
+  };
+
+  const handleNavigate = (route: string): void => {
+    navigate(route);
+    closeMobileMenu();
+  };
 
   return (
     <>
@@ -163,7 +190,12 @@ export function ParentLayout() {
           className="hidden lg:flex w-64 bg-surface-neutral flex-col justify-between shrink-0"
           aria-label="Thanh điều hướng"
         >
-          <SidebarContent />
+          <SidebarContent
+            activeTab={activeTab}
+            onNavigate={handleNavigate}
+            onLogout={handleLogout}
+            currentUser={currentUser}
+          />
         </aside>
 
         {/* Mobile Sidebar Overlay */}
@@ -178,7 +210,12 @@ export function ParentLayout() {
               className="lg:hidden fixed inset-y-0 left-0 w-72 bg-surface-neutral z-50 shadow-xl"
               aria-label="Menu điều hướng"
             >
-              <SidebarContent />
+              <SidebarContent
+                activeTab={activeTab}
+                onNavigate={handleNavigate}
+                onLogout={handleLogout}
+                currentUser={currentUser}
+              />
             </aside>
           </>
         )}
@@ -234,3 +271,5 @@ export function ParentLayout() {
     </>
   );
 }
+
+export default ParentLayout;

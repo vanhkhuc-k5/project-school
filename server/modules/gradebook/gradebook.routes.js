@@ -180,4 +180,29 @@ router.get(
   ctrl.getGradeAudit
 );
 
+// ---------------------------------------------------------------------------
+// TT22 ACADEMIC EVALUATION — CLASS SUMMARY & REPORT CARD
+// ---------------------------------------------------------------------------
+
+// GET /api/gradebook/classes/:classId/summary
+router.get(
+  '/classes/:classId/summary',
+  requirePermission('grade.read'),
+  ctrl.getClassAcademicSummary
+);
+
+// GET /api/gradebook/students/:studentId/report-card
+router.get(
+  '/students/:studentId/report-card',
+  requirePermission('grade.read'),
+  ctrl.getStudentReportCard
+);
+
+// POST /api/gradebook/classes/:classId/lock
+router.post(
+  '/classes/:classId/lock',
+  requirePermission('grade.publish'),
+  ctrl.lockClassGradebook
+);
+
 export { router as gradebookRoutes };

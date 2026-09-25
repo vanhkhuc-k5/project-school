@@ -591,3 +591,283 @@ export async function getStudentGradesForParent({ studentId, schoolId, period, r
     studentInfo,
   };
 }
+
+// ---------------------------------------------------------------------------
+// TT22 ACADEMIC EVALUATION ENGINE — CLASS SUMMARY & REPORT CARD
+// ---------------------------------------------------------------------------
+
+/**
+ * Get TT22 academic evaluation summary for all students in a class.
+ * Computes ĐTBmcn, xếp loại, danh hiệu thi đua.
+ */
+export async function getClassAcademicSummary({ teacherId, classId, academicYearId, semesterId, role, schoolId }) {
+  const { evaluateStudentTT22, computeClassSummary, buildSubjectScore, TT22_TEST_HELPERS } = await import('./tt22.engine.js');
+
+  // Authorization
+  if (role === 'teacher') {
+    const authorized = await repo.isTeacherAuthorized({ teacherId, classId, targetSubjectId: null, semesterId });
+    if (!authorized) {
+      throw AppError.forbidden('Bạn không có quyền xem tổng hợp lớp này.');
+    }
+  }
+
+  // Get all students in the class
+  const students = await repo.getClassStudents({ classId, academicYearId, semesterId });
+  if (!students || students.length === 0) {
+    return { classId, academicYearId, semesterId, students: [], summary: null };
+  }
+
+  // Get all grades for the class (all students)
+  const grades = await repo.getClassGrades({ classId, academicYearId, semesterId });
+
+  // Get subject definitions
+  const subjects = await repo.listSubjects({ schoolId: schoolId || 'sch_bacau' });
+  const gradingSubjectCodes = new Set(
+    (subjects || [])
+      .filter(s => s.evaluation_type === 'comment' || s.uses_comments)
+      .map(s => s.code || s.id)
+  );
+
+  // Group grades by student
+  const gradesByStudent = new Map();
+  for (const g of grades) {
+    if (!gradesByStudent.has(g.student_id)) {
+      gradesByStudent.set(g.student_id, []);
+    }
+    gradesByStudent.get(g.student_id).push(g);
+  }
+
+  // Compute per-student evaluation
+  const evaluations = [];
+
+  for (const student of students) {
+    const studentGrades = gradesByStudent.get(student.student_id) || [];
+
+    // Group by subject then by semester
+    const subjectMap = new Map();
+
+    for (const g of studentGrades) {
+      const subjKey = g.subject_id || g.subject || 'unknown';
+      if (!subjectMap.has(subjKey)) {
+        subjectMap.set(subjKey, {
+          subjectId: g.subject_id || subjKey,
+          subjectName: g.subject_name || g.subject || 'Môn học',
+          subjectCode: g.subject_code || '',
+          isGradingSubject: gradingSubjectCodes.has(g.subject_id),
+          hk1Grades: [],
+          hk2Grades: [],
+        });
+      }
+      const sem = g.semester || g.semester_id;
+      const semNum = sem === 2 || sem === '2' || sem === 'hk2' ? 2 : 1;
+      const semGrades = semNum === 1 ? 'hk1Grades' : 'hk2Grades';
+      subjectMap.get(subjKey)[semGrades].push({
+        category: g.category_code || g.grade_category_id || 'TX',
+        rawScore: parseFloat(g.raw_score ?? g.score ?? 0),
+        maxScore: parseFloat(g.max_score ?? 10),
+      });
+    }
+
+    const subjectScores = [];
+    for (const [, subjData] of subjectMap) {
+      subjectScores.push(buildSubjectScore(subjData));
+    }
+
+    // Get attendance data (simplified — from latest attendance record)
+    const attendance = await repo.getStudentAttendanceRate(student.student_id, academicYearId);
+    const attendanceRate = attendance?.attendance_rate ?? 95;
+
+    const eval_ = evaluateStudentTT22({
+      studentId: student.student_id,
+      studentName: student.name,
+      studentCode: student.student_code,
+      subjectScores,
+      attendanceRate,
+      violationCount: 0,
+    });
+
+    evaluations.push(eval_);
+  }
+
+  // Compute class-level summary
+  const summary = computeClassSummary(evaluations);
+
+  return {
+    classId,
+    academicYearId,
+    semesterId,
+    students: evaluations,
+    summary,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Get full e-report card for a single student.
+ */
+export async function getStudentReportCard({ studentId, academicYearId, semesterId, role, schoolId }) {
+  const {
+    evaluateStudentTT22,
+    buildSubjectScore,
+    generateVerificationCode,
+  } = await import('./tt22.engine.js');
+
+  if (!studentId) throw AppError.badRequest('Thiếu studentId.');
+
+  // Get student info
+  const studentInfo = await repo.getStudentById(studentId);
+  if (!studentInfo) throw AppError.notFound('Không tìm thấy học sinh.');
+
+  // Get all grades for the student
+  const grades = await repo.getStudentGrades(studentId, academicYearId, semesterId);
+
+  // Get subject definitions
+  const subjects = await repo.listSubjects({ schoolId: schoolId || 'sch_bacau' });
+  const gradingSubjectCodes = new Set(
+    (subjects || [])
+      .filter(s => s.evaluation_type === 'comment' || s.uses_comments)
+      .map(s => s.code || s.id)
+  );
+
+  // Group by subject and semester
+  const subjectMap = new Map();
+  for (const g of grades) {
+    const subjKey = g.subject_id || g.subject || 'unknown';
+    if (!subjectMap.has(subjKey)) {
+      subjectMap.set(subjKey, {
+        subjectId: g.subject_id || subjKey,
+        subjectName: g.subject_name || g.subject || 'Môn học',
+        subjectCode: g.subject_code || '',
+        isGradingSubject: gradingSubjectCodes.has(g.subject_id),
+        hk1Grades: [],
+        hk2Grades: [],
+      });
+    }
+    const sem = g.semester || g.semester_id;
+    const semNum = sem === 2 || sem === '2' || sem === 'hk2' ? 2 : 1;
+    const semGrades = semNum === 1 ? 'hk1Grades' : 'hk2Grades';
+    subjectMap.get(subjKey)[semGrades].push({
+      category: g.category_code || g.grade_category_id || 'TX',
+      rawScore: parseFloat(g.raw_score ?? g.score ?? 0),
+      maxScore: parseFloat(g.max_score ?? 10),
+    });
+  }
+
+  const subjectScores = [];
+  for (const [, subjData] of subjectMap) {
+    subjectScores.push(buildSubjectScore(subjData));
+  }
+
+  // Attendance data
+  const attendance = await repo.getStudentAttendanceRate(studentId, academicYearId);
+  const attendanceRate = attendance?.attendance_rate ?? 95;
+
+  // Evaluate
+  const evaluation = evaluateStudentTT22({
+    studentId,
+    studentName: studentInfo.name,
+    studentCode: studentInfo.student_code,
+    subjectScores,
+    attendanceRate,
+    violationCount: 0,
+    homeroomTeacherComment: null, // Loaded separately from teacher_assignments if available
+  });
+
+  // Generate verification code
+  const verificationCode = generateVerificationCode(
+    studentId,
+    academicYearId || 'AY_DEFAULT',
+    evaluation.yearlyGPA,
+    {
+      classification: evaluation.academicClassification,
+      conduct: evaluation.conductRating,
+      honor: evaluation.honorTitle,
+    }
+  );
+
+  // Get school info
+  const schoolInfo = await repo.getSchoolById(schoolId || studentInfo.school_id || 'sch_bacau');
+
+  return {
+    student: {
+      id: studentId,
+      name: studentInfo.name,
+      code: studentInfo.student_code,
+      birthDate: studentInfo.birth_date,
+      gender: studentInfo.gender,
+      className: studentInfo.class_name,
+    },
+    school: schoolInfo ? {
+      id: schoolInfo.id,
+      name: schoolInfo.name || 'Trường THCS Bắc Au',
+      address: schoolInfo.address,
+      phone: schoolInfo.phone,
+    } : { id: 'sch_bacau', name: 'Trường THCS Bắc Au' },
+    academicYear: academicYearId || 'AY_DEFAULT',
+    semesterId,
+    evaluation,
+    verificationCode,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Lock class gradebook — mark all grades as locked, preventing further modifications.
+ * Creates a gradebook_lock record for audit.
+ */
+export async function lockClassGradebook({ classId, semesterId, lockedBy, role, reason }) {
+  const now = new Date().toISOString();
+  const lockId = `lock_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+  // Get all students in class
+  const students = await repo.getClassStudents({ classId });
+
+  // For each student, lock all grades in this semester
+  if (isPostgresConfigured()) {
+    await pgQuery(`
+      UPDATE grades
+      SET status = 'locked', locked_at = $1, locked_by = $2
+      WHERE student_id = ANY($3::text[])
+        AND status = 'published'
+        AND ($4::text IS NULL OR semester_id = $4 OR semester_id IS NULL)
+    `, [now, lockedBy, students.map(s => s.student_id), semesterId || null]);
+  } else {
+    // SQLite: update all grades for these students
+    const studentIds = students.map(s => s.student_id);
+    if (studentIds.length > 0) {
+      const placeholders = studentIds.map(() => '?').join(',');
+      let sql = `
+        UPDATE grades
+        SET status = 'locked', locked_at = ?, locked_by = ?
+        WHERE student_id IN (${placeholders})
+          AND status = 'published'
+      `;
+      const params = [now, lockedBy, ...studentIds];
+      if (semesterId) {
+        sql += ` AND (semester_id = ? OR semester_id IS NULL)`;
+        params.push(semesterId);
+      }
+      db.prepare(sql).run(...params);
+    }
+  }
+
+  // Create lock audit record
+  await repo.createGradebookLock({
+    id: lockId,
+    classId,
+    semesterId: semesterId || null,
+    lockedBy,
+    reason,
+    studentCount: students.length,
+  });
+
+  return {
+    lockId,
+    classId,
+    semesterId,
+    lockedBy,
+    lockedAt: now,
+    studentCount: students.length,
+    reason,
+  };
+}
