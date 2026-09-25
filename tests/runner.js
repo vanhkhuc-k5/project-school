@@ -9,22 +9,20 @@
 //   5. Print summary and exit with correct code
 // =============================================================================
 
-// STEP 1: Set environment BEFORE any server module imports
+// STEP 1: Set environment variables BEFORE any imports.
+// CRITICAL: In ESM, static imports are hoisted and evaluated before module code runs.
+// process.env must be set BEFORE any static import to ensure env.js captures isTest=true.
 process.env.NODE_ENV = 'test';
 process.env.DB_PATH = ':memory:';   // In-memory SQLite — no production data ever touched
 
-// STEP 2: Dynamic imports (after env vars are set)
-const [
-  { testState, colors },
-  { createApp },
-  { db, initSchema },
-  { initializeTestFixtures },
-] = await Promise.all([
-  import('./helpers/testClient.js'),
-  import('../server/app/app.js'),
-  import('../server/db.js'),
-  import('./fixtures/testFixtures.js'),
-]);
+// STEP 2: Static imports — executed after process.env is set above.
+// NOTE: server/config/env.js is imported transitively via db.js and app.js.
+// Because NODE_ENV='test' is set before these imports, config.IS_TEST will be true
+// and config will use the test JWT secret (TEST_FALLBACK_KEY).
+import { testState, colors } from './helpers/testClient.js';
+import { createApp } from '../server/app/app.js';
+import { db, initSchema } from '../server/db.js';
+import { initializeTestFixtures } from './fixtures/testFixtures.js';
 
 // STEP 3: Import all test suites (module scope — executed after env vars & DB init)
 const [

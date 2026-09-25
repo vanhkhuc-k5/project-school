@@ -278,7 +278,7 @@ export function apiRequest(method, path, body = null, tokenOrOptions = null, por
         path: '/api' + path,
         method,
         headers,
-        timeout: 15000,
+        timeout: 30000,
       },
       (res) => {
         let responseBody = '';
@@ -307,7 +307,7 @@ export function apiRequest(method, path, body = null, tokenOrOptions = null, por
 
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error(`API request timeout [${method} ${path}] after 15000ms`));
+      reject(new Error(`API request timeout [${method} ${path}] after 30000ms`));
     });
 
     if (dataString) {
@@ -363,7 +363,7 @@ export const api = {
           path: '/api' + path,
           method: 'POST',
           headers,
-          timeout: 15000,
+          timeout: 30000,
         },
         (res) => {
           let responseBody = '';
@@ -376,7 +376,7 @@ export const api = {
         }
       );
       req.on('error', (err) => reject(new Error(`API request error: ${err.message}`)));
-      req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+      req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout after 30000ms')); });
       req.write(rawBody);
       req.end();
     });

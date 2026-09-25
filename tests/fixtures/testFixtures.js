@@ -10,9 +10,12 @@
 
 import { db } from '../../server/db.js';
 import bcrypt from 'bcryptjs';
+import { config } from '../../server/config/env.js';
 
-// BCRYPT_ROUNDS must match AuthService's config.BCRYPT_ROUNDS (defaults to 10 from .env)
-const BCRYPT_ROUNDS = 10;
+// BCRYPT_ROUNDS must match config.BCRYPT_ROUNDS from env.js
+// In test mode: 4 rounds (set by env.js)
+// In other modes: varies based on environment
+const BCRYPT_ROUNDS = config.BCRYPT_ROUNDS;
 const passwordHash = bcrypt.hashSync('123456', BCRYPT_ROUNDS);
 
 // ============================================================
@@ -181,15 +184,30 @@ function createSchools() {
 // ============================================================
 
 function createAcademicYears() {
+  // Use INSERT OR REPLACE to ensure is_current=1 is applied even if row already exists
+  // (seed.js may have inserted it with is_current=0 or different value)
   safeInsert('academic_years', `
-    INSERT OR IGNORE INTO academic_years (id, school_id, name, start_date, end_date, is_current, semester_number)
+    INSERT OR REPLACE INTO academic_years (id, school_id, name, start_date, end_date, is_current, semester_number)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `, ACADEMIC_YEAR_A, SCHOOL_A, '2024 - 2025', '2024-09-01', '2025-05-31', 1, 2);
   
   safeInsert('academic_years', `
-    INSERT OR IGNORE INTO academic_years (id, school_id, name, start_date, end_date, is_current, semester_number)
+    INSERT OR REPLACE INTO academic_years (id, school_id, name, start_date, end_date, is_current, semester_number)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `, ACADEMIC_YEAR_B, SCHOOL_B, '2024 - 2025', '2024-09-01', '2025-05-31', 1, 2);
+
+  // Ensure ONLY sch_bacau's year has is_current=1 and other schools' years have is_current=0
+  // This fixes cases where seed.js or other fixtures may have set multiple years as current
+  try {
+    db.prepare(`UPDATE academic_years SET is_current = 0 WHERE school_id = ? AND id != ?`)
+      .run(SCHOOL_A, ACADEMIC_YEAR_A);
+    db.prepare(`UPDATE academic_years SET is_current = 0 WHERE school_id = ? AND id != ?`)
+      .run(SCHOOL_B, ACADEMIC_YEAR_B);
+    db.prepare(`UPDATE academic_years SET is_current = 1 WHERE id = ?`)
+      .run(ACADEMIC_YEAR_A);
+    db.prepare(`UPDATE academic_years SET is_current = 1 WHERE id = ?`)
+      .run(ACADEMIC_YEAR_B);
+  } catch (_) {}
 }
 
 // ============================================================
@@ -197,22 +215,34 @@ function createAcademicYears() {
 // ============================================================
 
 function createSemesters() {
-  // School A semesters
+  // Use INSERT OR REPLACE to ensure data is correct even if row already exists
   safeInsert('semesters', `
-    INSERT OR IGNORE INTO semesters (id, academic_year_id, school_id, name, start_date, end_date, is_current, semester_number)
+    INSERT OR REPLACE INTO semesters (id, academic_year_id, school_id, name, start_date, end_date, is_current, semester_number)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, SEMESTER_A1, ACADEMIC_YEAR_A, SCHOOL_A, 'Học kỳ 1', '2024-09-01', '2024-12-31', 1, 1);
   
   safeInsert('semesters', `
-    INSERT OR IGNORE INTO semesters (id, academic_year_id, school_id, name, start_date, end_date, is_current, semester_number)
+    INSERT OR REPLACE INTO semesters (id, academic_year_id, school_id, name, start_date, end_date, is_current, semester_number)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, SEMESTER_A2, ACADEMIC_YEAR_A, SCHOOL_A, 'Học kỳ 2', '2025-01-01', '2025-05-31', 0, 2);
   
   // School B semester
   safeInsert('semesters', `
-    INSERT OR IGNORE INTO semesters (id, academic_year_id, school_id, name, start_date, end_date, is_current, semester_number)
+    INSERT OR REPLACE INTO semesters (id, academic_year_id, school_id, name, start_date, end_date, is_current, semester_number)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, SEMESTER_B1, ACADEMIC_YEAR_B, SCHOOL_B, 'Học kỳ 1', '2024-09-01', '2024-12-31', 1, 1);
+
+  // Ensure ONLY the designated semester has is_current=1 per school
+  try {
+    db.prepare(`UPDATE semesters SET is_current = 0 WHERE school_id = ? AND academic_year_id = ?`)
+      .run(SCHOOL_A, ACADEMIC_YEAR_A);
+    db.prepare(`UPDATE semesters SET is_current = 0 WHERE school_id = ? AND academic_year_id = ?`)
+      .run(SCHOOL_B, ACADEMIC_YEAR_B);
+    db.prepare(`UPDATE semesters SET is_current = 1 WHERE id = ?`)
+      .run(SEMESTER_A1);
+    db.prepare(`UPDATE semesters SET is_current = 1 WHERE id = ?`)
+      .run(SEMESTER_B1);
+  } catch (_) {}
 }
 
 // ============================================================
