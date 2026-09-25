@@ -243,6 +243,30 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
       }
     });
 
+    // G38: Handle TUITION_PAID event — parent receives confirmation after payment
+    eventSource.addEventListener('TUITION_PAID', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const notification: Notification = {
+          id: `tuition-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type: 'tuition_paid',
+          title: 'Thanh toán học phí thành công',
+          message: data.message || `Đã nhận thanh toán học phí cho ${data.studentName}`,
+          data,
+          timestamp: data.timestamp || new Date().toISOString(),
+        };
+
+        setNotifications((prev) => [notification, ...prev]);
+        setUnreadCount((prev) => prev + 1);
+
+        if (onNotification) {
+          onNotification(notification);
+        }
+      } catch (err) {
+        console.error('[Realtime] Failed to parse TUITION_PAID event:', err);
+      }
+    });
+
     eventSourceRef.current = eventSource;
   }, [currentUser, onNotification]);
 

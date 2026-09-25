@@ -33,6 +33,29 @@ async function isParentOfStudent(parentUserId, studentId) {
 }
 
 /**
+ * Get parent user ID for a student (used for SSE notification dispatch).
+ */
+export async function getParentUserId(studentId) {
+  if (!studentId) return null;
+  if (isPostgresConfigured()) {
+    const res = await pgQuery(`
+      SELECT p.user_id FROM parent_students ps
+      JOIN parents p ON ps.parent_id = p.id
+      WHERE ps.student_id = $1 AND ps.is_active = TRUE
+      LIMIT 1
+    `, [studentId]);
+    return res.rows[0]?.user_id || null;
+  }
+  const row = db.prepare(`
+    SELECT p.user_id FROM parent_students ps
+    JOIN parents p ON ps.parent_id = p.id
+    WHERE ps.student_id = ? AND ps.is_active = 1
+    LIMIT 1
+  `).get(studentId);
+  return row?.user_id || null;
+}
+
+/**
  * Get user's school ID.
  */
 async function getUserSchoolId(userId) {

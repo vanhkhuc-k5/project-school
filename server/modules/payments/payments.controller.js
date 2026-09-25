@@ -13,8 +13,8 @@ import { AppError } from '../../shared/errors/index.js';
 export async function handleProviderWebhook(req, res, next) {
   try {
     const { provider } = req.params;
-    const signature = req.headers['x-webhook-signature'] || 
-                     req.headers['x-signature'] || 
+    const signature = req.headers['x-webhook-signature'] ||
+                     req.headers['x-signature'] ||
                      req.body?.signature ||
                      'test_webhook_signature';
 
@@ -23,7 +23,7 @@ export async function handleProviderWebhook(req, res, next) {
 
     // Create gateway with provider
     const gateway = createPaymentGateway();
-    
+
     // Handle webhook
     const result = await gateway.handleWebhook(req.body, signature);
 
@@ -39,7 +39,7 @@ export async function handleProviderWebhook(req, res, next) {
     });
   } catch (error) {
     console.error(`[Payment Webhook] Error:`, error.message);
-    
+
     if (error.status === 403) {
       // Invalid signature - return 403
       return res.status(403).json({
@@ -47,7 +47,7 @@ export async function handleProviderWebhook(req, res, next) {
         error: 'Invalid webhook signature',
       });
     }
-    
+
     next(error);
   }
 }
@@ -75,7 +75,7 @@ export async function getPaymentHealth(req, res, next) {
 /**
  * POST /api/payments/sandbox/simulate-payment
  * G38: Sandbox simulation — marks an invoice as paid and creates a payment record.
- * This is for dev/testing only. In production, this would be handled by bank webhook.
+ * Dispatches SSE TUITION_PAID event to the parent user.
  */
 export async function simulateSandboxPayment(req, res, next) {
   try {
@@ -89,11 +89,11 @@ export async function simulateSandboxPayment(req, res, next) {
     }
 
     // Import tuition repository directly to avoid circular deps
-    const { tuitionRepository } = await import('../tuition/tuition.repository.js');
+    const { tuitionRepo } = await import('../tuition/tuition.repository.js');
     const { nanoid } = await import('nanoid');
 
     // Find invoice
-    const invoice = await tuitionRepository.findInvoiceById(invoiceId);
+    const invoice = await tuitionRepo.findById(invoiceId);
     if (!invoice) {
       return res.status(404).json({
         success: false,
@@ -105,29 +105,49 @@ export async function simulateSandboxPayment(req, res, next) {
       return res.status(200).json({
         success: true,
         message: 'Hóa đơn đã được thanh toán trước đó.',
-        receiptNo: `BL-SBX-${invoiceId.slice(-8)}`,
+        receiptNo: `BL-${new Date().getFullYear()}${(new Date().getMonth() + 1).toString().padStart(2, '0')}-${invoiceId.slice(-6).toUpperCase()}`,
       });
     }
 
     const now = new Date().toISOString();
-    const receiptNo = `BL-SBX-${nanoid(8).toUpperCase()}`;
+    const receiptNo = `BL-${new Date().getFullYear()}${(new Date().getMonth() + 1).toString().padStart(2, '0')}-${nanoid(6).toUpperCase()}`;
 
     // Create payment record
-    await tuitionRepository.createPayment({
+    await tuitionRepo.createPayment({
       id: `sbx_pay_${nanoid(10)}`,
       invoiceId,
-      amount: invoice.total || invoice.total_amount || 0,
+      amount: invoice.total,
       paymentMethod: 'VietQR_Sandbox',
       transactionReference: `NAPAS247_SBX_${nanoid(16).toUpperCase()}`,
-      paidBy: invoice.student_id,
+      paidBy: invoice.studentId,
       notes: 'Thanh toán sandbox — Giả lập VietQR Napas 247 (Không có tiền thật)',
     });
 
     // Mark invoice as paid
-    await tuitionRepository.updateInvoice(invoiceId, {
+    await tuitionRepo.updateInvoice(invoiceId, {
       status: 'paid',
       paidAt: now,
     });
+
+    // Dispatch SSE notification to parent user
+    try {
+      const { dispatchToUser } = await import('../notifications/sse.controller.js');
+      const { getParentUserId } = await import('../tuition/tuition.service.js');
+      const parentUserId = await getParentUserId(invoice.studentId);
+      if (parentUserId) {
+        dispatchToUser(parentUserId, 'TUITION_PAID', {
+          event: 'TUITION_PAID',
+          invoiceId,
+          receiptNo,
+          amount: invoice.total,
+          studentName: invoice.studentName,
+          paidAt: now,
+          message: `Đã nhận thanh toán học phí ${invoice.total?.toLocaleString('vi-VN')}đ cho học sinh ${invoice.studentName}`,
+        });
+      }
+    } catch (notifyErr) {
+      console.warn('[Sandbox] SSE notification failed (non-fatal):', notifyErr.message);
+    }
 
     console.log(`[Sandbox] Invoice ${invoiceId} marked as paid. Receipt: ${receiptNo}`);
 
@@ -136,8 +156,64 @@ export async function simulateSandboxPayment(req, res, next) {
       message: 'Giả lập thanh toán thành công!',
       receiptNo,
       paidAt: now,
-      amount: invoice.total || invoice.total_amount || 0,
+      amount: invoice.total,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/payments/receipt/:invoiceId
+ * G38: Retrieve payment receipt details for a paid invoice.
+ */
+export async function getPaymentReceipt(req, res, next) {
+  try {
+    const { invoiceId } = req.params;
+
+    if (!invoiceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'invoiceId là bắt buộc.',
+      });
+    }
+
+    const { tuitionRepo } = await import('../tuition/tuition.repository.js');
+
+    const invoice = await tuitionRepo.findById(invoiceId);
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        error: 'Hóa đơn không tồn tại.',
+      });
+    }
+
+    const payments = await tuitionRepo.getPaymentsForInvoice(invoiceId);
+    const payment = payments[0];
+
+    const now = new Date();
+    const receipt = {
+      receiptNo: payment?.transactionReference
+        ? `BL-${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}-${invoiceId.slice(-6).toUpperCase()}`
+        : '—',
+      schoolName: 'Trường THPT EduPortal',
+      schoolAddress: 'Số 123 Đường ABC, Quận 1, TP. Hồ Chí Minh',
+      taxId: '0123456789',
+      studentName: invoice.studentName || '—',
+      className: invoice.className || '—',
+      billingPeriod: invoice.billingPeriod || '—',
+      totalAmount: invoice.total,
+      amountPaid: invoice.amountPaid || invoice.total,
+      paidAt: invoice.paidAt || now.toISOString(),
+      paymentMethod: payment?.paymentMethod || 'VietQR',
+      transactionRef: payment?.transactionReference || '—',
+      cashierName: 'Nguyễn Thị Quỳnh Trang',
+      cashierTitle: 'Thủ quỹ',
+      lineItems: [],
+      issuedAt: now.toISOString(),
+    };
+
+    res.json({ success: true, receipt });
   } catch (error) {
     next(error);
   }

@@ -592,6 +592,28 @@ export const parentApi = {
     );
     return res?.success ? res : { success: false };
   },
+
+  // G38: Get payment receipt details for e-receipt printing
+  async printReceipt(invoiceId: string): Promise<StandardResponse<{
+    receiptNo: string;
+    schoolName: string;
+    schoolAddress: string;
+    taxId: string;
+    studentName: string;
+    className: string;
+    billingPeriod: string;
+    totalAmount: number;
+    amountPaid: number;
+    paidAt: string;
+    paymentMethod: string;
+    transactionRef: string;
+    cashierName: string;
+    cashierTitle: string;
+    lineItems: Array<{ description: string; amount: number }>;
+    issuedAt: string;
+  }>> {
+    return request(`/payments/receipt/${invoiceId}`);
+  },
 };
 
 export interface PaginationMeta {
@@ -4833,6 +4855,211 @@ export const logbookApi = {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  },
+};
+
+// =============================================================================
+// SMART LEARNING API CLIENT
+// Flashcards with SM-2, Flipped Classroom, Periodic Table, Exam Parser
+// =============================================================================
+
+export interface FlashcardDeck {
+  id: string;
+  title: string;
+  description?: string;
+  subject_name?: string;
+  grade_level?: number;
+  deck_type: 'general' | 'vocabulary' | 'formula' | 'history' | 'geography' | 'science';
+  card_count: number;
+  is_system: boolean;
+  created_at: string;
+  stats?: DeckStats;
+}
+
+export interface FlashcardCard {
+  id: string;
+  deck_id: string;
+  front_text: string;
+  front_type: 'text' | 'formula' | 'image' | 'mixed';
+  back_text: string;
+  back_type: 'text' | 'formula' | 'image' | 'mixed';
+  phonetic?: string;
+  audio_url?: string;
+  example_sentence?: string;
+  formula_latex?: string;
+  hint?: string;
+  difficulty: number;
+  // SM-2 progress fields
+  repetitions?: number;
+  ease_factor?: number;
+  interval_days?: number;
+  mastery_level?: 'new' | 'learning' | 'review' | 'mastered';
+}
+
+export interface DeckStats {
+  total_cards: number;
+  mastered: number;
+  review: number;
+  learning: number;
+  due_now: number;
+  mastery_rate: number;
+}
+
+export interface StudySession {
+  due_cards: FlashcardCard[];
+  new_cards: FlashcardCard[];
+  total: number;
+  has_due: boolean;
+}
+
+export interface ReviewResult {
+  card_id: string;
+  card: { front_text: string; back_text: string; phonetic?: string };
+  progress: {
+    repetitions: number;
+    ease_factor: number;
+    interval_days: number;
+    next_review_date: string;
+    mastery_level: string;
+  };
+  quality_label: { label: string; color: string };
+  message: string;
+}
+
+export interface FlippedMaterial {
+  id: string;
+  title: string;
+  description?: string;
+  slide_url?: string;
+  mindmap_url?: string;
+  video_url?: string;
+  summary_text?: string;
+  warmup_questions: Array<{
+    id: string;
+    question: string;
+    options: string[];
+    correct_answer: number;
+  }>;
+}
+
+export interface PeriodicElement {
+  atomic_number: number;
+  symbol: string;
+  name: string;
+  name_vietnamese?: string;
+  atomic_mass: number;
+  category: string;
+  group?: number;
+  period?: number;
+  electron_configuration?: string;
+  description?: string;
+}
+
+export interface ParsedQuestion {
+  number?: string;
+  prompt: string;
+  type: 'multiple_choice';
+  options: Array<{ key: string; text: string; isCorrect: boolean }>;
+  correct_answer: number;
+  difficulty: 'NB' | 'TH' | 'VD' | 'VDC';
+  max_score: number;
+}
+
+export interface ExamParseResult {
+  queue_id: string;
+  status: string;
+  questions: ParsedQuestion[];
+  questions_count: number;
+  confidence: number;
+  message: string;
+}
+
+export const smartLearningApi = {
+  // ── Flashcard Decks ────────────────────────────────────────────────────────
+  async listDecks(params?: {
+    subject_id?: string;
+    grade_level?: number;
+    deck_type?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<FlashcardDeck[]> {
+    const query = params ? new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => [k, String(v)])
+    ).toString() : '';
+    const res = await request<FlashcardDeck[]>(`/smart-learning/flashcards/decks${query ? `?${query}` : ''}`);
+    return res?.success ? res.data as FlashcardDeck[] : [];
+  },
+
+  async createDeck(data: Partial<FlashcardDeck>): Promise<StandardResponse<FlashcardDeck>> {
+    return request<FlashcardDeck>('/smart-learning/flashcards/decks', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getDeck(deckId: string): Promise<{ deck: FlashcardDeck; cards: FlashcardCard[] } | null> {
+    const res = await request<{ deck: FlashcardDeck; cards: FlashcardCard[] }>(`/smart-learning/flashcards/decks/${deckId}`);
+    return res?.success ? res.data as { deck: FlashcardDeck; cards: FlashcardCard[] } : null;
+  },
+
+  async getStudySession(deckId: string, limit?: number): Promise<StudySession | null> {
+    const query = limit ? `?limit=${limit}` : '';
+    const res = await request<StudySession>(`/smart-learning/flashcards/decks/${deckId}/study${query}`);
+    return res?.success ? res.data as StudySession : null;
+  },
+
+  async getDeckStats(deckId: string): Promise<DeckStats | null> {
+    const res = await request<DeckStats>(`/smart-learning/flashcards/decks/${deckId}/stats`);
+    return res?.success ? res.data as DeckStats : null;
+  },
+
+  async createCard(deckId: string, data: Partial<FlashcardCard>): Promise<StandardResponse<FlashcardCard>> {
+    return request<FlashcardCard>(`/smart-learning/flashcards/decks/${deckId}/cards`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async reviewCard(cardId: string, quality: number, responseTimeMs?: number): Promise<ReviewResult | null> {
+    const res = await request<ReviewResult>(`/smart-learning/flashcards/cards/${cardId}/review`, {
+      method: 'POST',
+      body: JSON.stringify({ quality, response_time_ms: responseTimeMs }),
+    });
+    return res?.success ? res.data as ReviewResult : null;
+  },
+
+  // ── Flipped Classroom ──────────────────────────────────────────────────────
+  async getFlippedMaterial(timetableId: string): Promise<FlippedMaterial | null> {
+    const res = await request<FlippedMaterial>(`/smart-learning/flipped/${timetableId}`);
+    return res?.success ? res.data as FlippedMaterial : null;
+  },
+
+  async createFlippedMaterial(data: Partial<FlippedMaterial>): Promise<StandardResponse<FlippedMaterial>> {
+    return request<FlippedMaterial>('/smart-learning/flipped/materials', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // ── Periodic Table ──────────────────────────────────────────────────────────
+  async getPeriodicTable(): Promise<PeriodicElement[]> {
+    const res = await request<PeriodicElement[]>('/smart-learning/periodic-table');
+    return res?.success ? res.data as PeriodicElement[] : [];
+  },
+
+  async getElement(atomicNumber: number): Promise<PeriodicElement | null> {
+    const res = await request<PeriodicElement>(`/smart-learning/periodic-table/${atomicNumber}`);
+    return res?.success ? res.data as PeriodicElement : null;
+  },
+
+  // ── Exam Parser ─────────────────────────────────────────────────────────────
+  async parseExamDocx(fileContent: string, filename: string, subject?: string): Promise<ExamParseResult | null> {
+    const res = await request<ExamParseResult>('/smart-learning/parse-exam-docx', {
+      method: 'POST',
+      body: JSON.stringify({ file_content: fileContent, filename, subject }),
+    });
+    return res?.success ? res.data as ExamParseResult : null;
   },
 };
 
