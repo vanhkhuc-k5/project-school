@@ -453,6 +453,32 @@ export const teacherApi = {
       ? (res as unknown as { records: T[] }).records
       : [];
   },
+
+  // G38 Teacher ↔ Parent real-time conversations (SSE 2-way chat)
+  async getConversations(page = 1, limit = 50): Promise<{ conversations: TeacherConversation[] }> {
+    const res = await request<{ conversations: TeacherConversation[] }>(
+      `/messages/conversations?page=${page}&limit=${limit}`
+    );
+    return res?.success ? (res as unknown as { conversations: TeacherConversation[] }) : { conversations: [] };
+  },
+
+  async getConversationMessages(conversationId: string, page = 1, limit = 100): Promise<{ messages: TeacherMessage[] }> {
+    const res = await request<{ messages: TeacherMessage[] }>(
+      `/messages/conversations/${conversationId}/messages?page=${page}&limit=${limit}`
+    );
+    return res?.success ? (res as unknown as { messages: TeacherMessage[] }) : { messages: [] };
+  },
+
+  async sendReply(conversationId: string, content: string): Promise<StandardResponse> {
+    return request(`/messages/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+  },
+
+  async markConversationRead(conversationId: string): Promise<StandardResponse> {
+    return request(`/messages/conversations/${conversationId}/read`, { method: 'PATCH' });
+  },
 };
 
 // =============================================
@@ -550,32 +576,6 @@ export const parentApi = {
       method: 'POST',
       body: JSON.stringify(data),
     });
-  },
-
-  // G38 Teacher ↔ Parent Conversations (2-way real-time chat)
-  async getConversations(page = 1, limit = 50): Promise<{ conversations: TeacherConversation[] }> {
-    const res = await request<{ conversations: TeacherConversation[] }>(
-      `/messages/conversations?page=${page}&limit=${limit}`
-    );
-    return res?.success ? res : { conversations: [] };
-  },
-
-  async getConversationMessages(conversationId: string, page = 1, limit = 100): Promise<{ messages: TeacherMessage[] }> {
-    const res = await request<{ messages: TeacherMessage[] }>(
-      `/messages/conversations/${conversationId}/messages?page=${page}&limit=${limit}`
-    );
-    return res?.success ? res : { messages: [] };
-  },
-
-  async sendReply(conversationId: string, content: string): Promise<StandardResponse> {
-    return request(`/messages/conversations/${conversationId}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({ content }),
-    });
-  },
-
-  async markConversationRead(conversationId: string): Promise<StandardResponse> {
-    return request(`/messages/conversations/${conversationId}/read`, { method: 'PATCH' });
   },
 
   // Invoices
