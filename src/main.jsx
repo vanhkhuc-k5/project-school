@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ServerStateProvider } from './context/ServerStateContext.jsx';
 import { SyncProvider } from './context/SyncContext.jsx';
+import { RealtimeProvider } from './context/RealtimeContext.jsx';
 import { AppRouter } from './router/AppRouter.jsx';
 import './index.css';
 
@@ -11,7 +12,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <AuthProvider>
       <ServerStateProvider>
         <SyncProvider>
-          <AppRouter />
+          <RealtimeProvider>
+            <AppRouter />
+          </RealtimeProvider>
         </SyncProvider>
       </ServerStateProvider>
     </AuthProvider>
