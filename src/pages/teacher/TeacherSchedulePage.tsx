@@ -1,3 +1,4 @@
+// TeacherSchedulePage.tsx — TypeScript conversion with real API integration
 import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
@@ -14,19 +15,56 @@ import {
   BookOpen,
 } from 'lucide-react';
 
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
+interface PeriodSlot {
+  period: number;
+  subject: string;
+  className?: string;
+  class?: string;
+  time: string;
+  room?: string;
+}
+
+interface DaySchedule {
+  day: string;
+  dayOfWeek?: number;
+  periods: PeriodSlot[];
+}
+
+interface TimetableResponse {
+  schedule: DaySchedule[];
+  meta?: {
+    totalSlots?: number;
+    semester?: string;
+  };
+}
+
+interface ClassMetadata {
+  name: string;
+  studentCount?: number;
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────────
+
 export function TeacherSchedulePage() {
-  const [schedule, setSchedule] = useState([]);
-  const [metadata, setMetadata] = useState(null);
+  const [schedule, setSchedule] = useState<DaySchedule[]>([]);
+  const [metadata, setMetadata] = useState<{ totalSlots?: number } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [viewMode, setViewMode] = useState('week'); // 'week' | 'day'
+  const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'week' | 'day'>('week');
 
   // Dynamic today calculation
   const todayIdx = new Date().getDay();
-  const dayMap = { 1: 'Thứ Hai', 2: 'Thứ Ba', 3: 'Thứ Tư', 4: 'Thứ Năm', 5: 'Thứ Sáu', 6: 'Thứ Bảy', 0: 'Chủ Nhật' };
+  const dayMap: Record<number, string> = {
+    1: 'Thứ Hai', 2: 'Thứ Ba', 3: 'Thứ Tư',
+    4: 'Thứ Năm', 5: 'Thứ Sáu', 6: 'Thứ Bảy', 0: 'Chủ Nhật'
+  };
   const todayDayName = dayMap[todayIdx] || 'Thứ Hai';
 
-  const [selectedDay, setSelectedDay] = useState(todayDayName === 'Chủ Nhật' ? 'Thứ Hai' : todayDayName);
+  const [selectedDay, setSelectedDay] = useState<string>(
+    todayDayName === 'Chủ Nhật' ? 'Thứ Hai' : todayDayName
+  );
   const daysOfWeek = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 
   const fetchSchedule = async () => {
@@ -34,14 +72,15 @@ export function TeacherSchedulePage() {
     setError(null);
     try {
       const res = await timetableApi.getTeacherTimetable();
-      if (res && res.schedule) {
-        setSchedule(res.schedule);
-        setMetadata(res.meta || null);
+      if (res) {
+        const data = res as TimetableResponse;
+        setSchedule(data.schedule || []);
+        setMetadata(data.meta || null);
       } else {
         setSchedule([]);
       }
-    } catch (err) {
-      setError(err.message || 'Không thể tải lịch giảng dạy.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Không thể tải lịch giảng dạy.');
     } finally {
       setLoading(false);
     }
@@ -51,7 +90,7 @@ export function TeacherSchedulePage() {
     fetchSchedule();
   }, []);
 
-  const getSubjectColor = (subject = '') => {
+  const getSubjectColor = (subject = ''): string => {
     if (subject.includes('Toán')) return 'border-l-4 border-l-ocean bg-ocean/5 text-primary';
     if (subject.includes('Lý') || subject.includes('Vật lý')) return 'border-l-4 border-l-indigo-500 bg-indigo-50/50 text-indigo-900';
     if (subject.includes('Hóa')) return 'border-l-4 border-l-emerald-500 bg-emerald-50/50 text-emerald-900';
@@ -170,11 +209,9 @@ export function TeacherSchedulePage() {
                 }`}
               >
                 {/* Day Header */}
-                <div
-                  className={`p-3.5 border-b flex items-center justify-between ${
-                    isToday ? 'bg-primary text-white' : 'bg-surface-neutral text-text-primary'
-                  }`}
-                >
+                <div className={`p-3.5 border-b flex items-center justify-between ${
+                  isToday ? 'bg-primary text-white' : 'bg-surface-neutral text-text-primary'
+                }`}>
                   <div className="flex items-center gap-2">
                     <CalendarIcon className="w-4 h-4 stroke-[1.75]" />
                     <span className="font-semibold text-sm">{dayName}</span>
@@ -192,9 +229,7 @@ export function TeacherSchedulePage() {
                     dayObj.periods.map((p, idx) => (
                       <div
                         key={idx}
-                        className={`p-3 rounded border text-xs transition-all hover:scale-[1.02] ${getSubjectColor(
-                          p.subject
-                        )}`}
+                        className={`p-3 rounded border text-xs transition-all hover:scale-[1.02] ${getSubjectColor(p.subject)}`}
                       >
                         <div className="flex items-center justify-between mb-1">
                           <span className="font-bold text-xs uppercase tracking-tight">{p.subject}</span>
@@ -204,7 +239,7 @@ export function TeacherSchedulePage() {
                         </div>
                         <div className="text-[11px] font-semibold text-primary flex items-center gap-1 mt-1">
                           <Users className="w-3 h-3" />
-                          <span>Lớp: {p.className || '10A1'}</span>
+                          <span>Lớp: {p.className || p.class || '10A1'}</span>
                         </div>
                         <div className="text-[11px] text-text-secondary flex items-center gap-1 mt-1">
                           <Clock className="w-3 h-3" />
@@ -264,9 +299,7 @@ export function TeacherSchedulePage() {
                 currentDayData.periods.map((p, idx) => (
                   <div
                     key={idx}
-                    className={`p-4 rounded-card border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:shadow-sm ${getSubjectColor(
-                      p.subject
-                    )}`}
+                    className={`p-4 rounded-card border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:shadow-sm ${getSubjectColor(p.subject)}`}
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2.5">
@@ -274,7 +307,7 @@ export function TeacherSchedulePage() {
                           Tiết {p.period}
                         </span>
                         <h4 className="text-base font-semibold text-text-primary">{p.subject}</h4>
-                        <Badge variant="info">Lớp {p.className || '10A1'}</Badge>
+                        <Badge variant="info">Lớp {p.className || p.class || '10A1'}</Badge>
                       </div>
                       <div className="flex flex-wrap items-center gap-4 text-xs text-text-secondary pt-1">
                         <span className="flex items-center gap-1.5">

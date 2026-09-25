@@ -85,14 +85,14 @@ function extractTodaySlots(response: TimetableResponse | null): TodaySlot[] {
 
   const now = new Date();
   return todaySchedule.periods.map((slot: TimetableSlot) => {
-    const slotDate = new Date(`${new Date().toDateString()}T${slot.start_time || '07:00'}`);
+    const slotDate = new Date(`${new Date().toDateString()}T${slot.startTime || '07:00'}`);
     const isPast = now > slotDate;
     return {
       period: slot.period || 0,
-      startTime: slot.start_time || '',
-      endTime: slot.end_time || '',
-      subjectName: slot.subject_name || slot.subject || '',
-      className: slot.class_name || slot.class || '',
+      startTime: slot.startTime || '',
+      endTime: slot.endTime || '',
+      subjectName: slot.subject || '',
+      className: slot.className || '',
       room: slot.room,
       isPast,
       status: isPast ? 'completed' : 'upcoming',

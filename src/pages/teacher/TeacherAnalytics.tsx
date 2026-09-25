@@ -1,3 +1,4 @@
+// TeacherAnalytics.tsx — TypeScript conversion with real API integration
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/Card';
@@ -22,14 +23,77 @@ import {
   Layers,
 } from 'lucide-react';
 
-export function TeacherAnalytics({ onNavigateCreateAssignment }) {
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
+interface Student {
+  id: string;
+  name: string;
+  code: string;
+  gpa: number;
+  gpaDiff: string;
+  submissionRate: number;
+  riskLevel: 'high' | 'warning' | 'good';
+  riskBadgeType: 'danger' | 'warning' | 'success';
+  riskText: string;
+  avatarColor: string;
+  initials: string;
+  keyTopics: string[];
+}
+
+interface RadarInsight {
+  title: string;
+  percent: string;
+  desc: string;
+}
+
+interface InterventionAlert {
+  title: string;
+  description: string;
+  countBadge: string;
+}
+
+interface Recommendation {
+  week: string;
+  content: string;
+}
+
+interface KpiProficiency {
+  value: string;
+  note: string;
+  change: string;
+}
+
+interface AnalyticsData {
+  currentClass: string;
+  classes: string[];
+  terms: string[];
+  topics: string[];
+  students: Student[];
+  kpis: {
+    proficiency: KpiProficiency;
+    passing: { current: number; total: number; note: string };
+    monitoring: { count: number; note: string; tag: string };
+    danger: { count: number; note: string; tag: string };
+  };
+  radarInsights: { strength: RadarInsight; weakness: RadarInsight };
+  recommendation: Recommendation;
+  interventionAlert: InterventionAlert;
+  lastUpdated: string;
+}
+
+type RosterTab = 'all' | 'high_risk' | 'warning' | 'good';
+
+// ─── Main Component ────────────────────────────────────────────────────────────
+
+export function TeacherAnalytics() {
   const navigate = useNavigate();
   const { triggerSync } = useSync();
-  const [data, setData] = useState(TEACHER_ANALYTICS_DATA);
+
+  const [data, setData] = useState<AnalyticsData>(TEACHER_ANALYTICS_DATA as unknown as AnalyticsData);
   const [selectedClass, setSelectedClass] = useState(data.currentClass);
   const [selectedTopicFilter, setSelectedTopicFilter] = useState('Tất cả chuyên đề');
   const [studentSearch, setStudentSearch] = useState('');
-  const [activeRosterTab, setActiveRosterTab] = useState('all');
+  const [activeRosterTab, setActiveRosterTab] = useState<RosterTab>('all');
   const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
   const [notifySuccess, setNotifySuccess] = useState(false);
   const [isSubmittingNotify, setIsSubmittingNotify] = useState(false);
@@ -38,16 +102,14 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
     let mounted = true;
     teacherApi.getAnalytics().then((res) => {
       if (mounted && res) {
-        setData(res);
+        setData(res as AnalyticsData);
       }
     });
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   // Filter students
-  const filteredStudents = (data?.students || []).filter((st) => {
+  const filteredStudents = (data?.students || []).filter((st: Student) => {
     const matchSearch =
       st.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
       st.code.toLowerCase().includes(studentSearch.toLowerCase());
@@ -85,9 +147,7 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
             <Badge variant="info" size="sm">Báo cáo sư phạm học kỳ</Badge>
             <span className="text-[11px] text-text-secondary">• {data.lastUpdated}</span>
           </div>
-          <h1 className="text-2xl font-medium text-text-primary">
-            Phân tích năng lực học sinh
-          </h1>
+          <h1 className="text-2xl font-medium text-text-primary">Phân tích năng lực học sinh</h1>
           <p className="text-xs text-text-secondary mt-1">
             Theo dõi mức độ nắm bắt kiến thức chuyên đề và nhận diện sớm học sinh cần can thiệp hỗ trợ học tập.
           </p>
@@ -122,7 +182,7 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
             onChange={(e) => setSelectedClass(e.target.value)}
             className="h-9 px-3 bg-surface-neutral border border-hairline rounded text-xs font-medium text-text-primary focus:border-ocean outline-none"
           >
-            {data.classes.map((c, i) => (
+            {data.classes.map((c: string, i: number) => (
               <option key={i} value={c}>{c}</option>
             ))}
           </select>
@@ -131,7 +191,7 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
         <div className="flex items-center gap-2">
           <span className="text-xs text-text-secondary whitespace-nowrap">Giai đoạn:</span>
           <select className="h-9 px-3 bg-surface-neutral border border-hairline rounded text-xs font-medium text-text-primary focus:border-ocean outline-none">
-            {data.terms.map((t, i) => (
+            {data.terms.map((t: string, i: number) => (
               <option key={i} value={t}>{t}</option>
             ))}
           </select>
@@ -141,7 +201,7 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
 
         {/* Topic chips */}
         <div className="flex items-center gap-1.5 overflow-x-auto">
-          {data.topics.map((top, idx) => (
+          {data.topics.map((top: string, idx: number) => (
             <button
               key={idx}
               onClick={() => setSelectedTopicFilter(top)}
@@ -157,7 +217,7 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
         </div>
       </Card>
 
-      {/* 4 Metric Cards */}
+      {/* 4 KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card padding="p-5">
           <div className="flex items-start justify-between">
@@ -212,7 +272,7 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
         </Card>
       </div>
 
-      {/* Main Analysis Section: Radar Chart + Watchlist Table */}
+      {/* Main Analysis Section */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left 5 Cols: Radar Chart & Subject Analysis */}
         <div className="lg:col-span-5 space-y-4">
@@ -228,74 +288,26 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
             {/* Custom SVG Radar / Spider Chart */}
             <div className="flex flex-col items-center justify-center py-2">
               <svg className="w-full max-w-[320px] aspect-square" viewBox="0 0 320 320">
-                {/* Background circles / pentagon grids */}
-                <polygon
-                  points="160,30 284,120 236,268 84,268 36,120"
-                  fill="none"
-                  stroke="#E1E6EB"
-                  strokeWidth="1"
-                />
-                <polygon
-                  points="160,65 248,129 214,234 106,234 72,129"
-                  fill="none"
-                  stroke="#E1E6EB"
-                  strokeWidth="1"
-                />
-                <polygon
-                  points="160,100 212,138 192,201 128,201 108,138"
-                  fill="none"
-                  stroke="#E1E6EB"
-                  strokeWidth="1"
-                />
-
-                {/* Spokes */}
+                <polygon points="160,30 284,120 236,268 84,268 36,120" fill="none" stroke="#E1E6EB" strokeWidth="1" />
+                <polygon points="160,65 248,129 214,234 106,234 72,129" fill="none" stroke="#E1E6EB" strokeWidth="1" />
+                <polygon points="160,100 212,138 192,201 128,201 108,138" fill="none" stroke="#E1E6EB" strokeWidth="1" />
                 <line x1="160" y1="160" x2="160" y2="30" stroke="#E1E6EB" strokeWidth="1" />
                 <line x1="160" y1="160" x2="284" y2="120" stroke="#E1E6EB" strokeWidth="1" />
                 <line x1="160" y1="160" x2="236" y2="268" stroke="#E1E6EB" strokeWidth="1" />
                 <line x1="160" y1="160" x2="84" y2="268" stroke="#E1E6EB" strokeWidth="1" />
                 <line x1="160" y1="160" x2="36" y2="120" stroke="#E1E6EB" strokeWidth="1" />
-
-                {/* Standard Benchmark Polygon (dashed) */}
-                <polygon
-                  points="160,62 250,131 216,237 104,237 70,131"
-                  fill="none"
-                  stroke="#CBD5E1"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 4"
-                />
-
-                {/* Class Actual Polygon (Primary Navy with fill opacity) */}
-                <polygon
-                  points="160,45 259,128 198,218 106,237 63,129"
-                  fill="#0F3D5C"
-                  fillOpacity="0.15"
-                  stroke="#0F3D5C"
-                  strokeWidth="2"
-                />
-
-                {/* Data point dots */}
+                <polygon points="160,62 250,131 216,237 104,237 70,131" fill="none" stroke="#CBD5E1" strokeWidth="1.5" strokeDasharray="4 4" />
+                <polygon points="160,45 259,128 198,218 106,237 63,129" fill="#0F3D5C" fillOpacity="0.15" stroke="#0F3D5C" strokeWidth="2" />
                 <circle cx="160" cy="45" r="4" fill="#0F3D5C" />
                 <circle cx="259" cy="128" r="4" fill="#0F3D5C" />
                 <circle cx="198" cy="218" r="4" fill="#D64545" />
                 <circle cx="106" cy="237" r="4" fill="#0F3D5C" />
                 <circle cx="63" cy="129" r="4" fill="#0F3D5C" />
-
-                {/* Labels */}
-                <text x="160" y="20" textAnchor="middle" fontSize="11" fill="#1B2B3A" fontWeight="500">
-                  Hàm số & Đồ thị (88%)
-                </text>
-                <text x="290" y="125" textAnchor="start" fontSize="11" fill="#1B2B3A" fontWeight="500">
-                  PT & BPT (80%)
-                </text>
-                <text x="202" y="285" textAnchor="middle" fontSize="11" fill="#D64545" fontWeight="500">
-                  Hình không gian (54%)
-                </text>
-                <text x="75" y="285" textAnchor="middle" fontSize="11" fill="#1B2B3A" fontWeight="500">
-                  Lượng giác (72%)
-                </text>
-                <text x="30" y="125" textAnchor="end" fontSize="11" fill="#1B2B3A" fontWeight="500">
-                  Xác suất TK (78%)
-                </text>
+                <text x="160" y="20" textAnchor="middle" fontSize="11" fill="#1B2B3A" fontWeight="500">Hàm số &amp; Đồ thị (88%)</text>
+                <text x="290" y="125" textAnchor="start" fontSize="11" fill="#1B2B3A" fontWeight="500">PT &amp; BPT (80%)</text>
+                <text x="202" y="285" textAnchor="middle" fontSize="11" fill="#D64545" fontWeight="500">Hình không gian (54%)</text>
+                <text x="75" y="285" textAnchor="middle" fontSize="11" fill="#1B2B3A" fontWeight="500">Lượng giác (72%)</text>
+                <text x="30" y="125" textAnchor="end" fontSize="11" fill="#1B2B3A" fontWeight="500">Xác suất TK (78%)</text>
               </svg>
             </div>
 
@@ -313,7 +325,6 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
 
             {/* Insights Callouts */}
             <div className="space-y-3 pt-2">
-              {/* Strength */}
               <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded space-y-1">
                 <div className="flex items-center justify-between text-xs font-medium">
                   <span className="text-emerald-800 flex items-center gap-1.5">
@@ -322,12 +333,9 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
                   </span>
                   <span className="text-success">{data.radarInsights.strength.percent}</span>
                 </div>
-                <p className="text-xs text-text-secondary leading-relaxed">
-                  {data.radarInsights.strength.desc}
-                </p>
+                <p className="text-xs text-text-secondary leading-relaxed">{data.radarInsights.strength.desc}</p>
               </div>
 
-              {/* Weakness */}
               <div className="p-3.5 bg-red-50/70 border border-red-200 rounded space-y-1">
                 <div className="flex items-center justify-between text-xs font-medium">
                   <span className="text-red-800 flex items-center gap-1.5">
@@ -336,9 +344,7 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
                   </span>
                   <span className="text-danger">{data.radarInsights.weakness.percent}</span>
                 </div>
-                <p className="text-xs text-text-secondary leading-relaxed">
-                  {data.radarInsights.weakness.desc}
-                </p>
+                <p className="text-xs text-text-secondary leading-relaxed">{data.radarInsights.weakness.desc}</p>
               </div>
             </div>
           </Card>
@@ -368,46 +374,18 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
 
             {/* Roster Tabs */}
             <div className="flex items-center gap-2 border-b border-hairline pb-2 mb-3 text-xs">
-              <button
-                onClick={() => setActiveRosterTab('all')}
-                className={`pb-1 font-medium transition-colors border-b-2 -mb-2.5 px-2 ${
-                  activeRosterTab === 'all'
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                Tất cả (42)
-              </button>
-              <button
-                onClick={() => setActiveRosterTab('high_risk')}
-                className={`pb-1 font-medium transition-colors border-b-2 -mb-2.5 px-2 ${
-                  activeRosterTab === 'high_risk'
-                    ? 'border-danger text-danger'
-                    : 'border-transparent text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                Nguy cơ cao (3)
-              </button>
-              <button
-                onClick={() => setActiveRosterTab('warning')}
-                className={`pb-1 font-medium transition-colors border-b-2 -mb-2.5 px-2 ${
-                  activeRosterTab === 'warning'
-                    ? 'border-warning-dark text-warning-dark'
-                    : 'border-transparent text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                Cần chú ý (5)
-              </button>
-              <button
-                onClick={() => setActiveRosterTab('good')}
-                className={`pb-1 font-medium transition-colors border-b-2 -mb-2.5 px-2 ${
-                  activeRosterTab === 'good'
-                    ? 'border-success text-success'
-                    : 'border-transparent text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                Tốt & Xuất sắc (34)
-              </button>
+              <button onClick={() => setActiveRosterTab('all')} className={`pb-1 font-medium transition-colors border-b-2 -mb-2.5 px-2 ${
+                activeRosterTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'
+              }`}>Tất cả (42)</button>
+              <button onClick={() => setActiveRosterTab('high_risk')} className={`pb-1 font-medium transition-colors border-b-2 -mb-2.5 px-2 ${
+                activeRosterTab === 'high_risk' ? 'border-danger text-danger' : 'border-transparent text-text-secondary hover:text-text-primary'
+              }`}>Nguy cơ cao (3)</button>
+              <button onClick={() => setActiveRosterTab('warning')} className={`pb-1 font-medium transition-colors border-b-2 -mb-2.5 px-2 ${
+                activeRosterTab === 'warning' ? 'border-warning-dark text-warning-dark' : 'border-transparent text-text-secondary hover:text-text-primary'
+              }`}>Cần chú ý (5)</button>
+              <button onClick={() => setActiveRosterTab('good')} className={`pb-1 font-medium transition-colors border-b-2 -mb-2.5 px-2 ${
+                activeRosterTab === 'good' ? 'border-success text-success' : 'border-transparent text-text-secondary hover:text-text-primary'
+              }`}>Tốt &amp; Xuất sắc (34)</button>
             </div>
 
             {/* Table */}
@@ -418,18 +396,16 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
                     <th className="py-2.5 px-3 font-medium">Học sinh</th>
                     <th className="py-2.5 px-3 font-medium text-center">Điểm TB</th>
                     <th className="py-2.5 px-3 font-medium text-center">Tỷ lệ nộp bài</th>
-                    <th className="py-2.5 px-3 font-medium">Tình trạng & Nguy cơ</th>
+                    <th className="py-2.5 px-3 font-medium">Tình trạng &amp; Nguy cơ</th>
                     <th className="py-2.5 px-3 font-medium">Chuyên đề trọng tâm</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-hairline">
-                  {filteredStudents.map((st) => (
+                  {filteredStudents.map((st: Student) => (
                     <tr key={st.id} className="hover:bg-surface-neutral/40 transition-colors">
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-2.5">
-                          <div
-                            className={`w-7 h-7 rounded-full flex items-center justify-center font-medium text-[11px] ${st.avatarColor}`}
-                          >
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center font-medium text-[11px] ${st.avatarColor}`}>
                             {st.initials}
                           </div>
                           <div>
@@ -438,39 +414,23 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
                           </div>
                         </div>
                       </td>
-
                       <td className="py-3 px-3 text-center">
                         <div className="font-semibold text-text-primary text-sm">{st.gpa}</div>
-                        <div className={`text-[10px] ${st.gpaDiff.startsWith('+') ? 'text-success' : 'text-danger'}`}>
-                          {st.gpaDiff}
-                        </div>
+                        <div className={`text-[10px] ${st.gpaDiff.startsWith('+') ? 'text-success' : 'text-danger'}`}>{st.gpaDiff}</div>
                       </td>
-
                       <td className="py-3 px-3 text-center">
                         <div className="font-medium text-text-primary">{st.submissionRate}%</div>
                         <div className="w-12 h-1 bg-surface-neutral rounded-full mx-auto mt-1 overflow-hidden">
-                          <div
-                            style={{ width: `${st.submissionRate}%` }}
-                            className={`h-full ${st.submissionRate < 70 ? 'bg-danger' : 'bg-primary'}`}
-                          ></div>
+                          <div style={{ width: `${st.submissionRate}%` }} className={`h-full ${st.submissionRate < 70 ? 'bg-danger' : 'bg-primary'}`}></div>
                         </div>
                       </td>
-
                       <td className="py-3 px-3">
-                        <Badge variant={st.riskBadgeType} size="sm">
-                          {st.riskText}
-                        </Badge>
+                        <Badge variant={st.riskBadgeType} size="sm">{st.riskText}</Badge>
                       </td>
-
                       <td className="py-3 px-3">
                         <div className="flex flex-wrap gap-1">
-                          {st.keyTopics.map((top, i) => (
-                            <span
-                              key={i}
-                              className="px-2 py-0.5 rounded bg-surface-neutral text-[10px] text-text-secondary border border-hairline"
-                            >
-                              {top}
-                            </span>
+                          {st.keyTopics.map((top: string, i: number) => (
+                            <span key={i} className="px-2 py-0.5 rounded bg-surface-neutral text-[10px] text-text-secondary border border-hairline">{top}</span>
                           ))}
                         </div>
                       </td>
@@ -483,19 +443,11 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
             <div className="flex items-center justify-between pt-3 hairline-t text-xs text-text-secondary mt-2">
               <span>Hiển thị 6 trong tổng số 42 học sinh (Trang 1 / 7)</span>
               <div className="flex items-center gap-1">
-                <button className="w-6 h-6 rounded bg-primary text-white flex items-center justify-center font-medium text-xs">
-                  1
-                </button>
-                <button className="w-6 h-6 rounded hover:bg-surface-neutral flex items-center justify-center text-xs">
-                  2
-                </button>
-                <button className="w-6 h-6 rounded hover:bg-surface-neutral flex items-center justify-center text-xs">
-                  3
-                </button>
+                <button className="w-6 h-6 rounded bg-primary text-white flex items-center justify-center font-medium text-xs">1</button>
+                <button className="w-6 h-6 rounded hover:bg-surface-neutral flex items-center justify-center text-xs">2</button>
+                <button className="w-6 h-6 rounded hover:bg-surface-neutral flex items-center justify-center text-xs">3</button>
                 <span>...</span>
-                <button className="w-6 h-6 rounded hover:bg-surface-neutral flex items-center justify-center text-xs">
-                  7
-                </button>
+                <button className="w-6 h-6 rounded hover:bg-surface-neutral flex items-center justify-center text-xs">7</button>
               </div>
             </div>
           </Card>
@@ -504,70 +456,36 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
 
       {/* Bottom Pedagogical Recommendations & Parent Intervention */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Recommendation Box */}
         <Card padding="p-5" className="bg-sky/30 border border-ocean/20 space-y-3">
           <div className="flex items-center gap-2 text-xs font-medium text-primary">
             <BookPlus className="w-4 h-4 text-ocean" />
             <span>{data.recommendation.week}</span>
           </div>
-          <p className="text-xs text-text-secondary leading-relaxed">
-            {data.recommendation.content}
-          </p>
+          <p className="text-xs text-text-secondary leading-relaxed">{data.recommendation.content}</p>
           <div className="flex items-center gap-2 pt-1">
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => navigate('/teacher/assignments/create')}
-            >
-              Tạo chuyên đề bài tập bổ trợ
-            </Button>
-            <Button variant="secondary" size="sm">
-              Xem giáo án gợi ý
-            </Button>
+            <Button variant="primary" size="sm" onClick={() => navigate('/teacher/assignments/create')}>Tạo chuyên đề bài tập bổ trợ</Button>
+            <Button variant="secondary" size="sm">Xem giáo án gợi ý</Button>
           </div>
         </Card>
 
-        {/* Parent Intervention Action Box */}
         <Card padding="p-5" className="border border-red-200 bg-red-50/40 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-medium text-danger">
               <AlertTriangle className="w-4 h-4 text-danger" />
               <span>{data.interventionAlert.title}</span>
             </div>
-            <Badge variant="danger" size="sm">
-              {data.interventionAlert.countBadge}
-            </Badge>
+            <Badge variant="danger" size="sm">{data.interventionAlert.countBadge}</Badge>
           </div>
-          <p className="text-xs text-text-secondary leading-relaxed">
-            {data.interventionAlert.description}
-          </p>
+          <p className="text-xs text-text-secondary leading-relaxed">{data.interventionAlert.description}</p>
           <div className="flex items-center gap-2 pt-1">
-            <Button
-              variant="primary"
-              size="sm"
-              className="bg-primary text-white hover:bg-ocean"
-              icon={Send}
-              onClick={() => setIsNotifyModalOpen(true)}
-            >
-              Gửi thông báo phụ huynh
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => navigate('/teacher/assignments/create')}
-            >
-              Tạo nhóm bài phụ đạo
-            </Button>
+            <Button variant="primary" size="sm" className="bg-primary text-white hover:bg-ocean" icon={Send} onClick={() => setIsNotifyModalOpen(true)}>Gửi thông báo phụ huynh</Button>
+            <Button variant="secondary" size="sm" onClick={() => navigate('/teacher/assignments/create')}>Tạo nhóm bài phụ đạo</Button>
           </div>
         </Card>
       </div>
 
       {/* Modal: Gửi thông báo phụ huynh */}
-      <Modal
-        isOpen={isNotifyModalOpen}
-        onClose={() => setIsNotifyModalOpen(false)}
-        title="Gửi thông báo can thiệp sư phạm đến phụ huynh"
-      >
+      <Modal isOpen={isNotifyModalOpen} onClose={() => setIsNotifyModalOpen(false)} title="Gửi thông báo can thiệp sư phạm đến phụ huynh">
         <div className="space-y-4 text-xs text-text-secondary">
           <p className="leading-relaxed text-text-primary">
             Hệ thống sẽ gửi phiếu báo kết quả học tập và thông báo trực tiếp qua ứng dụng di động cho phụ huynh của <strong>03 học sinh</strong>:
@@ -577,34 +495,18 @@ export function TeacherAnalytics({ onNavigateCreateAssignment }) {
             <div>• Nguyễn Hoàng Yến (HS110018) - Phụ huynh: Bà Lê Thị Mai</div>
             <div>• Lê Quốc Bảo (HS110008) - Phụ huynh: Ông Lê Minh Quân</div>
           </div>
-          <p className="text-[11px] text-text-secondary">
-            Nội dung: Thông báo tiến độ chuyên đề Hình không gian & Đề xuất buổi phụ đạo chiều thứ Năm.
-          </p>
+          <p className="text-[11px] text-text-secondary">Nội dung: Thông báo tiến độ chuyên đề Hình không gian &amp; Đề xuất buổi phụ đạo chiều thứ Năm.</p>
 
           {notifySuccess && (
             <div className="p-3 bg-emerald-50 text-success rounded border border-emerald-200 flex items-center gap-2 font-medium">
               <CheckCircle2 className="w-4 h-4 text-success" />
-              <span>Đã gửi thành công 3 thông báo đến phụ huynh qua EduShield SMS & App!</span>
+              <span>Đã gửi thành công 3 thông báo đến phụ huynh qua EduShield SMS &amp; App!</span>
             </div>
           )}
 
           <div className="flex items-center justify-end gap-2 pt-3 hairline-t">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setIsNotifyModalOpen(false)}
-            >
-              Đóng
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              icon={Send}
-              onClick={handleSendNotification}
-              disabled={notifySuccess}
-            >
-              Xác nhận gửi ngay
-            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setIsNotifyModalOpen(false)}>Đóng</Button>
+            <Button variant="primary" size="sm" icon={Send} onClick={handleSendNotification} disabled={notifySuccess}>Xác nhận gửi ngay</Button>
           </div>
         </div>
       </Modal>

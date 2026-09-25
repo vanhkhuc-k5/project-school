@@ -1,10 +1,16 @@
+// TeacherAssignmentsPage.tsx — TypeScript conversion with split-screen grading
+// Features: Real API, 5 UX states, keyboard navigation, TT22 cognitive levels
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
-import { assignmentsApi, submissionsApi } from '../../services/api';
+import {
+  assignmentsApi,
+  submissionsApi,
+  type GradingQueueItem,
+} from '../../services/api';
 import { useSync } from '../../context/SyncContext';
 import {
   ClipboardCheck,
@@ -15,29 +21,311 @@ import {
   Loader2,
   Users,
   AlertTriangle,
+  FileText,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  ChevronLeft,
 } from 'lucide-react';
 
-export function TeacherAssignmentsPage({ onNavigateCreateAssignment, onNavigateEditAssignment }) {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+// Unified submission type covering both grading queue and submission list sources
+interface Submission {
+  id: string;
+  student_name: string;
+  student_code?: string;
+  class_name?: string;
+  assignment_title: string;
+  total_score: number;
+  score?: number;
+  status: string;
+  submitted_at?: string;
+  is_late?: boolean;
+  submission_content?: string;
+  answers?: Record<string, string>;
+  resubmit_count?: number;
+  teacher_feedback?: string;
+}
+
+// Use AssignmentListItem for assignment cards
+interface Assignment {
+  id: string;
+  title: string;
+  subject: string;
+  status: 'published' | 'draft' | 'archived';
+  due_date?: string;
+  due_time?: string;
+  submission_count?: number;
+  graded_count?: number;
+  question_count?: number;
+}
+
+// ─── SplitScreenGradingModal ───────────────────────────────────────────────────
+
+interface SplitScreenModalProps {
+  submission: Submission;
+  onClose: () => void;
+  onSave: (submissionId: string, score: number, feedback: string) => Promise<void>;
+  onRefresh: () => void;
+}
+
+function SplitScreenGradingModal({ submission, onClose, onSave, onRefresh }: SplitScreenModalProps) {
+  const [score, setScore] = useState(submission.score ? String(submission.score) : '8.5');
+  const [feedback, setFeedback] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState('');
+  const [imageZoom, setImageZoom] = useState(1);
+  const [imageRotation, setImageRotation] = useState(0);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const num = parseFloat(score);
+    if (isNaN(num) || num < 0 || num > submission.total_score) {
+      setError(`Điểm phải là số từ 0 đến ${submission.total_score}`);
+      return;
+    }
+    setIsSaving(true);
+    setError('');
+    try {
+      await onSave(submission.id, num, feedback);
+      setSuccess(true);
+      onRefresh();
+      setTimeout(onClose, 1500);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Lỗi khi chấm bài');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const isGraded = submission.status === 'graded';
+
+  return (
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={`Chấm bài: ${submission.student_name} — ${submission.assignment_title}`}
+      maxWidth="max-w-6xl"
+    >
+      <div className="space-y-4 text-xs">
+        {/* Student info bar */}
+        <div className="p-3 bg-surface-neutral rounded border border-hairline flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-4">
+            <div className="w-8 h-8 rounded-full bg-sky text-primary font-bold flex items-center justify-center text-xs">
+              {submission.student_name?.substring(0, 2).toUpperCase()}
+            </div>
+            <div>
+              <div className="font-semibold text-text-primary text-sm">{submission.student_name}</div>
+              <div className="text-[11px] text-text-secondary font-mono">{submission.student_code || ''}</div>
+            </div>
+            <div className="text-text-secondary text-xs">
+              {submission.class_name && `Lớp ${submission.class_name} •`}
+              {submission.submitted_at && ` Nộp lúc: ${new Date(submission.submitted_at).toLocaleString('vi-VN')}`}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[11px] text-text-secondary">Thang điểm</div>
+            <div className="text-base font-bold text-primary">{submission.total_score}</div>
+          </div>
+        </div>
+
+        {/* Split screen: Left = viewer, Right = grading form */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[420px]">
+          {/* Left: Submission preview with zoom/rotate */}
+          <div className="space-y-2">
+            <div className="font-semibold text-text-primary text-xs uppercase tracking-wider flex items-center gap-2">
+              <FileText className="w-4 h-4 text-ocean" />
+              Bài nộp của học sinh
+              <div className="flex items-center gap-1 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setImageZoom(z => Math.max(0.5, z - 0.25))}
+                  className="p-1.5 rounded border border-hairline hover:bg-surface-neutral text-text-secondary transition-colors"
+                  title="Thu nhỏ"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[11px] text-text-secondary font-mono w-12 text-center">
+                  {Math.round(imageZoom * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setImageZoom(z => Math.min(3, z + 0.25))}
+                  className="p-1.5 rounded border border-hairline hover:bg-surface-neutral text-text-secondary transition-colors"
+                  title="Phóng to"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImageRotation(r => (r + 90) % 360)}
+                  className="p-1.5 rounded border border-hairline hover:bg-surface-neutral text-text-secondary transition-colors"
+                  title="Xoay ảnh"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 bg-surface-neutral rounded border border-hairline max-h-80 overflow-auto">
+              {submission.submission_content ? (
+                <div
+                  style={{ transform: `scale(${imageZoom}) rotate(${imageRotation}deg)`, transformOrigin: 'top left' }}
+                  className="whitespace-pre-wrap leading-relaxed text-text-primary"
+                >
+                  {submission.submission_content}
+                </div>
+              ) : submission.answers && Object.keys(submission.answers).length > 0 ? (
+                <div className="space-y-2">
+                  {Object.entries(submission.answers).map(([qId, answer]) => (
+                    <div
+                      key={qId}
+                      className="p-2.5 bg-white rounded border border-hairline space-y-1"
+                    >
+                      <div className="text-[10px] text-text-secondary font-mono">Câu {qId}</div>
+                      <div className="text-text-primary font-medium">{String(answer)}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-text-secondary flex flex-col items-center gap-2">
+                  <FileText className="w-8 h-8 text-hairline/50" />
+                  <span>Không có nội dung bài nộp</span>
+                </div>
+              )}
+            </div>
+
+            {submission.is_late && (
+              <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>Nộp trễ hạn</span>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Grading form with rubric + feedback */}
+          <form onSubmit={handleSave} className="space-y-4">
+            <div className="font-semibold text-text-primary text-xs uppercase tracking-wider flex items-center gap-2">
+              <ClipboardCheck className="w-4 h-4 text-primary" />
+              Nhập điểm & Phản hồi sư phạm
+            </div>
+
+            {success ? (
+              <div className="p-4 bg-emerald-50 border border-emerald-300 rounded text-center text-xs text-emerald-800 space-y-1">
+                <CheckCircle2 className="w-5 h-5 text-success mx-auto" />
+                <div className="font-semibold">Đã lưu điểm thành công!</div>
+              </div>
+            ) : (
+              <>
+                {/* Score input */}
+                <div>
+                  <label className="block text-xs font-medium text-text-primary mb-1">
+                    Điểm số <span className="text-danger">*</span>
+                    <span className="text-text-secondary font-normal ml-1">(Thang điểm: 0 – {submission.total_score})</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max={submission.total_score}
+                    value={score}
+                    onChange={(e) => setScore(e.target.value)}
+                    className={`w-full h-11 px-3 bg-white border rounded text-base font-bold text-primary outline-none focus:ring-2 focus:ring-ocean/15 ${
+                      error ? 'border-danger focus:border-danger' : 'border-hairline focus:border-ocean'
+                    }`}
+                    required
+                    autoFocus
+                  />
+                  {isGraded && (
+                    <div className="text-[11px] text-text-secondary mt-1 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-success" />
+                      Đã chấm trước đó: {submission.score} điểm
+                    </div>
+                  )}
+                </div>
+
+                {/* Rubric breakdown */}
+                <div>
+                  <label className="block text-xs font-medium text-text-primary mb-1.5">
+                    Thang điểm chi tiết (Barem chấm điểm)
+                  </label>
+                  <div className="space-y-1.5">
+                    {Array.from({ length: Math.ceil(submission.total_score / 2) }, (_, i) => {
+                      const pts = (i + 1) * 2;
+                      return pts <= submission.total_score ? (
+                        <div key={i} className="flex items-center justify-between p-2 bg-white border border-hairline rounded text-xs">
+                          <span className="text-text-secondary">{pts} điểm</span>
+                          <div className="h-1.5 bg-surface-neutral rounded-full overflow-hidden w-32">
+                            <div
+                              className="h-full bg-primary rounded-full"
+                              style={{ width: `${(pts / submission.total_score) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
+
+                {/* Pedagogical feedback */}
+                <div>
+                  <label className="block text-xs font-medium text-text-primary mb-1">
+                    Nhận xét sư phạm <span className="text-[11px] text-text-secondary font-normal">(hiển thị cho học sinh)</span>
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={feedback}
+                    onChange={(e) => setFeedback(e.target.value)}
+                    placeholder="VD: Bài làm tốt, nắm vững kiến thức chương 2. Cần cải thiện phần lập luận và trình bày bài giải..."
+                    className="w-full p-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none resize-none focus:border-ocean focus:ring-1 focus:ring-ocean/15"
+                  />
+                </div>
+
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3 pt-2 hairline-t">
+                  <Button variant="secondary" size="md" type="button" onClick={onClose}>
+                    Hủy bỏ
+                  </Button>
+                  <Button variant="primary" size="md" type="submit" disabled={isSaving}>
+                    {isSaving ? 'Đang lưu...' : isGraded ? 'Cập nhật điểm' : 'Xác nhận điểm'}
+                  </Button>
+                </div>
+              </>
+            )}
+          </form>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────────
+
+export function TeacherAssignmentsPage() {
   const navigate = useNavigate();
   const { lastSync, triggerSync } = useSync();
 
-  const [assignments, setAssignments] = useState([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [totalAssignments, setTotalAssignments] = useState(0);
-  const [gradingQueue, setGradingQueue] = useState([]);
+  const [gradingQueue, setGradingQueue] = useState<Submission[]>([]);
   const [totalQueue, setTotalQueue] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // Submissions list modal (per assignment)
-  const [submissionsModal, setSubmissionsModal] = useState(null); // { id, title }
-  const [submissionsList, setSubmissionsList] = useState([]);
+  // Submissions list modal
+  const [submissionsModal, setSubmissionsModal] = useState<{ id: string; title: string } | null>(null);
+  const [submissionsList, setSubmissionsList] = useState<Submission[]>([]);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
 
-  const [selectedSubmission, setSelectedSubmission] = useState(null);
-  const [gradingScore, setGradingScore] = useState('8.5');
-  const [gradingFeedback, setGradingFeedback] = useState('');
-  const [isGrading, setIsGrading] = useState(false);
-  const [gradeSuccess, setGradeSuccess] = useState(false);
-  const [gradeError, setGradeError] = useState('');
+  // Split-screen grading modal
+  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -51,7 +339,7 @@ export function TeacherAssignmentsPage({ onNavigateCreateAssignment, onNavigateE
         setTotalAssignments(asgRes.total || 0);
       }
       if (queueRes) {
-        setGradingQueue(queueRes.submissions || []);
+        setGradingQueue((queueRes.submissions || []) as Submission[]);
         setTotalQueue(queueRes.total || 0);
       }
     } catch (e) {
@@ -65,20 +353,30 @@ export function TeacherAssignmentsPage({ onNavigateCreateAssignment, onNavigateE
     fetchData();
   }, [lastSync]);
 
-  const handleOpenGradingModal = (sub) => {
+  const handleOpenGradingModal = (sub: Submission) => {
     setSelectedSubmission(sub);
-    setGradingScore(sub.score ? String(sub.score) : '8.5');
-    setGradingFeedback('');
-    setGradeSuccess(false);
-    setGradeError('');
   };
 
-  const handleViewSubmissions = async (asg) => {
+  const handleViewSubmissions = async (asg: Assignment) => {
     setSubmissionsModal({ id: asg.id, title: asg.title });
     setSubmissionsLoading(true);
     try {
       const data = await submissionsApi.listAssignmentSubmissions(asg.id);
-      setSubmissionsList(data?.submissions || []);
+      const mapped: Submission[] = (data?.submissions || []).map((item) => ({
+        id: item.id,
+        student_name: item.student_name,
+        student_code: item.student_code,
+        class_name: item.class_name,
+        assignment_title: asg.title,
+        total_score: asg.question_count || 10,
+        score: item.score,
+        status: (item.status === 'submitted' ? 'pending' : item.status === 'graded' ? 'graded' : 'in_progress') as 'pending' | 'graded' | 'in_progress',
+        submitted_at: item.submitted_at,
+        is_late: item.is_late,
+        teacher_feedback: item.teacher_feedback,
+        resubmit_count: item.resubmit_count,
+      }));
+      setSubmissionsList(mapped);
     } catch {
       setSubmissionsList([]);
     } finally {
@@ -86,31 +384,11 @@ export function TeacherAssignmentsPage({ onNavigateCreateAssignment, onNavigateE
     }
   };
 
-  const handleSaveGrading = async (e) => {
-    e.preventDefault();
-    if (!selectedSubmission) return;
-    const score = parseFloat(gradingScore);
-    if (isNaN(score) || score < 0 || score > 100) {
-      setGradeError('Điểm phải là số từ 0 đến 100');
-      return;
-    }
-    setIsGrading(true);
-    setGradeError('');
-    try {
-      const res = await assignmentsApi.gradeSubmission(selectedSubmission.id, score, gradingFeedback);
-      if (!res?.success) throw new Error(res?.error?.message || 'Lỗi khi chấm bài');
-      setGradeSuccess(true);
-      await triggerSync?.();
-      fetchData();
-      setTimeout(() => {
-        setSelectedSubmission(null);
-        setGradeSuccess(false);
-      }, 1500);
-    } catch (err) {
-      setGradeError(err.message || 'Lỗi khi chấm bài');
-    } finally {
-      setIsGrading(false);
-    }
+  const handleSaveGrading = async (submissionId: string, score: number, feedback: string) => {
+    const res = await assignmentsApi.gradeSubmission(submissionId, score, feedback);
+    if (!res?.success) throw new Error(res?.error?.message || 'Lỗi khi chấm bài');
+    await triggerSync?.();
+    fetchData();
   };
 
   return (
@@ -175,7 +453,7 @@ export function TeacherAssignmentsPage({ onNavigateCreateAssignment, onNavigateE
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-2">
                         <Badge
-                          variant={asg.status === 'published' ? 'success' : asg.status === 'draft' ? 'warning' : 'secondary'}
+                          variant={asg.status === 'published' ? 'success' : asg.status === 'draft' ? 'warning' : 'neutral'}
                           size="sm"
                         >
                           {asg.status === 'published' ? 'Đã giao' : asg.status === 'draft' ? 'Bản nháp' : 'Lưu trữ'}
@@ -313,139 +591,15 @@ export function TeacherAssignmentsPage({ onNavigateCreateAssignment, onNavigateE
         </>
       )}
 
-      {/* Grading Modal — Split-screen: submission preview + grade input */}
-      <Modal
-        isOpen={Boolean(selectedSubmission)}
-        onClose={() => setSelectedSubmission(null)}
-        title={`Chấm bài: ${selectedSubmission?.student_name} — ${selectedSubmission?.assignment_title}`}
-        maxWidth="max-w-5xl"
-      >
-        {selectedSubmission && (
-          <div className="space-y-4 text-xs">
-            {/* Student info bar */}
-            <div className="p-3 bg-surface-neutral rounded border border-hairline flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-4">
-                <div className="w-8 h-8 rounded-full bg-sky text-primary font-bold flex items-center justify-center text-xs">
-                  {selectedSubmission.student_name?.substring(0, 2).toUpperCase()}
-                </div>
-                <div>
-                  <div className="font-semibold text-text-primary text-sm">{selectedSubmission.student_name}</div>
-                  <div className="text-[11px] text-text-secondary font-mono">{selectedSubmission.student_code || ''}</div>
-                </div>
-                <div className="text-text-secondary text-xs">
-                  {selectedSubmission.class_name && `Lớp ${selectedSubmission.class_name} •`}
-                  {selectedSubmission.submitted_at && ` Nộp lúc: ${new Date(selectedSubmission.submitted_at).toLocaleString('vi-VN')}`}
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-[11px] text-text-secondary">Thang điểm</div>
-                <div className="text-base font-bold text-primary">{selectedSubmission.total_score}</div>
-              </div>
-            </div>
-
-            {/* Split screen */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Left: Submission preview */}
-              <div className="space-y-2">
-                <div className="font-semibold text-text-primary text-xs uppercase tracking-wider flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-ocean" />
-                  Bài nộp của học sinh
-                </div>
-                <div className="p-4 bg-surface-neutral rounded border border-hairline max-h-72 overflow-y-auto text-xs text-text-secondary space-y-2">
-                  {selectedSubmission.submission_content ? (
-                    <p className="whitespace-pre-wrap leading-relaxed text-text-primary">{selectedSubmission.submission_content}</p>
-                  ) : selectedSubmission.answers && Object.keys(selectedSubmission.answers).length > 0 ? (
-                    Object.entries(selectedSubmission.answers).map(([qId, answer]) => (
-                      <div key={qId} className="p-2.5 bg-white rounded border border-hairline space-y-1">
-                        <div className="text-[10px] text-text-secondary font-mono">Câu {qId}</div>
-                        <div className="text-text-primary font-medium">{String(answer)}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-6 text-text-secondary flex flex-col items-center gap-2">
-                      <FileText className="w-8 h-8 text-hairline/50" />
-                      <span>Không có nội dung bài nộp</span>
-                    </div>
-                  )}
-                </div>
-                {selectedSubmission.is_late && (
-                  <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <span>Nộp trễ hạn</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Right: Grading form */}
-              <form onSubmit={handleSaveGrading} className="space-y-4">
-                <div className="font-semibold text-text-primary text-xs uppercase tracking-wider flex items-center gap-2">
-                  <ClipboardCheck className="w-4 h-4 text-primary" />
-                  Nhập điểm & Phản hồi sư phạm
-                </div>
-
-                {gradeSuccess ? (
-                  <div className="p-4 bg-emerald-50 border border-emerald-300 rounded text-center text-xs text-emerald-800 space-y-1">
-                    <CheckCircle2 className="w-5 h-5 text-success mx-auto" />
-                    <div className="font-semibold">Đã lưu điểm thành công!</div>
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <label className="block text-xs font-medium text-text-primary mb-1">
-                        Điểm số <span className="text-danger">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max={selectedSubmission.total_score}
-                        value={gradingScore}
-                        onChange={(e) => setGradingScore(e.target.value)}
-                        className={`w-full h-11 px-3 bg-white border rounded text-base font-bold text-primary outline-none focus:ring-2 focus:ring-ocean/15 ${
-                          gradeError ? 'border-danger focus:border-danger' : 'border-hairline focus:border-ocean'
-                        }`}
-                        required
-                      />
-                      <div className="text-[11px] text-text-secondary mt-1">
-                        Thang điểm: 0 — {selectedSubmission.total_score}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-text-primary mb-1">
-                        Nhận xét sư phạm <span className="text-[11px] text-text-secondary font-normal">(hiển thị cho học sinh)</span>
-                      </label>
-                      <textarea
-                        rows={4}
-                        value={gradingFeedback}
-                        onChange={(e) => setGradingFeedback(e.target.value)}
-                        placeholder="VD: Bài làm tốt, nắm vững kiến thức chương 2. Cần cải thiện phần lập luận và trình bày bài giải..."
-                        className="w-full p-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none resize-none focus:border-ocean focus:ring-1 focus:ring-ocean/15"
-                      />
-                    </div>
-
-                    {gradeError && (
-                      <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 shrink-0" />
-                        <span>{gradeError}</span>
-                      </div>
-                    )}
-
-                    <div className="flex justify-end gap-3 pt-2 hairline-t">
-                      <Button variant="secondary" size="md" type="button" onClick={() => setSelectedSubmission(null)}>
-                        Hủy bỏ
-                      </Button>
-                      <Button variant="primary" size="md" type="submit" disabled={isGrading}>
-                        {isGrading ? 'Đang lưu...' : 'Xác nhận điểm'}
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </form>
-            </div>
-          </div>
-        )}
-      </Modal>
+      {/* Split-screen Grading Modal */}
+      {selectedSubmission && (
+        <SplitScreenGradingModal
+          submission={selectedSubmission}
+          onClose={() => setSelectedSubmission(null)}
+          onSave={handleSaveGrading}
+          onRefresh={fetchData}
+        />
+      )}
 
       {/* Submissions List Modal */}
       <Modal
@@ -500,7 +654,7 @@ export function TeacherAssignmentsPage({ onNavigateCreateAssignment, onNavigateE
                               Trễ hạn
                             </Badge>
                           )}
-                          {sub.resubmit_count > 0 && (
+                          {sub.resubmit_count && sub.resubmit_count > 0 && (
                             <span className="text-[10px] text-text-secondary">
                               Nộp lại {sub.resubmit_count} lần
                             </span>

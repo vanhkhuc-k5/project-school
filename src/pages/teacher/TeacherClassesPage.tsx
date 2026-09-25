@@ -3,7 +3,7 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
-import { teacherApi, attendanceApi, gradebookApi } from '../../services/api';
+import { teacherApi, attendanceApi, gradebookApi, type TeacherAssignedClass, type AttendanceRosterStudent } from '../../services/api';
 import { useSync } from '../../context/SyncContext';
 import {
   Users,
@@ -234,7 +234,7 @@ function GradebookMatrixTab({ classId, className, students, searchQuery }) {
             disabled={isSaving || editedCount === 0}
             onClick={handleBulkSave}
           >
-            {isSaving ? '�ang lưu...' : editedCount > 0 ? `Lưu (${editedCount})` : 'Lưu điểm'}
+            {isSaving ? 'Đang lưu...' : editedCount > 0 ? `Lưu (${editedCount})` : 'Lưu điểm'}
           </Button>
         </div>
       </div>
@@ -398,7 +398,21 @@ function GradebookMatrixTab({ classId, className, students, searchQuery }) {
 
 export function TeacherClassesPage() {
   const { lastSync, triggerSync } = useSync();
-  const [classData, setClassData] = useState(null);
+  const [classData, setClassData] = useState<{
+    currentClassId?: string;
+    classes: TeacherAssignedClass[];
+    students: Array<{
+      id: string;
+      name: string;
+      code: string;
+      gpa: number;
+      rank: number;
+      attendance: string;
+      status: string;
+      statusType?: string;
+      phone?: string;
+    }>;
+  } | null>(null);
   const [selectedClassId, setSelectedClassId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -420,21 +434,21 @@ export function TeacherClassesPage() {
   const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [attendancePeriod, setAttendancePeriod] = useState(null); // null = "buổi/daily"
   // Map: studentId → { status: 'PRESENT'|'ABSENT'|'LATE'|'EXCUSED', note: string }
-  const [attendanceRecords, setAttendanceRecords] = useState({});
-  const [attendanceRoster, setAttendanceRoster] = useState([]); // full enrolled roster
+  const [attendanceRecords, setAttendanceRecords] = useState<Record<string, { status: string; note?: string }>>({});
+  const [attendanceRoster, setAttendanceRoster] = useState<AttendanceRosterStudent[]>([]); // full enrolled roster
   const [existingSession, setExistingSession] = useState(null);
   const [isLoadingRoster, setIsLoadingRoster] = useState(false);
   const [rosterError, setRosterError] = useState(null);
   const [isSavingAttendance, setIsSavingAttendance] = useState(false);
   const [attendanceSaveResult, setAttendanceSaveResult] = useState(null); // { success, message }
 
-  const fetchClass = async (cid) => {
+  const fetchClass = async (cid?: string) => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
       const res = await teacherApi.getClasses(cid || undefined);
       if (res) {
-        setClassData(res);
+        setClassData({ ...res, students: res.students || [] });
         if (res.currentClassId && res.currentClassId !== selectedClassId) {
           setSelectedClassId(res.currentClassId);
         } else if (!cid && res.classes?.length > 0 && !selectedClassId) {
@@ -550,7 +564,7 @@ export function TeacherClassesPage() {
 
     const records = attendanceRoster.map((st) => ({
       studentId: st.student_id,
-      status: (attendanceRecords[st.student_id]?.status || 'PRESENT').toUpperCase(),
+      status: (attendanceRecords[st.student_id]?.status || 'PRESENT') as 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED',
       note: attendanceRecords[st.student_id]?.note || '',
     }));
 
@@ -610,10 +624,10 @@ export function TeacherClassesPage() {
     s.code.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const presentCount = Object.values(attendanceRecords).filter((r) => r?.status === 'PRESENT').length;
-  const excusedCount = Object.values(attendanceRecords).filter((r) => r?.status === 'EXCUSED').length;
-  const absentCount = Object.values(attendanceRecords).filter((r) => r?.status === 'ABSENT').length;
-  const lateCount = Object.values(attendanceRecords).filter((r) => r?.status === 'LATE').length;
+  const presentCount = Object.values(attendanceRecords).filter((r: { status: string; note?: string }) => r?.status === 'PRESENT').length;
+  const excusedCount = Object.values(attendanceRecords).filter((r: { status: string; note?: string }) => r?.status === 'EXCUSED').length;
+  const absentCount = Object.values(attendanceRecords).filter((r: { status: string; note?: string }) => r?.status === 'ABSENT').length;
+  const lateCount = Object.values(attendanceRecords).filter((r: { status: string; note?: string }) => r?.status === 'LATE').length;
 
   return (
     <div className="space-y-6">
@@ -644,7 +658,7 @@ export function TeacherClassesPage() {
               }`}
             >
               <span>{c.name}</span>
-              {c.isHomeroom && (
+              {c.is_homeroom && (
                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                   selectedClassId === c.id ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-700'
                 }`}>
@@ -806,7 +820,7 @@ export function TeacherClassesPage() {
                       {st.attendance}
                     </td>
                     <td className="py-3.5 px-4 text-center">
-                      <Badge variant={st.statusType} size="sm">
+                      <Badge variant={(st.statusType as 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'navy' | 'default') || 'neutral'} size="sm">
                         {st.status}
                       </Badge>
                     </td>
