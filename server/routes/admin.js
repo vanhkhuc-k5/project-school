@@ -1610,7 +1610,6 @@ router.get('/attendance/overview', requirePermission('attendance.read'), async (
         case 'present': summary.present += count; break;
         case 'absent': summary.absent += count; break;
         case 'excused': summary.absentExcused += count; break;
-        case 'absent':
         case 'absent_unexcused': summary.absentUnexcused += count; break;
         case 'late': summary.late += count; break;
         case 'early_leave': summary.earlyLeave += count; break;
