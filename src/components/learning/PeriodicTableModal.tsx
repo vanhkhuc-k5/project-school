@@ -92,7 +92,7 @@ export function PeriodicTableModal({ isOpen, onClose }: PeriodicTableModalProps)
   if (!isOpen) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="⚗️ Bảng Tuần Hoàn Nguyên Tố" size="4xl">
+    <Modal isOpen={isOpen} onClose={onClose} title="⚗️ Bảng Tuần Hoàn Nguyên Tố" size="full">
       {loading ? (
         <div className="py-16 flex flex-col items-center gap-3 text-text-secondary">
           <Loader2 className="w-8 h-8 animate-spin text-ocean" />

@@ -6,7 +6,8 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
-import { timetableApi } from '../../services/api';
+import { Modal } from '../../components/Modal';
+import { timetableApi, smartLearningApi, type FlippedMaterial } from '../../services/api';
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -16,6 +17,10 @@ import {
   AlertCircle,
   RefreshCw,
   BookOpen,
+  Sparkles,
+  Eye,
+  ChevronRight,
+  Loader2,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,6 +54,7 @@ interface TimetableResponse {
 
 interface SelectedPeriod extends Period {
   day?: string;
+  flippedMaterial?: FlippedMaterial | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,6 +84,7 @@ export function StudentTimetablePage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'week' | 'day'>('week');
   const [selectedPeriod, setSelectedPeriod] = useState<SelectedPeriod | null>(null);
+  const [flippedMaterialLoading, setFlippedMaterialLoading] = useState(false);
 
   // Dynamic today calculation
   const todayIdx = new Date().getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
@@ -403,6 +410,30 @@ export function StudentTimetablePage(): React.JSX.Element {
                         className="px-3 py-1.5 text-xs font-medium rounded bg-white text-text-primary border border-hairline hover:bg-surface-neutral transition-colors"
                       >
                         Đề cương bài học
+                      </button>
+                      <button
+                        onClick={async () => {
+                          // Generate a mock timetable entry ID
+                          const entryId = `tt_${selectedDay}_${p.period}`;
+                          setFlippedMaterialLoading(true);
+                          try {
+                            const material = await smartLearningApi.getFlippedMaterial(entryId);
+                            setSelectedPeriod({ ...p, day: selectedDay, flippedMaterial: material });
+                          } catch {
+                            setSelectedPeriod({ ...p, day: selectedDay, flippedMaterial: null });
+                          } finally {
+                            setFlippedMaterialLoading(false);
+                          }
+                        }}
+                        disabled={flippedMaterialLoading}
+                        className="px-3 py-1.5 text-xs font-medium rounded bg-ocean/10 text-ocean border border-ocean/30 hover:bg-ocean/20 transition-colors flex items-center gap-1.5"
+                      >
+                        {flippedMaterialLoading ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-3 h-3" />
+                        )}
+                        Xem bài trước giờ học
                       </button>
                     </div>
                   </div>

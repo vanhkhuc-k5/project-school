@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Megaphone, Plus, Search, Filter, ChevronRight, ChevronLeft, Eye, Edit2,
   Archive, Trash2, Send, FileText, Users, Clock, Check, X, AlertTriangle,
-  RefreshCw, BookOpen, Calendar
+  RefreshCw, BookOpen, Calendar, AlertOctagon, Bell,
 } from 'lucide-react';
 import { api } from '../../services/api';
 
@@ -422,6 +422,197 @@ function AnnouncementRow({ announcement, onView, onEdit, onPublish, onArchive, o
 }
 
 // ============================================================================
+// Emergency Broadcast Modal (G39)
+// ============================================================================
+
+export function EmergencyBroadcastModal({
+  isOpen,
+  onClose,
+  onSuccess,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [severity, setSeverity] = useState<'EMERGENCY' | 'CRITICAL' | 'WARNING'>('WARNING');
+  const [requiresAcknowledgment, setRequiresAcknowledgment] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !message.trim()) {
+      setError('Tiêu đề và nội dung là bắt buộc.');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/announcements/emergency-broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ title: title.trim(), message: message.trim(), severity, requiresAcknowledgment }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTitle('');
+        setMessage('');
+        setSeverity('WARNING');
+        setRequiresAcknowledgment(true);
+        onSuccess();
+      } else {
+        setError(data.error || 'Gửi thất bại. Vui lòng thử lại.');
+      }
+    } catch {
+      setError('Không thể kết nối máy chủ.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const severityConfig = {
+    EMERGENCY: { label: 'Khẩn cấp', color: 'text-red-600', border: 'border-red-500', bg: 'bg-red-50' },
+    CRITICAL: { label: 'Nguy hiểm', color: 'text-orange-600', border: 'border-orange-500', bg: 'bg-orange-50' },
+    WARNING: { label: 'Cảnh báo', color: 'text-yellow-700', border: 'border-yellow-500', bg: 'bg-yellow-50' },
+  };
+  const sc = severityConfig[severity];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border-t-4 border-red-500 overflow-hidden">
+        {/* Header */}
+        <div className="px-6 py-4 bg-red-50 border-b border-red-200 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-red-200 flex items-center justify-center">
+            <AlertOctagon className="w-6 h-6 text-red-600" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-red-700">Phát thông báo khẩn cấp</h2>
+            <p className="text-xs text-red-500">Thông báo sẽ được gửi tới 100% người dùng đang trực tuyến</p>
+          </div>
+          <button onClick={onClose} className="ml-auto text-red-400 hover:text-red-700">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-300 rounded-lg flex items-center gap-2 text-sm text-red-700">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              {error}
+            </div>
+          )}
+
+          {/* Severity */}
+          <div>
+            <label className="block text-sm font-medium text-[#374151] mb-2">Mức độ nghiêm trọng</label>
+            <div className="grid grid-cols-3 gap-2">
+              {(['WARNING', 'CRITICAL', 'EMERGENCY'] as const).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => setSeverity(level)}
+                  className={`py-2 px-3 rounded-lg border text-xs font-semibold transition-all ${
+                    severity === level
+                      ? `${severityConfig[level].border} ${severityConfig[level].bg} ${severityConfig[level].color} border-2`
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  {severityConfig[level].label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-medium text-[#374151] mb-1">Tiêu đề thông báo <span className="text-red-500">*</span></label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="VD: THÔNG BÁO NGỪNG HỌC KHẨN CẤP"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+              maxLength={120}
+            />
+          </div>
+
+          {/* Message */}
+          <div>
+            <label className="block text-sm font-medium text-[#374151] mb-1">Nội dung <span className="text-red-500">*</span></label>
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Mô tả chi tiết tình huống và hướng dẫn hành động..."
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+              maxLength={500}
+            />
+            <div className="text-right text-xs text-gray-400 mt-1">{message.length}/500</div>
+          </div>
+
+          {/* Acknowledge checkbox */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={requiresAcknowledgment}
+              onChange={(e) => setRequiresAcknowledgment(e.target.checked)}
+              className="w-4 h-4 accent-red-600"
+            />
+            <span className="text-sm text-[#374151]">
+              Yêu cầu người nhận bấm <strong>"Đã hiểu"</strong> để xác nhận
+            </span>
+          </label>
+
+          {/* Preview */}
+          {title && message && (
+            <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+              <div className="text-xs font-semibold text-gray-500 mb-1.5">Xem trước:</div>
+              <div className={`text-xs font-bold ${sc.color} uppercase`}>{severityConfig[severity].label}</div>
+              <div className="text-sm font-semibold text-gray-800">{title}</div>
+              <p className="text-xs text-gray-600 mt-1 line-clamp-2">{message}</p>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-[#6B7280] hover:bg-gray-50"
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !title.trim() || !message.trim()}
+              className="flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg font-semibold text-sm transition-colors"
+            >
+              {loading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Đang phát...
+                </>
+              ) : (
+                <>
+                  <Bell className="w-4 h-4" />
+                  Phát ngay lập tức
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // Main Page Component
 // ============================================================================
 
@@ -440,6 +631,7 @@ export function AdminCommunicationPage() {
 
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
 
   const showToast = useCallback((type: Toast['type'], message: string) => {
     const id = `toast_${Date.now()}`;
@@ -537,6 +729,14 @@ export function AdminCommunicationPage() {
                 Quản lý thông báo và giao tiếp với phụ huynh
               </p>
             </div>
+            <button
+              onClick={() => setShowBroadcastModal(true)}
+              className="flex items-center gap-2 px-4 py-2 border-2 border-red-500 text-red-600 rounded-lg hover:bg-red-50 font-semibold text-sm transition-colors"
+              title="Phát thông báo khẩn cấp toàn trường"
+            >
+              <AlertOctagon className="w-4 h-4" />
+              Phát thông báo khẩn
+            </button>
             <button
               onClick={() => setShowCreateModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-[#1C6FA8] text-white rounded-lg hover:bg-[#0F3D5C]"
@@ -656,6 +856,16 @@ export function AdminCommunicationPage() {
           )}
         </div>
       </div>
+
+      {/* Broadcast Emergency Modal */}
+      <EmergencyBroadcastModal
+        isOpen={showBroadcastModal}
+        onClose={() => setShowBroadcastModal(false)}
+        onSuccess={() => {
+          showToast('success', 'Thông báo khẩn cấp đã được phát tới toàn trường!');
+          setShowBroadcastModal(false);
+        }}
+      />
 
       {/* Create Modal */}
       <CreateAnnouncementModal

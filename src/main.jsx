@@ -5,6 +5,7 @@ import { ServerStateProvider } from './context/ServerStateContext.jsx';
 import { SyncProvider } from './context/SyncContext.jsx';
 import { RealtimeProvider } from './context/RealtimeContext.jsx';
 import { AppRouter } from './router/AppRouter.jsx';
+import { EmergencyModal } from './components/EmergencyModal.jsx';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -14,6 +15,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <SyncProvider>
           <RealtimeProvider>
             <AppRouter />
+            {/* G39: Global emergency broadcast overlay — mounted at root */}
+            <EmergencyModal />
           </RealtimeProvider>
         </SyncProvider>
       </ServerStateProvider>

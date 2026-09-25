@@ -41,7 +41,9 @@ interface RealtimeContextValue {
   
   // Event callbacks
   onNotification: ((notification: Notification) => void) | null;
-  setOnNotification: (callback: ((notification: Notification) => void) | null) => void;
+  notificationHandlers: {
+    set: (callback: ((notification: Notification) => void) | null) => void;
+  };
 }
 
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
@@ -62,6 +64,10 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [onNotification, setOnNotification] = useState<((notification: Notification) => void) | null>(null);
+
+  const notificationHandlers = {
+    set: setOnNotification,
+  };
   
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -267,6 +273,30 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
       }
     });
 
+    // G39: Handle EMERGENCY_BROADCAST event — school-wide emergency alert
+    eventSource.addEventListener('EMERGENCY_BROADCAST', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const notification: Notification = {
+          id: `emergency-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type: 'emergency_broadcast',
+          title: `🚨 ${data.title || 'Thông báo khẩn'}`,
+          message: data.message || 'Thông báo khẩn cấp từ Ban Giám Hiệu.',
+          data,
+          timestamp: data.timestamp || new Date().toISOString(),
+        };
+
+        setNotifications((prev) => [notification, ...prev]);
+        setUnreadCount((prev) => prev + 1);
+
+        if (onNotification) {
+          onNotification(notification);
+        }
+      } catch (err) {
+        console.error('[Realtime] Failed to parse EMERGENCY_BROADCAST event:', err);
+      }
+    });
+
     eventSourceRef.current = eventSource;
   }, [currentUser, onNotification]);
 
@@ -359,7 +389,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
     markAllAsRead,
     clearNotification,
     onNotification,
-    setOnNotification,
+    notificationHandlers,
   };
 
   return (

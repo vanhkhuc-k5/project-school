@@ -11,6 +11,7 @@ import {
   getMyAnnouncements,
   markAsRead,
   listCategories,
+  emergencyBroadcast,
 } from './announcements.controller.js';
 
 const router = express.Router();
@@ -37,6 +38,9 @@ router.post(
 // ── Admin/Staff: full CRUD ─────────────────────────────────────────────────
 router.use(authenticateToken);
 router.use(requireRole('admin', 'school_admin', 'super_admin', 'principal', 'vice_principal'));
+
+// G39: Emergency broadcast — must be before /:id to avoid route conflict
+router.post('/emergency-broadcast', requirePermission('announcement.create'), emergencyBroadcast);
 
 // List all announcements (admin view)
 router.get('/all', requirePermission('announcement.read'), listAnnouncements);

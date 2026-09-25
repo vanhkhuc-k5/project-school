@@ -2,10 +2,12 @@
 // Announcements Service — Business Logic Layer
 // G25 — Production Announcements
 // G26 — Notification Center Integration
+// G39 — Emergency Broadcast System
 // =============================================================================
 import * as repo from './announcements.repository.js';
 import { AppError } from '../../shared/errors/index.js';
 import { notifyAnnouncementPublished } from '../notifications/notifications.service.js';
+import { dispatchToSchool } from '../notifications/sse.controller.js';
 
 export const announcementService = {
   // ── CREATE ─────────────────────────────────────────────────────────────────
@@ -160,5 +162,49 @@ export const announcementService = {
 
   listCategories({ schoolId }) {
     return repo.listCategories({ schoolId });
+  },
+
+  // ── G39: EMERGENCY BROADCAST ────────────────────────────────────────────────
+
+  async createEmergencyBroadcast({ title, message, severity, requiresAcknowledgment, schoolId, authorId, authorName }) {
+    if (!authorId) throw AppError.unauthorized('Yêu cầu xác thực');
+
+    // Create and immediately publish the emergency announcement
+    const announcement = await repo.createAnnouncement({
+      data: {
+        title,
+        message,
+        priority: severity || 'emergency',
+        scope: 'all',
+        status: 'published',
+        isEmergency: true,
+        requiresAcknowledgment: Boolean(requiresAcknowledgment),
+      },
+      schoolId,
+      authorId,
+      authorName,
+    });
+
+    // Dispatch SSE EMERGENCY_BROADCAST to ALL connected clients school-wide
+    try {
+      const broadcastData = {
+        event: 'EMERGENCY_BROADCAST',
+        id: announcement.id,
+        title: announcement.title,
+        message: announcement.message,
+        severity: severity || 'WARNING',
+        requiresAcknowledgment: Boolean(requiresAcknowledgment),
+        issuedBy: authorName || 'Ban Giám Hiệu',
+        issuedAt: announcement.publishedAt || new Date().toISOString(),
+        priority: 'emergency',
+      };
+
+      const connectionCount = dispatchToSchool(schoolId, 'EMERGENCY_BROADCAST', broadcastData);
+      console.log(`[EmergencyBroadcast] Sent to ${connectionCount} connections. School: ${schoolId}`);
+    } catch (sseErr) {
+      console.error('[EmergencyBroadcast] SSE dispatch failed (non-fatal):', sseErr.message);
+    }
+
+    return announcement;
   },
 };

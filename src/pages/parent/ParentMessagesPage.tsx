@@ -37,7 +37,7 @@ export function ParentMessagesPage() {
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // G38 Real-time: Listen for NEW_MESSAGE events from teacher replies
-  const { setOnNotification } = useRealtime();
+  const { notificationHandlers } = useRealtime();
 
   // Scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {
@@ -72,12 +72,12 @@ export function ParentMessagesPage() {
       }
     };
 
-    setOnNotification(handleIncomingMessage);
+    notificationHandlers.set(handleIncomingMessage);
     return () => {
-      setOnNotification(null);
+      notificationHandlers.set(null);
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     };
-  }, [selectedChildId, setOnNotification]);
+  }, [selectedChildId, notificationHandlers]);
 
   const loadMessages = useCallback(async (childId: string) => {
     setIsLoadingData(true);

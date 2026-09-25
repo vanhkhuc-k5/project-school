@@ -17,6 +17,7 @@ import {
   type AssignmentUpdatePayload,
 } from '../../services/api';
 import { useSync } from '../../context/SyncContext';
+import { ExamDocxParser } from '../../components/learning/ExamDocxParser';
 import {
   Save,
   Send,
@@ -701,6 +702,7 @@ export function CreateAssignment({ assignmentId: propAssignmentId, onBackToDashb
   const [showPreview, setShowPreview] = useState(false);
   const [examVariants, setExamVariants] = useState<ExamVariant[]>([]);
   const [showVariantsModal, setShowVariantsModal] = useState(false);
+  const [showDocxParser, setShowDocxParser] = useState(false);
 
   // Validation errors
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -1231,6 +1233,14 @@ export function CreateAssignment({ assignmentId: propAssignmentId, onBackToDashb
                     <span>Thêm câu hỏi {t.label.toLowerCase()}</span>
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setShowDocxParser(true)}
+                  className="px-4 py-2 border border-dashed border-ocean/50 hover:border-ocean hover:bg-ocean/10 rounded-card text-xs font-medium text-ocean flex items-center gap-2 transition-colors"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Nhập từ file Word</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1418,6 +1428,45 @@ export function CreateAssignment({ assignmentId: propAssignmentId, onBackToDashb
           onClose={() => setShowVariantsModal(false)}
         />
       )}
+
+      {/* DOCX Parser Modal */}
+      <Modal
+        isOpen={showDocxParser}
+        onClose={() => setShowDocxParser(false)}
+        title="Nhập câu hỏi từ file Word"
+        size="xl"
+      >
+        <ExamDocxParser
+          isOpen={showDocxParser}
+          subject={form.subject}
+          onQuestionsParsed={(parsedQuestions) => {
+            // Convert parsed questions to form questions
+            const newQuestions = parsedQuestions.map((pq) => ({
+              id: newQuestionId(),
+              prompt: pq.prompt,
+              questionType: 'multiple_choice' as QuestionType,
+              maxScore: pq.max_score || 0.25,
+              difficulty: pq.difficulty as DifficultyLevel,
+              options: pq.options.map((o) => ({
+                id: newOptionId(),
+                text: o.text,
+                isCorrect: o.isCorrect,
+              })),
+              correctAnswer: pq.options.find((o) => o.isCorrect)?.text || '',
+              explanation: '',
+              hasPlot: false,
+              plotData: '',
+            }));
+            // Add to form
+            setForm((f) => ({
+              ...f,
+              questions: [...f.questions, ...newQuestions],
+            }));
+            setShowDocxParser(false);
+          }}
+          onClose={() => setShowDocxParser(false)}
+        />
+      </Modal>
 
       {/* Sticky Bottom Bar */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-white hairline-t px-6 py-3 shadow-popover flex items-center justify-between">

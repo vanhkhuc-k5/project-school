@@ -16,12 +16,15 @@ import {
   CheckCircle,
   XCircle,
   ArrowRight,
+  AlertOctagon,
+  Bell,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { PageLoader } from '../../components/LoadingState';
 import { apiRequest } from '../../services/api';
+import { EmergencyBroadcastModal } from '../admin/AdminCommunicationPage.js';
 
 // Type definitions
 interface KPIData {
@@ -233,6 +236,7 @@ export function LeadershipDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [kpiData, setKPIData] = useState<KPIData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
 
   useEffect(() => {
     fetchKPIData();
@@ -292,11 +296,22 @@ export function LeadershipDashboardPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-medium text-text-primary">Tổng quan Điều hành</h1>
-        <p className="text-sm text-text-secondary mt-1">
-          Theo dõi các chỉ số KPI quan trọng của trường
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-medium text-text-primary">Tổng quan Điều hành</h1>
+          <p className="text-sm text-text-secondary mt-1">
+            Theo dõi các chỉ số KPI quan trọng của trường
+          </p>
+        </div>
+        {/* G39: Emergency broadcast button */}
+        <button
+          onClick={() => setShowBroadcastModal(true)}
+          className="flex items-center gap-2 px-4 py-2 border-2 border-red-500 text-red-600 rounded-lg hover:bg-red-50 font-semibold text-sm transition-colors shrink-0"
+          title="Phát thông báo khẩn cấp toàn trường"
+        >
+          <AlertOctagon className="w-4 h-4" />
+          Phát thông báo khẩn
+        </button>
       </div>
 
       {/* KPI Grid */}
@@ -451,6 +466,15 @@ export function LeadershipDashboardPage() {
           </div>
         </Card>
       </div>
+
+      {/* G39: Emergency Broadcast Modal */}
+      <EmergencyBroadcastModal
+        isOpen={showBroadcastModal}
+        onClose={() => setShowBroadcastModal(false)}
+        onSuccess={() => {
+          setShowBroadcastModal(false);
+        }}
+      />
     </div>
   );
 }

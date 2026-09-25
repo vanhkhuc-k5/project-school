@@ -74,7 +74,7 @@ function ToastNotification({ toast, onDismiss }: { toast: Toast; onDismiss: (id:
 // ── Main Component ──────────────────────────────────────────────────────────────
 
 export function TeacherMessagesPage() {
-  const { setOnNotification } = useRealtime();
+  const { notificationHandlers } = useRealtime();
 
   const [conversations, setConversations] = useState<TeacherConversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<TeacherConversation | null>(null);
@@ -195,9 +195,9 @@ export function TeacherMessagesPage() {
       loadConversations();
     };
 
-    setOnNotification(handler);
-    return () => setOnNotification(null);
-  }, [selectedConversation, setOnNotification, loadConversations, loadMessages]);
+    notificationHandlers.set(handler);
+    return () => notificationHandlers.set(null);
+  }, [selectedConversation, notificationHandlers, loadConversations, loadMessages]);
 
   // ── Auto-scroll to bottom ─────────────────────────────────────────────────
   useEffect(() => {

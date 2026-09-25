@@ -18,6 +18,8 @@ function parseAnn(ann) {
     scope: ann.scope || 'all',
     status: ann.status || 'draft',
     isActive: Boolean(ann.is_active ?? ann.isActive ?? 1),
+    isEmergency: Boolean(ann.is_emergency ?? ann.isEmergency ?? 0),
+    requiresAcknowledgment: Boolean(ann.requires_acknowledgment ?? ann.requiresAcknowledgment ?? 0),
     publishedAt: ann.published_at || ann.publishedAt || null,
     scheduledPublishAt: ann.scheduled_publish_at || ann.scheduledPublishAt || null,
     archivedAt: ann.archived_at || ann.archivedAt || null,
@@ -47,8 +49,9 @@ export async function createAnnouncement({ data, schoolId, authorId, authorName 
         id, school_id, title, content, summary, scope, priority, status,
         class_id, subject_id, scheduled_publish_at, sender_id, sender_name,
         attachments, target_roles, target_class_ids, category_id,
-        is_active, published_at, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,TRUE,$18,current_timestamp,current_timestamp)
+        is_active, is_emergency, requires_acknowledgment,
+        published_at, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,TRUE,$18,$19,$20,current_timestamp,current_timestamp)
       RETURNING *
     `, [
       id, schoolId, data.title, data.content, data.summary || null,
@@ -58,6 +61,8 @@ export async function createAnnouncement({ data, schoolId, authorId, authorName 
       attachments, targetRoles, targetClassIds,
       data.categoryId || null,
       data.status === 'published' ? now : null,
+      data.isEmergency ? 1 : 0,
+      data.requiresAcknowledgment ? 1 : 0,
     ]);
     return parseAnn(res.rows[0]);
   }
@@ -67,8 +72,9 @@ export async function createAnnouncement({ data, schoolId, authorId, authorName 
       id, school_id, title, content, summary, scope, priority, status,
       class_id, subject_id, scheduled_publish_at, sender_id, sender_name,
       attachments, target_roles, target_class_ids, category_id,
-      is_active, published_at, created_at, updated_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,datetime('now'),datetime('now'))
+      is_active, is_emergency, requires_acknowledgment,
+      published_at, created_at, updated_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,datetime('now'),datetime('now'))
   `).run(
     id, schoolId, data.title, data.content, data.summary || null,
     data.scope || 'all', data.priority || 'normal', data.status || 'draft',
@@ -77,6 +83,8 @@ export async function createAnnouncement({ data, schoolId, authorId, authorName 
     attachments, targetRoles, targetClassIds,
     data.categoryId || null,
     data.status === 'published' ? now : null,
+    data.isEmergency ? 1 : 0,
+    data.requiresAcknowledgment ? 1 : 0,
   );
 
   return getAnnouncementById(id);

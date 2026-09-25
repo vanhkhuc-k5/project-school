@@ -7,7 +7,9 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
-import { studentApi } from '../../services/api';
+import { studentApi, smartLearningApi, type FlashcardDeck } from '../../services/api';
+import { FlashcardStudyModal } from '../../components/learning/FlashcardStudyModal';
+import { PeriodicTableModal } from '../../components/learning/PeriodicTableModal';
 import {
   Download,
   FileText,
@@ -20,6 +22,11 @@ import {
   Star,
   AlertCircle,
   Search,
+  Sparkles,
+  Zap,
+  GraduationCap,
+  Loader2,
+  Atom,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,6 +77,30 @@ export function StudentResourcesPage(): React.JSX.Element {
     'Ngữ văn',
     'Tin học',
   ]);
+  // Smart Learning Hub State
+  const [smartHubLoading, setSmartHubLoading] = useState(false);
+  const [flashcardDecks, setFlashcardDecks] = useState<FlashcardDeck[]>([]);
+  const [selectedDeck, setSelectedDeck] = useState<FlashcardDeck | null>(null);
+  const [showFlashcardModal, setShowFlashcardModal] = useState(false);
+  const [showPeriodicTable, setShowPeriodicTable] = useState(false);
+  const [activeSmartTab, setActiveSmartTab] = useState<'flashcards' | 'formulas' | 'periodic'>('flashcards');
+
+  // Load flashcard decks for Smart Hub
+  const loadFlashcardDecks = useCallback(async () => {
+    setSmartHubLoading(true);
+    try {
+      const decks = await smartLearningApi.listDecks({ limit: 20 });
+      setFlashcardDecks(decks || []);
+    } catch (e) {
+      console.error('Failed to load flashcard decks:', e);
+    } finally {
+      setSmartHubLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFlashcardDecks();
+  }, [loadFlashcardDecks]);
 
   const fetchResources = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -335,6 +366,118 @@ export function StudentResourcesPage(): React.JSX.Element {
         </div>
       ) : null}
 
+      {/* ── Smart Learning Hub ─────────────────────────────────────────────── */}
+      <div className="border-t-2 border-ocean/20 pt-6 mt-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-ocean/20 to-purple-500/20 flex items-center justify-center">
+            <Sparkles className="w-5 h-5 text-ocean" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">Góc Học Tập Thông Minh</h2>
+            <p className="text-xs text-text-secondary">Flashcards, Bảng tuần hoàn & Công thức</p>
+          </div>
+        </div>
+
+        {/* Smart Hub Tabs */}
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setActiveSmartTab('flashcards')}
+            className={`px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+              activeSmartTab === 'flashcards'
+                ? 'bg-ocean text-white'
+                : 'bg-surface-neutral text-text-secondary hover:bg-gray-100'
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+            Flashcards
+          </button>
+          <button
+            onClick={() => setActiveSmartTab('periodic')}
+            className={`px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+              activeSmartTab === 'periodic'
+                ? 'bg-ocean text-white'
+                : 'bg-surface-neutral text-text-secondary hover:bg-gray-100'
+            }`}
+          >
+            <Atom className="w-4 h-4" />
+            Bảng Tuần Hoàn
+          </button>
+        </div>
+
+        {/* Flashcards Tab */}
+        {activeSmartTab === 'flashcards' && (
+          <div className="space-y-4">
+            {smartHubLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[1, 2, 3].map((i) => (
+                  <Card key={i} padding="p-5" className="animate-pulse">
+                    <div className="h-4 bg-hairline rounded w-3/4 mb-3" />
+                    <div className="h-3 bg-hairline rounded w-1/2" />
+                  </Card>
+                ))}
+              </div>
+            ) : flashcardDecks.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {flashcardDecks.map((deck) => (
+                  <Card
+                    key={deck.id}
+                    padding="p-4"
+                    className="hover:border-ocean/40 transition-all cursor-pointer group"
+                    onClick={() => {
+                      setSelectedDeck(deck);
+                      setShowFlashcardModal(true);
+                    }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-ocean/20 to-purple-500/20 flex items-center justify-center shrink-0">
+                        <GraduationCap className="w-5 h-5 text-ocean" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-sm font-semibold text-text-primary truncate group-hover:text-ocean transition-colors">
+                          {deck.title}
+                        </h3>
+                        <p className="text-xs text-text-secondary mt-0.5">{deck.subject_name || deck.deck_type}</p>
+                        <div className="flex items-center gap-3 mt-2">
+                          <Badge variant="neutral" size="sm">{deck.card_count} thẻ</Badge>
+                          {deck.stats && (
+                            <div className="text-[10px] text-text-secondary">
+                              {deck.stats.mastery_rate || 0}% đã thuộc
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card padding="p-6" className="text-center">
+                <BookOpen className="w-8 h-8 mx-auto text-text-secondary/40 mb-2" />
+                <p className="text-sm text-text-secondary">Chưa có bộ thẻ flashcards nào</p>
+                <p className="text-xs text-text-secondary/60 mt-1">Giáo viên sẽ tạo thẻ học tập sớm</p>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* Periodic Table Tab */}
+        {activeSmartTab === 'periodic' && (
+          <Card padding="p-6" className="text-center">
+            <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center mb-4">
+              <span className="text-3xl">⚗️</span>
+            </div>
+            <h3 className="text-base font-semibold text-text-primary mb-2">Bảng Tuần Hoàn Hóa Học</h3>
+            <p className="text-sm text-text-secondary mb-4">
+              Khám phá 20 nguyên tố đầu tiên với thông tin chi tiết
+            </p>
+            <Button variant="primary" onClick={() => setShowPeriodicTable(true)}>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Mở Bảng Tuần Hoàn
+            </Button>
+          </Card>
+        )}
+      </div>
+
       {/* ── Document Preview Modal ──────────────────────────────────────────── */}
       <Modal
         isOpen={Boolean(previewResource)}
@@ -436,6 +579,25 @@ export function StudentResourcesPage(): React.JSX.Element {
           </div>
         )}
       </Modal>
+
+      {/* ── Smart Learning Modals ──────────────────────────────────────────── */}
+      {selectedDeck && (
+        <FlashcardStudyModal
+          isOpen={showFlashcardModal}
+          onClose={() => {
+            setShowFlashcardModal(false);
+            setSelectedDeck(null);
+          }}
+          deckId={selectedDeck.id}
+          deckTitle={selectedDeck.title}
+          onComplete={loadFlashcardDecks}
+        />
+      )}
+
+      <PeriodicTableModal
+        isOpen={showPeriodicTable}
+        onClose={() => setShowPeriodicTable(false)}
+      />
     </div>
   );
 }
