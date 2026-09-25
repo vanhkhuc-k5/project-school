@@ -241,9 +241,9 @@ interface SubjectDetail {
     weight?: number;
     teacherFeedback?: string;
   }>;
-  tx?: Array<{ id: string; score: number; test_name?: string; graded_at?: string }>;
-  gk?: { id: string; score: number; test_name?: string; graded_at?: string };
-  ck?: { id: string; score: number; test_name?: string; graded_at?: string };
+  tx?: Array<{ id: string; score: number; max_score?: number; test_name?: string; graded_at?: string }>;
+  gk?: { id: string; score: number; max_score?: number; test_name?: string; graded_at?: string };
+  ck?: { id: string; score: number; max_score?: number; test_name?: string; graded_at?: string };
   teacherComment?: string;
 }
 
@@ -404,20 +404,29 @@ interface GradeSubject {
   recentScore?: number | null;
   teacherComment?: string;
   tests?: SubjectDetail['tests'];
-  tx?: SubjectDetail['tx'];
-  gk?: SubjectDetail['gk'];
-  ck?: SubjectDetail['ck'];
+  tx?: Array<{ id: string; score: number; max_score?: number; test_name?: string; graded_at?: string }>;
+  gk?: { id: string; score: number; max_score?: number; test_name?: string; graded_at?: string };
+  ck?: { id: string; score: number; max_score?: number; test_name?: string; graded_at?: string };
+}
+
+interface GradeData {
+  semester?: string;
+  academicYear?: string;
+  overallGpa?: number;
+  classRank?: string | number;
+  conduct?: string;
+  attendanceRate?: string;
+  subjects: GradeSubject[];
+}
+
+interface StudentGradeResponse {
+  data?: GradeData;
 }
 
 export function StudentGradesPage() {
   const { triggerSync } = useSync();
 
-  const [gradeData, setGradeData] = useState<{
-    semester?: string;
-    academicYear?: string;
-    overallGpa?: number;
-    tests?: Array<{ subject: string; subjectName?: string }>;
-  } | null>(null);
+  const [gradeData, setGradeData] = useState<GradeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activePeriod, setActivePeriod] = useState('hk1');
@@ -434,14 +443,14 @@ export function StudentGradesPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await studentApi.getGrades(period);
-      if (res && res.data) {
-        setGradeData(res.data);
+      const res = await studentApi.getGrades<StudentGradeResponse>(period);
+      if (res && (res as StudentGradeResponse).data) {
+        setGradeData((res as StudentGradeResponse).data!);
       } else {
         setGradeData(null);
       }
     } catch (e) {
-      setError((e as Error).message || 'Không thể tải bảng điểm.');
+      setError(e instanceof Error ? e.message : 'Không thể tải bảng điểm.');
     } finally {
       setLoading(false);
     }

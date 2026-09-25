@@ -226,6 +226,7 @@ function ExamModal({ assignment, onClose, onSubmit, onSaveDraft, syncFn }: ExamM
   // ── State ──
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<{
+    subject?: string;
     questions?: Array<{
       id: string;
       prompt: string;
@@ -237,6 +238,7 @@ function ExamModal({ assignment, onClose, onSubmit, onSaveDraft, syncFn }: ExamM
     }>;
     submission?: { answers?: Record<string, string>; draftAnswers?: Record<string, string> };
     duration_minutes?: number;
+    allow_resubmit?: boolean;
   } | null>(null);
   const [error, setError] = useState('');
 
@@ -991,6 +993,8 @@ export function StudentAssignmentsPage() {
           <ExamModal
             assignment={selectedAssignment}
             onClose={handleCloseExam}
+            onSubmit={() => {}}
+            onSaveDraft={() => {}}
             syncFn={triggerSync}
           />
         )}
