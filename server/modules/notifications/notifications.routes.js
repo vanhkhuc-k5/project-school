@@ -7,25 +7,29 @@ import {
   markAllAsRead,
   deleteNotification,
 } from './notifications.controller.js';
+import { sseStream } from './sse.controller.js';
 
 const router = express.Router();
 
-// All notification routes require authentication
+// All notification routes require authentication (except SSE stream for auth handling)
 router.use(authenticateToken);
 
-// GET /api/v1/notifications — list with pagination
+// GET /api/notifications/stream — SSE real-time stream (keep connection alive)
+router.get('/stream', sseStream);
+
+// GET /api/notifications — list with pagination
 router.get('/', listNotifications);
 
-// GET /api/v1/notifications/unread-count
+// GET /api/notifications/unread-count
 router.get('/unread-count', getUnreadCount);
 
-// PATCH /api/v1/notifications/:id/read
+// PATCH /api/notifications/:id/read
 router.patch('/:id/read', markAsRead);
 
-// PATCH /api/v1/notifications/read-all
+// PATCH /api/notifications/read-all
 router.patch('/read-all', markAllAsRead);
 
-// DELETE /api/v1/notifications/:id
+// DELETE /api/notifications/:id
 router.delete('/:id', deleteNotification);
 
 export default router;
