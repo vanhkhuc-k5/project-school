@@ -57,7 +57,13 @@ import { TeacherSchedulePage } from '../pages/teacher/TeacherSchedulePage';
 import { CreateAssignment } from '../pages/teacher/CreateAssignment';
 
 // ── Parent Pages ────────────────────────────────────────────────────────────
-import { ParentDashboard } from '../pages/parent/ParentDashboard';
+import { ParentDashboardPage } from '../pages/parent/ParentDashboardPage';
+import { ParentGradesPage } from '../pages/parent/ParentGradesPage';
+import { ParentSchedulePage } from '../pages/parent/ParentSchedulePage';
+import { ParentLeaveRequestPage } from '../pages/parent/ParentLeaveRequestPage';
+import { ParentTuitionPage } from '../pages/parent/ParentTuitionPage';
+import { ParentMessagesPage } from '../pages/parent/ParentMessagesPage';
+import { ParentNoticesPage } from '../pages/parent/ParentNoticesPage';
 
 // ── Admin Pages ─────────────────────────────────────────────────────────────
 import { AdminDashboard } from '../pages/admin/AdminDashboard';
@@ -241,8 +247,13 @@ export function AppRouter() {
           }
         >
           <Route index element={<Navigate to="/parent/dashboard" replace />} />
-          <Route path="dashboard" element={<ParentDashboard />} />
-          {/* Future: /parent/grades, /parent/leave, /parent/tuition, /parent/messages */}
+          <Route path="dashboard" element={<ParentDashboardPage />} />
+          <Route path="grades" element={<ParentGradesPage />} />
+          <Route path="schedule" element={<ParentSchedulePage />} />
+          <Route path="leave" element={<ParentLeaveRequestPage />} />
+          <Route path="tuition" element={<ParentTuitionPage />} />
+          <Route path="notices" element={<ParentNoticesPage />} />
+          <Route path="messages" element={<ParentMessagesPage />} />
         </Route>
 
         {/* ── Admin / BGH Routes ───────────────────────────────────────── */}
