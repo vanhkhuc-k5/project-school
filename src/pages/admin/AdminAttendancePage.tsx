@@ -306,6 +306,7 @@ export function AdminAttendancePage() {
   const [atRiskStudents, setAtRiskStudents] = useState<AtRiskStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'rfid'>('overview');
 
   // Filters
   const [academicYear, setAcademicYear] = useState<string>('');
@@ -390,178 +391,350 @@ export function AdminAttendancePage() {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-6">
-        {/* Filters */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-3">
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1C6FA8]"
-              />
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1C6FA8]"
-              />
-              <select
-                value={gradeLevel}
-                onChange={(e) => setGradeLevel(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1C6FA8]"
-              >
-                <option value="">Tất cả khối</option>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
-                  <option key={g} value={g}>Khối {g}</option>
-                ))}
-              </select>
-              <input
-                type="text"
-                value={academicYear}
-                onChange={(e) => setAcademicYear(e.target.value)}
-                placeholder="Năm học (VD: 2025-2026)"
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1C6FA8]"
-              />
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={fetchData}
-                className="px-4 py-2 bg-[#1C6FA8] text-white rounded-lg font-medium hover:bg-[#0F3D5C] transition-colors"
-              >
-                <Filter className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`px-4 py-2 border rounded-lg font-medium transition-colors ${
-                  showFilters ? 'bg-[#E8F2FA] text-[#1C6FA8] border-[#1C6FA8]' : 'text-[#6B7280] border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
-              </button>
-            </div>
-          </div>
-          {showFilters && (
-            <div className="pt-4 border-t flex justify-end">
-              <button
-                onClick={handleClearFilters}
-                className="text-sm text-[#6B7280] hover:text-[#1C6FA8]"
-              >
-                Xóa bộ lọc
-              </button>
-            </div>
-          )}
+      {/* Tab Navigation */}
+      <div className="max-w-7xl mx-auto px-6 py-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'overview'
+                ? 'bg-[#1C6FA8] text-white shadow'
+                : 'bg-white text-[#6B7280] hover:bg-[#E8F2FA]'
+            }`}
+          >
+            Tổng quan & Báo cáo
+          </button>
+          <button
+            onClick={() => setActiveTab('rfid')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'rfid'
+                ? 'bg-orange-500 text-white shadow'
+                : 'bg-white text-orange-600 hover:bg-orange-50 border border-orange-200'
+            }`}
+          >
+            🔌 Quét thẻ RFID (IoT Scanner)
+          </button>
         </div>
 
-        {loading ? (
-          <LoadingState />
-        ) : (
-          <>
-            {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-              <StatCard
-                label="Có mặt"
-                value={summary?.present || 0}
-                percentage={percentages?.present || '0'}
-                icon={UserCheck}
-                color="text-green-600"
-              />
-              <StatCard
-                label="Vắng"
-                value={summary?.absent || 0}
-                percentage={percentages?.absent || '0'}
-                icon={UserX}
-                color="text-red-600"
-              />
-              <StatCard
-                label="Vắng có phép"
-                value={summary?.absentExcused || 0}
-                percentage={percentages?.absentExcused || '0'}
-                icon={Check}
-                color="text-blue-600"
-              />
-              <StatCard
-                label="Vắng không phép"
-                value={summary?.absentUnexcused || 0}
-                percentage={percentages?.absentUnexcused || '0'}
-                icon={X}
-                color="text-red-700"
-              />
-              <StatCard
-                label="Đến muộn"
-                value={summary?.late || 0}
-                percentage={percentages?.late || '0'}
-                icon={Clock}
-                color="text-yellow-600"
-              />
-              <StatCard
-                label="Tổng cộng"
-                value={summary?.total || 0}
-                percentage="100"
-                icon={Users}
-                color="text-gray-600"
-              />
-            </div>
+        {/* RFID Tab Content */}
+        {activeTab === 'rfid' && (
+          <AdminRFIDTab />
+        )}
 
-            {/* At Risk Students */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="p-4 border-b flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-yellow-500" />
-                  <h3 className="font-semibold text-[#0F3D5C]">Học sinh có nguy cơ (Tỷ lệ vắng {'>='} 10%)</h3>
+        {/* Overview Tab Content */}
+        {activeTab === 'overview' && (
+          <>
+            {/* Filters */}
+            <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1C6FA8]"
+                  />
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1C6FA8]"
+                  />
+                  <select
+                    value={gradeLevel}
+                    onChange={(e) => setGradeLevel(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1C6FA8]"
+                  >
+                    <option value="">Tất cả khối</option>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
+                      <option key={g} value={g}>Khối {g}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={academicYear}
+                    onChange={(e) => setAcademicYear(e.target.value)}
+                    placeholder="Năm học (VD: 2025-2026)"
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1C6FA8]"
+                  />
                 </div>
-                <span className="text-sm text-[#6B7280]">{atRiskStudents.length} học sinh</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={fetchData}
+                    className="px-4 py-2 bg-[#1C6FA8] text-white rounded-lg font-medium hover:bg-[#0F3D5C] transition-colors"
+                  >
+                    <Filter className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setShowFilters(!showFilters)}
+                    className={`px-4 py-2 border rounded-lg font-medium transition-colors ${
+                      showFilters ? 'bg-[#E8F2FA] text-[#1C6FA8] border-[#1C6FA8]' : 'text-[#6B7280] border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+                  </button>
+                </div>
               </div>
-              {atRiskStudents.length === 0 ? (
-                <div className="p-8 text-center">
-                  <Check className="w-12 h-12 text-green-500 mx-auto mb-3" />
-                  <p className="text-[#6B7280]">Không có học sinh nào có tỷ lệ vắng đáng lo ngại</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-[#374151] uppercase">Học sinh</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-[#374151] uppercase">Lớp</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-[#374151] uppercase">Tổng ngày</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-[#374151] uppercase">Ngày vắng</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-[#374151] uppercase">Tỷ lệ</th>
-                        <th className="px-4 py-3"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {atRiskStudents.map((student) => (
-                        <AtRiskStudentRow
-                          key={student.student_id}
-                          student={student}
-                          onView={handleViewStudent}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
+              {showFilters && (
+                <div className="pt-4 border-t flex justify-end">
+                  <button
+                    onClick={handleClearFilters}
+                    className="text-sm text-[#6B7280] hover:text-[#1C6FA8]"
+                  >
+                    Xóa bộ lọc
+                  </button>
                 </div>
               )}
             </div>
+
+            {loading ? (
+              <LoadingState />
+            ) : (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                  <StatCard
+                    label="Có mặt"
+                    value={summary?.present || 0}
+                    percentage={percentages?.present || '0'}
+                    icon={UserCheck}
+                    color="text-green-600"
+                  />
+                  <StatCard
+                    label="Vắng"
+                    value={summary?.absent || 0}
+                    percentage={percentages?.absent || '0'}
+                    icon={UserX}
+                    color="text-red-600"
+                  />
+                  <StatCard
+                    label="Vắng có phép"
+                    value={summary?.absentExcused || 0}
+                    percentage={percentages?.absentExcused || '0'}
+                    icon={Check}
+                    color="text-blue-600"
+                  />
+                  <StatCard
+                    label="Vắng không phép"
+                    value={summary?.absentUnexcused || 0}
+                    percentage={percentages?.absentUnexcused || '0'}
+                    icon={X}
+                    color="text-red-700"
+                  />
+                  <StatCard
+                    label="Đến muộn"
+                    value={summary?.late || 0}
+                    percentage={percentages?.late || '0'}
+                    icon={Clock}
+                    color="text-yellow-600"
+                  />
+                  <StatCard
+                    label="Tổng cộng"
+                    value={summary?.total || 0}
+                    percentage="100"
+                    icon={Users}
+                    color="text-gray-600"
+                  />
+                </div>
+
+                {/* At Risk Students */}
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="p-4 border-b flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-yellow-500" />
+                      <h3 className="font-semibold text-[#0F3D5C]">Học sinh có nguy cơ (Tỷ lệ vắng {'>='} 10%)</h3>
+                    </div>
+                    <span className="text-sm text-[#6B7280]">{atRiskStudents.length} học sinh</span>
+                  </div>
+                  {atRiskStudents.length === 0 ? (
+                    <div className="p-8 text-center">
+                      <Check className="w-12 h-12 text-green-500 mx-auto mb-3" />
+                      <p className="text-[#6B7280]">Không có học sinh nào có tỷ lệ vắng đáng lo ngại</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-[#374151] uppercase">Học sinh</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-[#374151] uppercase">Lớp</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-[#374151] uppercase">Tổng ngày</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-[#374151] uppercase">Ngày vắng</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-[#374151] uppercase">Tỷ lệ</th>
+                            <th className="px-4 py-3"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {atRiskStudents.map((student) => (
+                            <AtRiskStudentRow
+                              key={student.student_id}
+                              student={student}
+                              onView={handleViewStudent}
+                            />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </>
         )}
+
+        {/* History Modal */}
+        <StudentHistoryModal
+          isOpen={showHistory}
+          onClose={() => setShowHistory(false)}
+          studentId={selectedStudent.id}
+          studentName={selectedStudent.name}
+        />
+
+        {/* Toast Container */}
+        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+          {toasts.map((toast) => (
+            <Toast key={toast.id} toast={toast} onDismiss={dismissToast} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminRFIDTab() {
+  const [scanLog, setScanLog] = useState<Array<{
+    id: string; studentId: string; studentName: string;
+    studentCode: string; timestamp: string; status: 'success' | 'error'; direction: 'IN' | 'OUT';
+  }>>([]);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scannerSignal, setScannerSignal] = useState<'idle' | 'green' | 'red'>('idle');
+
+  const handleDemoScan = () => {
+    setIsScanning(true);
+    setScannerSignal('green');
+    setTimeout(() => {
+      const names = ['Nguyễn Văn Minh', 'Trần Thị Lan', 'Lê Hoàng Nam', 'Phạm Thu Hà', 'Đặng Đức An'];
+      const codes = ['HS001', 'HS002', 'HS003', 'HS004', 'HS005'];
+      const idx = Math.floor(Math.random() * names.length);
+      const direction = Math.random() > 0.5 ? 'IN' : 'OUT';
+      setScanLog(prev => [{
+        id: `scan-${Date.now()}`,
+        studentId: `stu_${idx}`,
+        studentName: names[idx],
+        studentCode: codes[idx],
+        timestamp: new Date().toLocaleString('vi-VN'),
+        status: 'success' as const,
+        direction: direction as 'IN' | 'OUT',
+      }, ...prev].slice(0, 50));
+      setIsScanning(false);
+      setScannerSignal('idle');
+    }, 1200);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Coming Soon Banner */}
+      <div className="p-4 bg-amber-50 border border-amber-300 rounded-lg flex items-start gap-3">
+        <div className="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center shrink-0 text-sm">⚠️</div>
+        <div>
+          <div className="text-sm font-semibold text-amber-800">
+            Tính năng đang phát triển — Thử nghiệm thiết bị phần cứng RFID IoT
+          </div>
+          <div className="text-xs text-amber-700 mt-1">
+            Giao diện mô phỏng máy quét thẻ RFID tại cổng trường. Dữ liệu trong bảng log là giả lập,
+            không ảnh hưởng đến hệ thống điểm danh chính thức.
+          </div>
+        </div>
       </div>
 
-      {/* History Modal */}
-      <StudentHistoryModal
-        isOpen={showHistory}
-        onClose={() => setShowHistory(false)}
-        studentId={selectedStudent.id}
-        studentName={selectedStudent.name}
-      />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Card Reader Unit */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6 flex flex-col items-center gap-4">
+          <div className="text-xs font-semibold text-[#0F3D5C]">Máy quét thẻ RFID — Cổng chính</div>
+          {/* Signal Lights */}
+          <div className="flex gap-4">
+            <div className="flex flex-col items-center gap-1">
+              <div className={`w-6 h-6 rounded-full border-2 transition-all ${scannerSignal === 'green' ? 'bg-green-400 border-green-500 shadow-lg shadow-green-300 animate-pulse' : 'bg-gray-100 border-gray-300'}`} />
+              <span className="text-[10px] text-[#6B7280]">Đèn Xanh</span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <div className={`w-6 h-6 rounded-full border-2 transition-all ${scannerSignal === 'red' ? 'bg-red-400 border-red-500 shadow-lg shadow-red-300 animate-pulse' : 'bg-gray-100 border-gray-300'}`} />
+              <span className="text-[10px] text-[#6B7280]">Đèn Đỏ</span>
+            </div>
+          </div>
+          {/* Card Slot */}
+          <div className="w-full bg-gray-100 rounded border border-dashed border-gray-300 p-4 text-center">
+            <div className="text-xs text-[#6B7280] mb-1">Đầu đọc thẻ</div>
+            <div className="w-full h-16 bg-gray-200 rounded flex items-center justify-center border-2 border-dashed border-gray-400">
+              <span className="text-xs text-gray-500">◄ Quẹt thẻ ►</span>
+            </div>
+            <div className="mt-2 text-[10px] text-gray-500">UID: 04:A3:B2:1C:7D:E8:F1</div>
+          </div>
+          {/* Status */}
+          <div className={`text-xs font-medium px-3 py-1.5 rounded-full ${
+            scannerSignal === 'green' ? 'bg-green-100 text-green-700'
+            : scannerSignal === 'red' ? 'bg-red-100 text-red-700'
+            : 'bg-gray-100 text-gray-500'
+          }`}>
+            {scannerSignal === 'green' ? '✓ Đọc thẻ thành công'
+             : scannerSignal === 'red' ? '✗ Lỗi đọc thẻ'
+             : '○ Chờ quẹt thẻ'}
+          </div>
+          <button
+            onClick={handleDemoScan}
+            disabled={isScanning}
+            className="w-full px-4 py-2.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+          >
+            {isScanning ? 'Đang quét...' : '🪪 Mô phỏng quẹt thẻ thử nghiệm'}
+          </button>
+        </div>
 
-      {/* Toast Container */}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
-        {toasts.map((toast) => (
-          <Toast key={toast.id} toast={toast} onDismiss={dismissToast} />
-        ))}
+        {/* School Gate Map */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="text-xs font-semibold text-[#0F3D5C] mb-3">Sơ đồ cổng trường — Thiết bị IoT</div>
+          <div className="bg-gray-50 rounded-lg border border-dashed border-gray-300 p-4 flex flex-col items-center gap-3">
+            <div className="w-full flex items-center justify-center gap-2 text-[10px] text-gray-500">
+              <span>← Lối vào</span>
+              <div className="px-3 py-1.5 bg-gray-200 rounded font-medium text-gray-700">CỔNG CHÍNH</div>
+              <span>Lối ra →</span>
+            </div>
+            <div className="flex gap-2">
+              <div className={`w-12 h-12 rounded border-2 flex flex-col items-center justify-center text-[10px] transition-all ${scannerSignal === 'green' ? 'border-green-400 bg-green-50' : 'border-gray-300 bg-gray-100'}`}>
+                <span>📷</span><span>Camera</span>
+              </div>
+              <div className={`w-16 h-12 rounded border-2 flex flex-col items-center justify-center text-[10px] transition-all ${scannerSignal === 'green' ? 'border-green-400 bg-green-50' : 'border-gray-300 bg-gray-100'}`}>
+                <span>📡</span><span>RFID</span>
+              </div>
+              <div className={`w-12 h-12 rounded border-2 flex flex-col items-center justify-center text-[10px] transition-all ${scannerSignal === 'green' ? 'border-green-400 bg-green-50' : 'border-gray-300 bg-gray-100'}`}>
+                <span>🖥️</span><span>Màn hình</span>
+              </div>
+            </div>
+            <div className="text-[10px] text-gray-500">Trạng thái: {scannerSignal === 'idle' ? 'Sẵn sàng' : scannerSignal === 'green' ? 'Đọc thẻ OK' : 'Lỗi'}</div>
+          </div>
+        </div>
+
+        {/* Scan Log */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="text-xs font-semibold text-[#0F3D5C] mb-3">Nhật ký quẹt thẻ gần nhất</div>
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {scanLog.length === 0 ? (
+              <div className="text-xs text-[#6B7280] text-center py-4">Chưa có lượt quẹt nào.</div>
+            ) : (
+              scanLog.map((entry) => (
+                <div key={entry.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded border border-gray-100">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                    entry.direction === 'IN' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                  }`}>{entry.direction}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-[#0F3D5C] truncate">{entry.studentName}</div>
+                    <div className="text-[10px] text-[#6B7280]">{entry.studentCode} · {entry.timestamp}</div>
+                  </div>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${entry.status === 'success' ? 'bg-green-400' : 'bg-red-400'}`} />
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

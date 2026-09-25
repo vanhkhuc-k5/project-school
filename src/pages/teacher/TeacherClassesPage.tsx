@@ -3,7 +3,7 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
-import { teacherApi, attendanceApi, gradebookApi, type TeacherAssignedClass, type AttendanceRosterStudent, type ClassAcademicSummaryResponse, type StudentEvaluation } from '../../services/api';
+import { teacherApi, attendanceApi, gradebookApi, logbookApi, type TeacherAssignedClass, type AttendanceRosterStudent, type ClassAcademicSummaryResponse, type StudentEvaluation, type LogbookEntry, type ConductEvaluation } from '../../services/api';
 import { useSync } from '../../context/SyncContext';
 import {
   Users,
@@ -26,7 +26,1033 @@ import {
   Lock,
   RefreshCw,
   FileText,
+  BookOpen,
+  Grid3X3,
+  Sparkles,
+  MessageSquare,
+  Save,
+  Trash2,
+  Eye,
 } from 'lucide-react';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RFIDScannerTab — IoT RFID Card Reader Simulation (Coming Soon)
+// Features: Simulated card reader UI, scan log, signal lights, demo trigger
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface RFIDScannerTabProps {
+  classId: string;
+  className: string;
+  students: Array<{ id: string; name: string; code: string }>;
+}
+
+function RFIDScannerTab({ className, students }: RFIDScannerTabProps) {
+  const [scanLog, setScanLog] = useState<Array<{
+    id: string;
+    studentId: string;
+    studentName: string;
+    studentCode: string;
+    timestamp: string;
+    status: 'success' | 'error';
+    direction: 'IN' | 'OUT';
+  }>>([]);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scannerSignal, setScannerSignal] = useState<'idle' | 'green' | 'red'>('idle');
+
+  const handleDemoScan = () => {
+    if (students.length === 0) return;
+    setIsScanning(true);
+    setScannerSignal('green');
+    setTimeout(() => {
+      const randomStudent = students[Math.floor(Math.random() * students.length)];
+      const direction = Math.random() > 0.5 ? 'IN' : 'OUT';
+      setScanLog(prev => [{
+        id: `scan-${Date.now()}`,
+        studentId: randomStudent.id,
+        studentName: randomStudent.name,
+        studentCode: randomStudent.code,
+        timestamp: new Date().toLocaleString('vi-VN'),
+        status: 'success' as const,
+        direction: direction as 'IN' | 'OUT',
+      }, ...prev].slice(0, 50));
+      setIsScanning(false);
+      setScannerSignal('idle');
+    }, 1200);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Coming Soon Banner */}
+      <div className="p-4 bg-amber-50 border border-amber-300 rounded-lg flex items-start gap-3">
+        <div className="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center shrink-0 text-sm">
+          ⚠️
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-amber-800">
+            Tính năng đang phát triển — Thử nghiệm thiết bị phần cứng RFID IoT
+          </div>
+          <div className="text-xs text-amber-700 mt-1">
+            Giao diện dưới đây mô phỏng máy quét thẻ RFID tại cổng trường.
+            Dữ liệu trong bảng log là giả lập, không ảnh hưởng đến hệ thống điểm danh chính thức.
+          </div>
+        </div>
+      </div>
+
+      {/* Scanner Hardware Simulation */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: Card Reader Unit */}
+        <Card padding="p-6" className="flex flex-col items-center gap-4">
+          <div className="text-xs font-semibold text-text-primary">Máy quét thẻ RFID</div>
+          {/* Signal Lights */}
+          <div className="flex gap-3">
+            <div className="flex flex-col items-center gap-1">
+              <div className={`w-5 h-5 rounded-full border-2 transition-all ${scannerSignal === 'green' ? 'bg-green-400 border-green-500 shadow-lg shadow-green-300 animate-pulse' : 'bg-gray-100 border-gray-300'}`} />
+              <span className="text-[10px] text-text-secondary">Đèn Xanh</span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <div className={`w-5 h-5 rounded-full border-2 transition-all ${scannerSignal === 'red' ? 'bg-red-400 border-red-500 shadow-lg shadow-red-300 animate-pulse' : 'bg-gray-100 border-gray-300'}`} />
+              <span className="text-[10px] text-text-secondary">Đèn Đỏ</span>
+            </div>
+          </div>
+          {/* Card Slot Visual */}
+          <div className="w-full bg-gray-100 rounded border border-dashed border-gray-300 p-4 text-center">
+            <div className="text-xs text-text-secondary mb-1">Đầu đọc thẻ</div>
+            <div className="w-full h-16 bg-gray-200 rounded flex items-center justify-center border-2 border-dashed border-gray-400">
+              <span className="text-xs text-gray-500">◄ Quẹt thẻ ►</span>
+            </div>
+            <div className="mt-2 text-[10px] text-gray-500">UID: 04:A3:B2:1C:7D:E8</div>
+          </div>
+          {/* Status */}
+          <div className={`text-xs font-medium px-3 py-1.5 rounded-full ${
+            scannerSignal === 'green' ? 'bg-green-100 text-green-700'
+            : scannerSignal === 'red' ? 'bg-red-100 text-red-700'
+            : 'bg-gray-100 text-gray-500'
+          }`}>
+            {scannerSignal === 'green' ? '✓ Đọc thẻ thành công'
+             : scannerSignal === 'red' ? '✗ Lỗi đọc thẻ'
+             : '○ Chờ quẹt thẻ'}
+          </div>
+          {/* Demo Button */}
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={isScanning || students.length === 0}
+            onClick={handleDemoScan}
+          >
+            {isScanning ? 'Đang quét...' : '🪪 Mô phỏng quẹt thẻ thử nghiệm'}
+          </Button>
+          {students.length === 0 && (
+            <div className="text-[10px] text-amber-600 text-center">
+              Cần chọn lớp có học sinh để mô phỏng.
+            </div>
+          )}
+        </Card>
+
+        {/* Middle: School Gate Map */}
+        <Card padding="p-6">
+          <div className="text-xs font-semibold text-text-primary mb-3">Sơ đồ cổng trường</div>
+          <div className="bg-gray-50 rounded-lg border border-dashed border-gray-300 p-4 flex flex-col items-center gap-3">
+            <div className="w-full flex items-center justify-center gap-2 text-[10px] text-gray-500">
+              <span>← Lối vào</span>
+              <div className="px-3 py-1.5 bg-gray-200 rounded font-medium text-gray-700">
+                CỔNG CHÍNH
+              </div>
+              <span>Lối ra →</span>
+            </div>
+            <div className="flex gap-2">
+              <div className={`w-12 h-12 rounded border-2 flex flex-col items-center justify-center text-[10px] transition-all ${scannerSignal === 'green' ? 'border-green-400 bg-green-50' : 'border-gray-300 bg-gray-100'}`}>
+                <span>📷</span><span>Camera</span>
+              </div>
+              <div className={`w-16 h-12 rounded border-2 flex flex-col items-center justify-center text-[10px] transition-all ${scannerSignal === 'green' ? 'border-green-400 bg-green-50' : 'border-gray-300 bg-gray-100'}`}>
+                <span>📡</span><span>RFID</span>
+              </div>
+              <div className={`w-12 h-12 rounded border-2 flex flex-col items-center justify-center text-[10px] transition-all ${scannerSignal === 'green' ? 'border-green-400 bg-green-50' : 'border-gray-300 bg-gray-100'}`}>
+                <span>🖥️</span><span>Màn hình</span>
+              </div>
+            </div>
+            <div className="text-[10px] text-gray-500">
+              Lớp: {className || '—'}
+            </div>
+          </div>
+        </Card>
+
+        {/* Right: Scan Log */}
+        <Card padding="p-4">
+          <div className="text-xs font-semibold text-text-primary mb-3">
+            Nhật ký quẹt thẻ gần nhất
+          </div>
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {scanLog.length === 0 ? (
+              <div className="text-xs text-text-secondary text-center py-4">
+                Chưa có lượt quẹt nào.
+              </div>
+            ) : (
+              scanLog.map((entry) => (
+                <div key={entry.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded border border-hairline">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                    entry.direction === 'IN' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {entry.direction}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-text-primary truncate">
+                      {entry.studentName}
+                    </div>
+                    <div className="text-[10px] text-text-secondary">
+                      {entry.studentCode} · {entry.timestamp}
+                    </div>
+                  </div>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${entry.status === 'success' ? 'bg-green-400' : 'bg-red-400'}`} />
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DigitalLogbookTab — Sổ Đầu Bài Điện Tử
+// Features: Create/edit logbook entries, weekly summary, digital signature
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DigitalLogbookTabProps {
+  classId: string;
+  className: string;
+}
+
+const RATING_OPTIONS = [
+  { value: 'tot', label: 'Tốt (10đ)', color: 'text-emerald-600 bg-emerald-50' },
+  { value: 'kha', label: 'Khá (8đ)', color: 'text-blue-600 bg-blue-50' },
+  { value: 'trung_binh', label: 'Trung bình (6đ)', color: 'text-amber-600 bg-amber-50' },
+  { value: 'kem', label: 'Yếu (4đ)', color: 'text-red-600 bg-red-50' },
+];
+
+function DigitalLogbookTab({ classId, className }: DigitalLogbookTabProps) {
+  const [entries, setEntries] = useState<LogbookEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  
+  // Form state
+  const [showForm, setShowForm] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<LogbookEntry | null>(null);
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    period_number: 1,
+    subject_name: '',
+    lesson_title: '',
+    present_count: 0,
+    absent_count: 0,
+    score: undefined as number | undefined,
+    rating: undefined as string | undefined,
+    notes: '',
+    homework: '',
+  });
+
+  const academicYear = '2025-2026';
+  const semester = 1;
+
+  const loadEntries = useCallback(async () => {
+    if (!classId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await logbookApi.listEntries({
+        class_id: classId,
+        academic_year: academicYear,
+        semester,
+        limit: 50,
+      });
+      if (result) {
+        setEntries(result.entries);
+      }
+    } catch (e) {
+      setError('Không thể tải sổ đầu bài');
+    } finally {
+      setLoading(false);
+    }
+  }, [classId, academicYear, semester]);
+
+  useEffect(() => {
+    loadEntries();
+  }, [loadEntries]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const data = {
+        ...formData,
+        class_id: classId,
+        academic_year: academicYear,
+        semester,
+        score: formData.score,
+        rating: formData.rating as 'tot' | 'kha' | 'trung_binh' | 'kem' | undefined,
+      };
+      
+      if (editingEntry) {
+        await logbookApi.updateEntry(editingEntry.id, data);
+        setSuccessMsg('Đã cập nhật sổ đầu bài');
+      } else {
+        await logbookApi.createEntry(data);
+        setSuccessMsg('Đã ghi sổ đầu bài thành công');
+      }
+      
+      setShowForm(false);
+      setEditingEntry(null);
+      setFormData({
+        date: new Date().toISOString().split('T')[0],
+        period_number: 1,
+        subject_name: '',
+        lesson_title: '',
+        present_count: 0,
+        absent_count: 0,
+        score: undefined,
+        rating: undefined,
+        notes: '',
+        homework: '',
+      });
+      loadEntries();
+    } catch (e) {
+      setError('Lỗi khi lưu sổ đầu bài');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEdit = (entry: LogbookEntry) => {
+    setEditingEntry(entry);
+    setFormData({
+      date: entry.date,
+      period_number: entry.period_number,
+      subject_name: entry.subject_name || '',
+      lesson_title: entry.lesson_title,
+      present_count: entry.present_count,
+      absent_count: entry.absent_count,
+      score: entry.score,
+      rating: entry.rating,
+      notes: entry.notes || '',
+      homework: entry.homework || '',
+    });
+    setShowForm(true);
+  };
+
+  const handleSign = async (entryId: string) => {
+    try {
+      await logbookApi.signEntry(entryId);
+      setSuccessMsg('Đã ký sổ đầu bài');
+      loadEntries();
+    } catch (e) {
+      setError('Lỗi khi ký sổ');
+    }
+  };
+
+  const getRatingBadge = (rating: string) => {
+    const option = RATING_OPTIONS.find(r => r.value === rating);
+    if (!option) return null;
+    return (
+      <span className={`px-2 py-0.5 rounded text-xs font-medium ${option.color}`}>
+        {option.label}
+      </span>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-text-primary">Sổ Đầu Bài Điện Tử</h3>
+          <p className="text-xs text-text-secondary">{className} • HK1 2025-2026</p>
+        </div>
+        <Button
+          variant="primary"
+          size="sm"
+          icon={Plus}
+          onClick={() => {
+            setEditingEntry(null);
+            setShowForm(true);
+          }}
+        >
+          Ghi sổ mới
+        </Button>
+      </div>
+
+      {/* Success/Error Messages */}
+      {successMsg && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-800 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          {successMsg}
+        </div>
+      )}
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {/* New/Edit Form */}
+      {showForm && (
+        <Card padding="p-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Ngày dạy</label>
+                <input
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  className="w-full h-9 px-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Tiết</label>
+                <select
+                  value={formData.period_number}
+                  onChange={(e) => setFormData({ ...formData, period_number: parseInt(e.target.value) })}
+                  className="w-full h-9 px-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean"
+                >
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(p => (
+                    <option key={p} value={p}>Tiết {p}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Số có mặt</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.present_count}
+                  onChange={(e) => setFormData({ ...formData, present_count: parseInt(e.target.value) || 0 })}
+                  className="w-full h-9 px-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Số vắng</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.absent_count}
+                  onChange={(e) => setFormData({ ...formData, absent_count: parseInt(e.target.value) || 0 })}
+                  className="w-full h-9 px-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Môn học</label>
+                <input
+                  type="text"
+                  value={formData.subject_name}
+                  onChange={(e) => setFormData({ ...formData, subject_name: e.target.value })}
+                  className="w-full h-9 px-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean"
+                  placeholder="VD: Toán, Văn, Anh..."
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Tên bài (PPCT)</label>
+                <input
+                  type="text"
+                  value={formData.lesson_title}
+                  onChange={(e) => setFormData({ ...formData, lesson_title: e.target.value })}
+                  className="w-full h-9 px-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean"
+                  placeholder="VD: Phương trình bậc 2"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Xếp loại tiết</label>
+                <select
+                  value={formData.rating || ''}
+                  onChange={(e) => setFormData({ ...formData, rating: e.target.value || undefined })}
+                  className="w-full h-9 px-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean"
+                >
+                  <option value="">Chưa đánh giá</option>
+                  {RATING_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">Bài tập về nhà</label>
+                <input
+                  type="text"
+                  value={formData.homework}
+                  onChange={(e) => setFormData({ ...formData, homework: e.target.value })}
+                  className="w-full h-9 px-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean"
+                  placeholder="Bài tập về nhà (nếu có)"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Nhận xét tiết học</label>
+              <textarea
+                rows={2}
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                className="w-full p-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean"
+                placeholder="Nhận xét về tiết dạy, tình hình lớp..."
+              />
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button variant="secondary" size="sm" onClick={() => setShowForm(false)}>
+                Hủy
+              </Button>
+              <Button variant="primary" size="sm" icon={Save} type="submit" disabled={saving}>
+                {saving ? 'Đang lưu...' : editingEntry ? 'Cập nhật' : 'Lưu sổ'}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {/* Entries List */}
+      {loading ? (
+        <div className="py-10 flex flex-col items-center gap-3 text-text-secondary">
+          <Loader2 className="w-6 h-6 animate-spin text-ocean" />
+          <span className="text-xs">Đang tải sổ đầu bài...</span>
+        </div>
+      ) : entries.length === 0 ? (
+        <div className="py-10 text-center">
+          <FileText className="w-8 h-8 text-text-secondary/40 mx-auto mb-2" />
+          <p className="text-sm text-text-secondary">Chưa có bản ghi sổ đầu bài nào.</p>
+          <p className="text-xs text-text-secondary/60">Bấm "Ghi sổ mới" để bắt đầu.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {entries.map((entry) => (
+            <Card key={entry.id} padding="p-3" className="hover:border-ocean/30 transition-colors">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-semibold text-text-primary">
+                      {new Date(entry.date).toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                    </span>
+                    <Badge variant="neutral">{entry.period_number}</Badge>
+                    <span className="text-xs text-ocean font-medium">{entry.subject_name || 'N/A'}</span>
+                  </div>
+                  <div className="text-xs text-text-primary font-medium">{entry.lesson_title}</div>
+                  {entry.notes && (
+                    <div className="text-xs text-text-secondary mt-1 line-clamp-2">{entry.notes}</div>
+                  )}
+                  <div className="flex items-center gap-3 mt-2 text-[10px] text-text-secondary">
+                    <span>👥 {entry.present_count}/{entry.present_count + entry.absent_count} có mặt</span>
+                    {entry.rating && getRatingBadge(entry.rating)}
+                    {entry.teacher_signature && (
+                      <span className="text-emerald-600">✓ Đã ký</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={Edit}
+                    onClick={() => handleEdit(entry)}
+                  />
+                  {!entry.teacher_signature && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={Check}
+                      onClick={() => handleSign(entry.id)}
+                    >
+                      Ký
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HomeroomHubTab — Công Tác Chủ Nhiệm
+// Features: Seating chart, TT22 Conduct evaluation, AI comment assistant
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface HomeroomHubTabProps {
+  classId: string;
+  className: string;
+  students: Array<{ id: string; name: string; code: string }>;
+}
+
+type HomeroomSubTab = 'seating' | 'conduct' | 'ai-comment';
+
+function HomeroomHubTab({ classId, className, students }: HomeroomHubTabProps) {
+  const [subTab, setSubTab] = useState<HomeroomSubTab>('seating');
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  
+  // Seating state
+  const [seatingData, setSeatingData] = useState<Record<string, string | null>>({});
+  const [seatingRows, setSeatingRows] = useState(4);
+  const [seatingCols, setSeatingCols] = useState(5);
+  
+  // Conduct state
+  const [conductData, setConductData] = useState<Record<string, { grade: string; comment: string }>>({});
+  
+  // AI comment state
+  const [aiComments, setAiComments] = useState<Record<string, string[]>>({});
+  const [generatingAI, setGeneratingAI] = useState(false);
+
+  const academicYear = '2025-2026';
+  const semester = 1;
+
+  // Load seating arrangement
+  const loadSeating = useCallback(async () => {
+    try {
+      const result = await logbookApi.getSeatingArrangement(classId, academicYear, 0);
+      if (result) {
+        setSeatingRows(result.rows || 4);
+        setSeatingCols(result.cols || 5);
+        setSeatingData(result.seating_data || {});
+      }
+    } catch (e) {
+      console.error('Error loading seating');
+    }
+  }, [classId, academicYear]);
+
+  // Load conduct evaluations
+  const loadConduct = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await logbookApi.listConductEvaluations({
+        class_id: classId,
+        academic_year: academicYear,
+        semester,
+        limit: 100,
+      });
+      if (result) {
+        const data: Record<string, { grade: string; comment: string }> = {};
+        result.evaluations.forEach((ev: ConductEvaluation) => {
+          data[ev.student_id] = {
+            grade: ev.conduct_grade || '',
+            comment: ev.teacher_comment || '',
+          };
+        });
+        setConductData(data);
+      }
+    } catch (e) {
+      setError('Không thể tải đánh giá hạnh kiểm');
+    } finally {
+      setLoading(false);
+    }
+  }, [classId, academicYear, semester]);
+
+  useEffect(() => {
+    if (subTab === 'seating') loadSeating();
+    if (subTab === 'conduct') loadConduct();
+  }, [subTab, loadSeating, loadConduct]);
+
+  const handleSaveSeating = async () => {
+    setSaving(true);
+    try {
+      await logbookApi.saveSeatingArrangement({
+        class_id: classId,
+        academic_year: academicYear,
+        semester: 0,
+        rows: seatingRows,
+        cols: seatingCols,
+        seating_data: seatingData,
+      });
+      setSuccessMsg('Đã lưu sơ đồ chỗ ngồi');
+    } catch (e) {
+      setError('Lỗi khi lưu sơ đồ');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSeatingCellClick = (cellKey: string) => {
+    const currentStudent = seatingData[cellKey];
+    if (currentStudent) {
+      // Clear if already assigned
+      setSeatingData(prev => ({ ...prev, [cellKey]: null }));
+    }
+  };
+
+  const handleAssignStudent = (cellKey: string, studentId: string | null) => {
+    setSeatingData(prev => ({ ...prev, [cellKey]: studentId }));
+  };
+
+  const handleGenerateAIComments = async () => {
+    setGeneratingAI(true);
+    setError(null);
+    try {
+      const result = await gradebookApi.generateAIReportComments({
+        classId,
+        academic_year: academicYear,
+        semester,
+      });
+      if (result?.students) {
+        const comments: Record<string, string[]> = {};
+        result.students.forEach((s) => {
+          comments[s.student_id] = s.comment_options || [];
+        });
+        setAiComments(comments);
+        setSuccessMsg(`Đã tạo lời phê cho ${result.students.length} học sinh`);
+      }
+    } catch (e) {
+      setError('Lỗi khi tạo lời phê AI');
+    } finally {
+      setGeneratingAI(false);
+    }
+  };
+
+  const handleApplyAIComment = (studentId: string, commentIndex: number) => {
+    const comments = aiComments[studentId];
+    if (comments && comments[commentIndex]) {
+      setConductData(prev => ({
+        ...prev,
+        [studentId]: {
+          ...prev[studentId],
+          comment: comments[commentIndex],
+        },
+      }));
+      setSuccessMsg('Đã áp dụng lời phê');
+    }
+  };
+
+  const handleSaveConduct = async () => {
+    setSaving(true);
+    try {
+      const evaluations = Object.entries(conductData)
+        .filter(([, data]) => data.grade)
+        .map(([student_id, data]) => ({
+          student_id,
+          conduct_grade: data.grade,
+          teacher_comment: data.comment,
+        }));
+      
+      if (evaluations.length > 0) {
+        await logbookApi.batchUpdateConductEvaluations({
+          evaluations,
+          class_id: classId,
+          academic_year: academicYear,
+          semester,
+        });
+      }
+      setSuccessMsg('Đã lưu đánh giá hạnh kiểm');
+    } catch (e) {
+      setError('Lỗi khi lưu đánh giá');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getStudentById = (id: string) => students.find(s => s.id === id);
+
+  const renderSeatingTab = () => (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-text-secondary">Bố trí chỗ ngồi 4 dãy • Kéo thả học sinh vào vị trí</p>
+        <Button variant="primary" size="sm" icon={Save} onClick={handleSaveSeating} disabled={saving}>
+          {saving ? 'Đang lưu...' : 'Lưu sơ đồ'}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {/* Seating Grid */}
+        <div className="lg:col-span-3">
+          <Card padding="p-4">
+            <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${seatingCols}, 1fr)` }}>
+              {Array.from({ length: seatingRows }).map((_, rowIdx) => (
+                <div key={rowIdx} className="contents">
+                  {Array.from({ length: seatingCols }).map((_, colIdx) => {
+                    const cellKey = `${String.fromCharCode(65 + rowIdx)}${colIdx + 1}`;
+                    const studentId = seatingData[cellKey];
+                    const student = studentId ? getStudentById(studentId) : null;
+                    
+                    return (
+                      <div
+                        key={cellKey}
+                        onClick={() => student && handleSeatingCellClick(cellKey)}
+                        className={`aspect-video border-2 rounded-lg p-2 flex flex-col items-center justify-center cursor-pointer transition-all ${
+                          student
+                            ? 'border-ocean/50 bg-ocean/5 hover:border-red-400 hover:bg-red-50'
+                            : 'border-dashed border-gray-300 bg-gray-50 hover:border-ocean/30'
+                        }`}
+                      >
+                        <span className="text-[10px] font-medium text-text-secondary">{cellKey}</span>
+                        {student ? (
+                          <>
+                            <span className="text-xs font-medium text-text-primary truncate w-full text-center">
+                              {student.name.split(' ').pop()}
+                            </span>
+                            <span className="text-[10px] text-text-secondary">{student.code}</span>
+                          </>
+                        ) : (
+                          <span className="text-[10px] text-gray-400">Trống</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 text-center text-[10px] text-text-secondary">
+              💡 Bấm vào học sinh đã ngồi để xóa khỏi vị trí
+            </div>
+          </Card>
+        </div>
+
+        {/* Student List for Drag */}
+        <div>
+          <Card padding="p-3">
+            <div className="text-xs font-medium text-text-primary mb-2">Học sinh ({students.length})</div>
+            <div className="space-y-1 max-h-96 overflow-y-auto">
+              {students.map((student) => (
+                <div
+                  key={student.id}
+                  onClick={() => {
+                    // Find first empty cell
+                    for (let r = 0; r < seatingRows; r++) {
+                      for (let c = 0; c < seatingCols; c++) {
+                        const cellKey = `${String.fromCharCode(65 + r)}${c + 1}`;
+                        if (!seatingData[cellKey]) {
+                          handleAssignStudent(cellKey, student.id);
+                          return;
+                        }
+                      }
+                    }
+                    alert('Không còn chỗ trống trong sơ đồ');
+                  }}
+                  className="p-2 bg-gray-50 rounded text-xs cursor-pointer hover:bg-ocean/10 transition-colors"
+                >
+                  <span className="font-medium text-text-primary">{student.name}</span>
+                  <span className="text-text-secondary ml-2">{student.code}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderConductTab = () => (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-text-secondary">Đánh giá hạnh kiểm theo Thông tư 22 cho HK1 2025-2026</p>
+        <Button variant="primary" size="sm" icon={Save} onClick={handleSaveConduct} disabled={saving}>
+          {saving ? 'Đang lưu...' : 'Lưu đánh giá'}
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="py-10 flex flex-col items-center gap-3 text-text-secondary">
+          <Loader2 className="w-6 h-6 animate-spin text-ocean" />
+          <span className="text-xs">Đang tải...</span>
+        </div>
+      ) : (
+        <Card padding="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-surface-neutral border-b border-hairline">
+                <tr className="text-[11px] font-semibold text-text-secondary uppercase">
+                  <th className="py-2 px-3">Học sinh</th>
+                  <th className="py-2 px-3">Mã</th>
+                  <th className="py-2 px-3">Xếp loại</th>
+                  <th className="py-2 px-3">Lời phê</th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((student) => (
+                  <tr key={student.id} className="border-b border-hairline last:border-0 hover:bg-surface-neutral/50">
+                    <td className="py-2 px-3 text-xs font-medium text-text-primary">{student.name}</td>
+                    <td className="py-2 px-3 text-xs text-text-secondary">{student.code}</td>
+                    <td className="py-2 px-3">
+                      <select
+                        value={conductData[student.id]?.grade || ''}
+                        onChange={(e) => setConductData(prev => ({
+                          ...prev,
+                          [student.id]: { ...prev[student.id], grade: e.target.value }
+                        }))}
+                        className="h-8 px-2 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean"
+                      >
+                        <option value="">Chưa đánh giá</option>
+                        <option value="tot">Tốt</option>
+                        <option value="kha">Khá</option>
+                        <option value="dat">Đạt</option>
+                        <option value="chua_dat">Chưa đạt</option>
+                      </select>
+                    </td>
+                    <td className="py-2 px-3 min-w-48">
+                      <textarea
+                        rows={2}
+                        value={conductData[student.id]?.comment || ''}
+                        onChange={(e) => setConductData(prev => ({
+                          ...prev,
+                          [student.id]: { ...prev[student.id], comment: e.target.value }
+                        }))}
+                        className="w-full p-2 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean resize-none"
+                        placeholder="Lời phê giáo viên..."
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+
+  const renderAICommentTab = () => (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-text-secondary">
+            AI phân tích điểm trung bình, chuyên cần và hạnh kiểm để gợi ý lời phê học bạ
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          size="sm"
+          icon={Sparkles}
+          onClick={handleGenerateAIComments}
+          disabled={generatingAI}
+        >
+          {generatingAI ? 'Đang phân tích...' : 'Tạo lời phê AI'}
+        </Button>
+      </div>
+
+      {Object.keys(aiComments).length === 0 ? (
+        <div className="py-10 text-center">
+          <Sparkles className="w-8 h-8 text-text-secondary/40 mx-auto mb-2" />
+          <p className="text-sm text-text-secondary">Bấm "Tạo lời phê AI" để bắt đầu</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {Object.entries(aiComments).map(([studentId, comments]) => {
+            const student = getStudentById(studentId);
+            if (!student) return null;
+            
+            return (
+              <Card key={studentId} padding="p-3">
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <span className="text-xs font-semibold text-text-primary">{student.name}</span>
+                    <span className="text-xs text-text-secondary ml-2">{student.code}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {comments.map((comment, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2 bg-surface-neutral rounded text-xs text-text-primary"
+                    >
+                      <span className="text-[10px] text-ocean font-medium mr-2">Mẫu {idx + 1}:</span>
+                      {comment}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2 mt-2">
+                  {comments.map((_, idx) => (
+                    <Button
+                      key={idx}
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleApplyAIComment(studentId, idx)}
+                    >
+                      Áp dụng mẫu {idx + 1}
+                    </Button>
+                  ))}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Sub Tab Navigation */}
+      <div className="flex items-center gap-1 border-b border-hairline pb-2">
+        <button
+          type="button"
+          onClick={() => setSubTab('seating')}
+          className={`px-4 py-2 rounded text-xs transition-all flex items-center gap-1.5 ${
+            subTab === 'seating'
+              ? 'bg-ocean text-white font-medium'
+              : 'text-text-secondary hover:text-text-primary hover:bg-gray-100'
+          }`}
+        >
+          <Grid3X3 className="w-3.5 h-3.5" />
+          Sơ đồ chỗ ngồi
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('conduct')}
+          className={`px-4 py-2 rounded text-xs transition-all flex items-center gap-1.5 ${
+            subTab === 'conduct'
+              ? 'bg-ocean text-white font-medium'
+              : 'text-text-secondary hover:text-text-primary hover:bg-gray-100'
+          }`}
+        >
+          <Award className="w-3.5 h-3.5" />
+          Đánh giá HK
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('ai-comment')}
+          className={`px-4 py-2 rounded text-xs transition-all flex items-center gap-1.5 ${
+            subTab === 'ai-comment'
+              ? 'bg-ocean text-white font-medium'
+              : 'text-text-secondary hover:text-text-primary hover:bg-gray-100'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          Trợ lý AI
+        </button>
+      </div>
+
+      {/* Messages */}
+      {successMsg && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-800 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          {successMsg}
+        </div>
+      )}
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {/* Tab Content */}
+      {subTab === 'seating' && renderSeatingTab()}
+      {subTab === 'conduct' && renderConductTab()}
+      {subTab === 'ai-comment' && renderAICommentTab()}
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GradebookMatrixTab — Thông tư 22 compliant Excel-like grade grid
@@ -800,7 +1826,7 @@ export function TeacherClassesPage() {
   const [selectedClassId, setSelectedClassId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
-  const [activeTab, setActiveTab] = useState('gradebook'); // 'gradebook' | 'attendance' | 'matrix'
+  const [activeTab, setActiveTab] = useState('gradebook'); // 'gradebook' | 'attendance' | 'matrix' | 'summary' | 'rfid' | 'logbook' | 'homeroom'
   const [searchQuery, setSearchQuery] = useState('');
 
   // Grade edit modal states
@@ -1155,7 +2181,40 @@ export function TeacherClassesPage() {
                     : 'text-text-secondary hover:text-text-primary'
                 }`}
               >
-                Tổng Kết &amp; Học Bạ
+                Tổng Kết & Học Bạ
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('logbook')}
+                className={`px-4 py-2 rounded text-xs transition-all ${
+                  activeTab === 'logbook'
+                    ? 'bg-white text-primary font-medium shadow-whisper border border-hairline'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                Sổ Đầu Bài
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('homeroom')}
+                className={`px-4 py-2 rounded text-xs transition-all ${
+                  activeTab === 'homeroom'
+                    ? 'bg-white text-primary font-medium shadow-whisper border border-hairline'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                Công Tác CN
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('rfid')}
+                className={`px-4 py-2 rounded text-xs transition-all ${
+                  activeTab === 'rfid'
+                    ? 'bg-white text-orange-600 font-medium shadow-whisper border border-hairline'
+                    : 'text-orange-500 hover:text-orange-600'
+                }`}
+              >
+                🔌 Quét thẻ RFID
               </button>
             </div>
 
@@ -1514,6 +2573,33 @@ export function TeacherClassesPage() {
           onRefresh={() => loadAcademicSummary(selectedClassId)}
         />
       )}
+
+      {/* TAB 6: RFID IoT Scanner — Coming Soon */}
+      {activeTab === 'rfid' && (
+        <RFIDScannerTab
+          classId={selectedClassId}
+          className={classData?.classes?.find((c) => c.id === selectedClassId)?.name || selectedClassId}
+          students={classData?.students || []}
+        />
+      )}
+
+      {/* TAB 7: Sổ Đầu Bài Điện Tử (Digital Logbook) */}
+      {activeTab === 'logbook' && (
+        <DigitalLogbookTab
+          classId={selectedClassId}
+          className={classData?.classes?.find((c) => c.id === selectedClassId)?.name || ''}
+        />
+      )}
+
+      {/* TAB 8: Công Tác Chủ Nhiệm (Homeroom Hub) */}
+      {activeTab === 'homeroom' && (
+        <HomeroomHubTab
+          classId={selectedClassId}
+          className={classData?.classes?.find((c) => c.id === selectedClassId)?.name || ''}
+          students={classData?.students || []}
+        />
+      )}
+
         </>
       )}
 

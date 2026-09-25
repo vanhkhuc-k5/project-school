@@ -10,7 +10,7 @@ import { Badge } from '../../components/Badge';
 import { EmptyState } from '../../components/EmptyState';
 import { SkeletonCard } from '../../components/LoadingState';
 import { ErrorState } from '../../components/ErrorState';
-import { studentApi } from '../../services/api';
+import { studentApi, logbookApi } from '../../services/api';
 import {
   Calendar,
   Clock,
@@ -23,6 +23,10 @@ import {
   TrendingDown,
   Minus,
   AlertCircle,
+  Users,
+  AlertTriangle,
+  Loader2,
+  Shield,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -893,5 +897,253 @@ export function StudentDashboard(): React.JSX.Element {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ClassMonitorDisciplineWidget — Nề nếp & Thi đua 15 phút
+// Features: Quick roll call, log discipline violations by group
+// Only visible to students with class_monitor role
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ClassMonitorDisciplineWidgetProps {
+  classId?: string;
+}
+
+const VIOLATION_TYPES = [
+  { key: 'uniform', label: 'Đồng phục', icon: '👔', points: -1 },
+  { key: 'late', label: 'Đi muộn', icon: '⏰', points: -1 },
+  { key: 'no_homework', label: 'Chưa học bài', icon: '📚', points: -1 },
+  { key: 'disruptive', label: 'Mất trật tự', icon: '🔊', points: -2 },
+  { key: 'other', label: 'Khác', icon: '⚠️', points: -1 },
+];
+
+function ClassMonitorDisciplineWidget({ classId }: ClassMonitorDisciplineWidgetProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<{ id: string; name: string; code: string } | null>(null);
+  const [selectedViolation, setSelectedViolation] = useState<string | null>(null);
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [groupSummary, setGroupSummary] = useState<Array<{
+    group_id: string;
+    group_name: string;
+    violation_count: number;
+    total_points: number;
+    students_involved: number;
+  }>>([]);
+
+  // Mock class groups for demo (in real app, fetch from API)
+  const classGroups = [
+    { id: 'grp_1', name: 'Nhóm 1' },
+    { id: 'grp_2', name: 'Nhóm 2' },
+    { id: 'grp_3', name: 'Nhóm 3' },
+    { id: 'grp_4', name: 'Nhóm 4' },
+  ];
+
+  // Mock students for demo
+  const mockStudents = [
+    { id: 'stu_001', name: 'Nguyễn Văn An', code: 'HS001' },
+    { id: 'stu_002', name: 'Trần Thị Bình', code: 'HS002' },
+    { id: 'stu_003', name: 'Lê Hoàng Cường', code: 'HS003' },
+    { id: 'stu_004', name: 'Phạm Thị Dung', code: 'HS004' },
+  ];
+
+  useEffect(() => {
+    if (isExpanded && classId) {
+      // Load group summary
+      logbookApi.getGroupDisciplineSummary(classId).then((result) => {
+        if (result && Array.isArray(result)) {
+          setGroupSummary(result as typeof groupSummary);
+        }
+      }).catch(() => {
+        // Use mock data if API fails
+      });
+    }
+  }, [isExpanded, classId]);
+
+  const handleReportViolation = async () => {
+    if (!selectedStudent || !selectedViolation || !classId) {
+      setErrorMsg('Vui lòng chọn học sinh và loại vi phạm');
+      return;
+    }
+
+    setSaving(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      await logbookApi.createDisciplineRecord({
+        class_id: classId,
+        group_id: selectedGroup || undefined,
+        student_id: selectedStudent.id,
+        date: new Date().toISOString().split('T')[0],
+        period_number: 0,
+        violation_type: selectedViolation as 'uniform' | 'late' | 'no_homework' | 'disruptive' | 'other',
+        points_deducted: VIOLATION_TYPES.find(v => v.key === selectedViolation)?.points || -1,
+        notes: notes || undefined,
+      });
+      setSuccessMsg(`Đã ghi nhận vi phạm "${VIOLATION_TYPES.find(v => v.key === selectedViolation)?.label}" cho ${selectedStudent.name}`);
+      
+      // Reset form
+      setSelectedStudent(null);
+      setSelectedViolation(null);
+      setNotes('');
+      
+      // Refresh summary
+      const result = await logbookApi.getGroupDisciplineSummary(classId);
+      if (result && Array.isArray(result)) {
+        setGroupSummary(result as typeof groupSummary);
+      }
+    } catch (e) {
+      setErrorMsg('Lỗi khi ghi nhận vi phạm');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card padding="p-5" className="border-ocean/30 bg-gradient-to-r from-ocean/5 to-transparent">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-ocean/20 flex items-center justify-center">
+            <Shield className="w-5 h-5 text-ocean" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+              <span>🛡️</span> Nề nếp & Thi đua Lớp
+            </h3>
+            <p className="text-xs text-text-secondary">Ghi nhận vi phạm nề nếp • 15 phút đầu giờ</p>
+          </div>
+        </div>
+        <Button
+          variant={isExpanded ? 'secondary' : 'primary'}
+          size="sm"
+          onClick={() => setIsExpanded(!isExpanded)}
+        >
+          {isExpanded ? 'Thu gọn' : 'Mở rộng'}
+        </Button>
+      </div>
+
+      {/* Group Summary */}
+      {isExpanded && (
+        <>
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            {classGroups.map((group) => {
+              const summary = groupSummary.find(g => g.group_id === group.id);
+              return (
+                <div
+                  key={group.id}
+                  onClick={() => setSelectedGroup(selectedGroup === group.id ? null : group.id)}
+                  className={`p-3 rounded-lg border cursor-pointer transition-all text-center ${
+                    selectedGroup === group.id
+                      ? 'border-ocean bg-ocean/10'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="text-xs font-medium text-text-primary">{group.name}</div>
+                  <div className="text-lg font-bold text-danger">{summary?.violation_count || 0}</div>
+                  <div className="text-[10px] text-text-secondary">vi phạm</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Report Form */}
+          <div className="bg-white rounded-lg border border-hairline p-4 space-y-4">
+            <div className="text-xs font-medium text-text-primary mb-2">📝 Ghi nhận vi phạm</div>
+            
+            {/* Student Selection */}
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Học sinh vi phạm</label>
+              <select
+                value={selectedStudent?.id || ''}
+                onChange={(e) => {
+                  const student = mockStudents.find(s => s.id === e.target.value);
+                  setSelectedStudent(student || null);
+                }}
+                className="w-full h-9 px-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean"
+              >
+                <option value="">-- Chọn học sinh --</option>
+                {mockStudents.map(s => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Violation Type */}
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Loại vi phạm</label>
+              <div className="grid grid-cols-3 gap-2">
+                {VIOLATION_TYPES.map(vtype => (
+                  <button
+                    key={vtype.key}
+                    type="button"
+                    onClick={() => setSelectedViolation(selectedViolation === vtype.key ? null : vtype.key)}
+                    className={`p-2 rounded border text-xs transition-all ${
+                      selectedViolation === vtype.key
+                        ? 'border-danger bg-red-50 text-danger'
+                        : 'border-gray-200 hover:border-gray-300 text-text-primary'
+                    }`}
+                  >
+                    <span>{vtype.icon}</span>
+                    <span className="ml-1">{vtype.label}</span>
+                    <span className="block text-[10px] text-text-secondary">{vtype.points} điểm</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Ghi chú (tùy chọn)</label>
+              <textarea
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full p-2 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean resize-none"
+                placeholder="Chi tiết vi phạm..."
+              />
+            </div>
+
+            {/* Messages */}
+            {successMsg && (
+              <div className="p-2 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-800 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                {successMsg}
+              </div>
+            )}
+            {errorMsg && (
+              <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {errorMsg}
+              </div>
+            )}
+
+            {/* Submit */}
+            <Button
+              variant="danger"
+              size="sm"
+              className="w-full"
+              icon={AlertTriangle}
+              onClick={handleReportViolation}
+              disabled={saving || !selectedStudent || !selectedViolation}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Đang ghi nhận...
+                </>
+              ) : (
+                'Ghi nhận vi phạm'
+              )}
+            </Button>
+          </div>
+        </>
+      )}
+    </Card>
   );
 }

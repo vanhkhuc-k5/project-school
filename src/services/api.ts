@@ -4546,6 +4546,294 @@ export const gradebookApi = {
     );
     return res?.success ? res.data as GradebookLockResponse : null;
   },
+
+  // --- AI Report Card Comments ---
+  async generateAIReportComments(params: {
+    classId: string;
+    academic_year?: string;
+    semester?: number;
+    student_ids?: string[];
+  }): Promise<AIReportCommentsResponse | null> {
+    const res = await request<AIReportCommentsResponse>(
+      `/gradebook/classes/${params.classId}/ai-report-comments`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          academic_year: params.academic_year,
+          semester: params.semester,
+          student_ids: params.student_ids,
+        }),
+      }
+    );
+    return res?.success ? res.data as AIReportCommentsResponse : null;
+  },
+};
+
+// =============================================================================
+// LOGBOOK API CLIENT
+// Digital Class Logbook, Conduct Evaluation, Discipline Records
+// =============================================================================
+
+export interface LogbookEntry {
+  id: string;
+  class_id: string;
+  academic_year: string;
+  semester: number;
+  date: string;
+  day_of_week: number;
+  period_number: number;
+  subject_id?: string;
+  subject_name?: string;
+  teacher_id: string;
+  lesson_title: string;
+  topic_code?: string;
+  present_count: number;
+  absent_count: number;
+  absent_student_ids?: string[];
+  score?: number;
+  rating?: 'tot' | 'kha' | 'trung_binh' | 'kem';
+  notes?: string;
+  homework?: string;
+  teacher_signature?: string;
+  signed_at?: string;
+  status: 'draft' | 'submitted' | 'approved';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConductEvaluation {
+  id: string;
+  student_id: string;
+  student_name?: string;
+  student_code?: string;
+  class_id: string;
+  academic_year: string;
+  semester: number;
+  conduct_grade?: 'tot' | 'kha' | 'dat' | 'chua_dat';
+  teacher_comment?: string;
+  ai_suggested_comment?: string;
+  evaluation_type: 'midterm' | 'semester' | 'yearly';
+  updated_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DisciplineRecord {
+  id: string;
+  class_id: string;
+  group_id?: string;
+  student_id: string;
+  student_name?: string;
+  student_code?: string;
+  date: string;
+  period_number: number;
+  violation_type: 'uniform' | 'late' | 'no_homework' | 'disruptive' | 'phone' | 'eating' | 'other';
+  points_deducted: number;
+  reported_by: string;
+  reporter_name?: string;
+  notes?: string;
+  status: 'pending' | 'confirmed' | 'resolved' | 'dismissed';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SeatingArrangement {
+  rows: number;
+  cols: number;
+  seating_data: Record<string, string | null>;
+  description?: string;
+}
+
+export interface AIReportCommentsResponse {
+  class_id: string;
+  academic_year: string;
+  semester: number;
+  total_students: number;
+  students: Array<{
+    student_id: string;
+    student_name: string;
+    student_code?: string;
+    gpa: number | null;
+    attendance_rate: number | null;
+    suggested_conduct: 'tot' | 'kha' | 'dat' | 'chua_dat';
+    comment_options: string[];
+  }>;
+}
+
+export const logbookApi = {
+  // --- Logbook Entries ---
+  async listEntries(params: {
+    class_id?: string;
+    teacher_id?: string;
+    academic_year?: string;
+    semester?: number;
+    date_from?: string;
+    date_to?: string;
+    status?: 'draft' | 'submitted' | 'approved';
+    page?: number;
+    limit?: number;
+  }): Promise<{ entries: LogbookEntry[]; total: number } | null> {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => [k, String(v)])
+    ).toString();
+    const res = await request<{ entries: LogbookEntry[]; total: number }>(`/logbook/entries${query ? `?${query}` : ''}`);
+    return res?.success ? res.data as { entries: LogbookEntry[]; total: number } : null;
+  },
+
+  async getEntry(id: string): Promise<LogbookEntry | null> {
+    const res = await request<LogbookEntry>(`/logbook/entries/${id}`);
+    return res?.success ? res.data as LogbookEntry : null;
+  },
+
+  async createEntry(data: Partial<LogbookEntry>): Promise<StandardResponse<LogbookEntry>> {
+    return request<LogbookEntry>('/logbook/entries', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateEntry(id: string, data: Partial<LogbookEntry>): Promise<StandardResponse<LogbookEntry>> {
+    return request<LogbookEntry>(`/logbook/entries/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async signEntry(id: string): Promise<StandardResponse<LogbookEntry>> {
+    return request<LogbookEntry>(`/logbook/entries/${id}/sign`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+
+  async submitEntry(id: string): Promise<StandardResponse<LogbookEntry>> {
+    return request<LogbookEntry>(`/logbook/entries/${id}/submit`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+
+  async getWeeklySummary(classId: string, weekStart: string, weekEnd: string): Promise<unknown[]> {
+    const res = await request<unknown[]>(`/logbook/class/${classId}/weekly-summary?week_start=${weekStart}&week_end=${weekEnd}`);
+    return res?.success ? (res.data as unknown[]) : [];
+  },
+
+  // --- Conduct Evaluations ---
+  async listConductEvaluations(params: {
+    class_id?: string;
+    student_id?: string;
+    academic_year?: string;
+    semester?: number;
+    evaluation_type?: 'midterm' | 'semester' | 'yearly';
+    page?: number;
+    limit?: number;
+  }): Promise<{ evaluations: ConductEvaluation[]; total: number } | null> {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => [k, String(v)])
+    ).toString();
+    const res = await request<{ evaluations: ConductEvaluation[]; total: number }>(`/logbook/conduct${query ? `?${query}` : ''}`);
+    return res?.success ? res.data as { evaluations: ConductEvaluation[]; total: number } : null;
+  },
+
+  async getClassConductSummary(classId: string, academicYear?: string, semester?: number): Promise<unknown> {
+    const params = new URLSearchParams();
+    if (academicYear) params.append('academic_year', academicYear);
+    if (semester) params.append('semester', String(semester));
+    const query = params.toString();
+    const res = await request<unknown>(`/logbook/conduct/class/${classId}/summary${query ? `?${query}` : ''}`);
+    return res?.success ? res.data : null;
+  },
+
+  async updateConductEvaluation(id: string, data: { conduct_grade?: string; teacher_comment?: string }): Promise<StandardResponse<ConductEvaluation>> {
+    return request<ConductEvaluation>(`/logbook/conduct/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async batchUpdateConductEvaluations(params: {
+    evaluations: Array<{
+      student_id: string;
+      class_id?: string;
+      conduct_grade: string;
+      teacher_comment?: string;
+    }>;
+    class_id: string;
+    academic_year?: string;
+    semester?: number;
+  }): Promise<StandardResponse<ConductEvaluation[]>> {
+    return request<ConductEvaluation[]>('/logbook/conduct/batch', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  },
+
+  // --- Discipline Records ---
+  async listDisciplineRecords(params: {
+    class_id?: string;
+    group_id?: string;
+    student_id?: string;
+    date_from?: string;
+    date_to?: string;
+    violation_type?: string;
+    status?: 'pending' | 'confirmed' | 'resolved' | 'dismissed';
+    page?: number;
+    limit?: number;
+  }): Promise<{ records: DisciplineRecord[]; total: number } | null> {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => [k, String(v)])
+    ).toString();
+    const res = await request<{ records: DisciplineRecord[]; total: number }>(`/logbook/discipline${query ? `?${query}` : ''}`);
+    return res?.success ? res.data as { records: DisciplineRecord[]; total: number } : null;
+  },
+
+  async createDisciplineRecord(data: Partial<DisciplineRecord>): Promise<StandardResponse<DisciplineRecord>> {
+    return request<DisciplineRecord>('/logbook/discipline', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateDisciplineRecord(id: string, data: { status?: string; notes?: string }): Promise<StandardResponse<DisciplineRecord>> {
+    return request<DisciplineRecord>(`/logbook/discipline/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getGroupDisciplineSummary(classId: string, dateFrom?: string, dateTo?: string): Promise<unknown[]> {
+    const params = new URLSearchParams();
+    if (dateFrom) params.append('date_from', dateFrom);
+    if (dateTo) params.append('date_to', dateTo);
+    const query = params.toString();
+    const res = await request<unknown[]>(`/logbook/discipline/class/${classId}/group-summary${query ? `?${query}` : ''}`);
+    return res?.success ? (res.data as unknown[]) : [];
+  },
+
+  // --- Seating Arrangements ---
+  async getSeatingArrangement(classId: string, academicYear?: string, semester?: number): Promise<SeatingArrangement | null> {
+    const params = new URLSearchParams();
+    if (academicYear) params.append('academic_year', academicYear);
+    if (semester !== undefined) params.append('semester', String(semester));
+    const query = params.toString();
+    const res = await request<SeatingArrangement>(`/logbook/seating/${classId}${query ? `?${query}` : ''}`);
+    return res?.success ? res.data as SeatingArrangement : null;
+  },
+
+  async saveSeatingArrangement(data: {
+    class_id: string;
+    academic_year: string;
+    semester?: number;
+    rows?: number;
+    cols?: number;
+    seating_data: Record<string, string | null>;
+    description?: string;
+  }): Promise<StandardResponse<SeatingArrangement>> {
+    return request<SeatingArrangement>('/logbook/seating', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
 };
 
 // Re-export adminApi methods as a default `api` alias for backward compatibility
