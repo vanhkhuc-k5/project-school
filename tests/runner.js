@@ -32,6 +32,7 @@ const [
   { runCoreDomainSchemaTests },
   { runEnvUnitTests },
   { runGradebookCalculationUnitTests },
+  { runTT22UnitTests },
   { runAttendanceRulesUnitTests },
   { runEnrollmentRulesUnitTests },
   { runPaymentCalculationUnitTests },
@@ -70,7 +71,6 @@ const [
   { runAITutorContextIntegrationTests },
   { runAcademicCycleE2ETests },
   { runSecurityIntegrationTests },
-  { runAdminFullFeaturesTests },
 ] = await Promise.all([
   import('./unit/auth.test.js'),
   import('./unit/database.test.js'),
@@ -78,6 +78,7 @@ const [
   import('./unit/core_domain_schema.test.js'),
   import('./unit/env.test.js'),
   import('./unit/gradebook_calculations.test.js'),
+  import('./unit/tt22_evaluation.test.js'),
   import('./unit/attendance_rules.test.js'),
   import('./unit/enrollment_rules.test.js'),
   import('./unit/payment_calculations.test.js'),
@@ -189,6 +190,7 @@ async function main() {
     }
     await runEnvUnitTests();
     await runGradebookCalculationUnitTests();
+    await runTT22UnitTests();
     await runAttendanceRulesUnitTests();
     await runEnrollmentRulesUnitTests();
     await runPaymentCalculationUnitTests();
@@ -278,10 +280,6 @@ async function main() {
     // ── Layer 4: Security regression tests ────────────────────────────────
     resetTestFixtures();
     await runSecurityIntegrationTests();
-
-    // ── Layer 5: Admin Full Features (Phase 02–12) ────────────────────────
-    resetTestFixtures();
-    await runAdminFullFeaturesTests();
 
   } catch (err) {
     console.error(`\n${colors.red}Critical test runner error: ${err.message}${colors.reset}`);

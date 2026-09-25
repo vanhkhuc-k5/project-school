@@ -1,6 +1,7 @@
 // =============================================================================
 // Unit Tests — Gradebook Calculation Engine (G43)
 // Wrapper for gradebook calculation tests
+// Note: TT22 Academic Evaluation Engine tests are in tests/unit/tt22_evaluation.test.js
 // =============================================================================
 
 import { describe, test, expect } from '../helpers/testClient.js';
@@ -217,7 +218,7 @@ export async function runGradebookCalculationUnitTests() {
       expect(result.finalScore).toBe(0);
       expect(result.warnings.length).toBeGreaterThan(0);
     });
-
+    
     test('Insufficient entries warning generated', () => {
       const grades = makeGrades([
         { cat: '15P', raw: 8, max: 10, status: 'draft' },
@@ -247,7 +248,7 @@ export async function runGradebookCalculationUnitTests() {
       expect(result.categoryAverages.MIENG.entryCount).toBe(2);
       approx(result.categoryAverages.MIENG.normalizedAverage, 80, 0.1);
     });
-
+    
     test('Contribution field computed correctly', () => {
       const grades = makeGrades([
         { cat: 'MIENG', raw: 10, max: 10, status: 'draft' },

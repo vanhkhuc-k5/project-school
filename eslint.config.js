@@ -16,6 +16,8 @@ export default tseslint.config(
       'no-undef': 'off',
       'no-empty': ['error', { allowEmptyCatch: true }],
       'no-useless-assignment': 'off',
+      // Disable react-hooks rules (not installed plugin)
+      'react-hooks/exhaustive-deps': 'off',
     },
   },
   {

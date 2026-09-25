@@ -29,6 +29,29 @@ import {
   Download,
 } from 'lucide-react';
 
+// ── Print Styles for E-Report Card ─────────────────────────────────────────────
+const REPORT_CARD_PRINT_STYLES = `
+  @media print {
+    #report-card-print {
+      padding: 20px;
+      font-family: 'Times New Roman', serif;
+      font-size: 12px;
+    }
+    #report-card-print .no-print { display: none !important; }
+    #report-card-print table { border-collapse: collapse; width: 100%; }
+    #report-card-print th, #report-card-print td { border: 1px solid #333; padding: 6px; }
+    #report-card-print thead th { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; }
+  }
+`;
+
+// Inject print styles once
+if (typeof document !== 'undefined' && !document.getElementById('report-card-print-styles')) {
+  const style = document.createElement('style');
+  style.id = 'report-card-print-styles';
+  style.textContent = REPORT_CARD_PRINT_STYLES;
+  document.head.appendChild(style);
+}
+
 // ── Thông tư 22 grade categories ─────────────────────────────────────────────
 
 const GRADE_CATEGORIES_TT22 = [
@@ -412,6 +435,8 @@ interface GradeSubject {
 }
 
 interface GradeData {
+  studentId?: string;
+  academicYearId?: string;
   semester?: string;
   academicYear?: string;
   overallGpa?: number;
@@ -494,6 +519,37 @@ export function StudentGradesPage() {
     } finally {
       setIsSendingReview(false);
     }
+  };
+
+  // Fetch e-report card data
+  const fetchReportCard = useCallback(async () => {
+    if (!gradeData?.studentId) return;
+    setReportCardLoading(true);
+    try {
+      const data = await gradebookApi.getStudentReportCard({
+        studentId: gradeData.studentId,
+        academicYearId: gradeData.academicYearId,
+        semesterId: activePeriod,
+      });
+      setReportCard(data);
+    } catch {
+      // Silently fail — report card may not be available yet
+    } finally {
+      setReportCardLoading(false);
+    }
+  }, [gradeData?.studentId, gradeData?.academicYearId, activePeriod]);
+
+  useEffect(() => {
+    if (gradeData?.studentId) {
+      fetchReportCard();
+    }
+  }, [gradeData?.studentId, fetchReportCard]);
+
+  // Generate QR code URL from verification data
+  const getQrCodeUrl = (code: string, studentName: string) => {
+    const payload = `EDUPORTAL:${code}|${studentName}|${new Date().getFullYear()}`;
+    const encoded = encodeURIComponent(payload);
+    return `https://chart.googleapis.com/chart?cht=qr&chs=80x80&chl=${encoded}&choe=UTF-8&chld=L|1`;
   };
 
   return (
@@ -668,6 +724,76 @@ export function StudentGradesPage() {
               </div>
             </Card>
           </div>
+
+          {/* ── E-Report Card (Học Bạ Điện Tử) ─────────────────────────── */}
+          {reportCardLoading ? (
+            <Card padding="p-4" className="animate-pulse">
+              <div className="h-16 bg-surface-neutral rounded" />
+            </Card>
+          ) : reportCard ? (
+            <Card padding="p-5" className="border-2 border-ocean/30 bg-gradient-to-r from-sky/10 to-ocean/5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-ocean/10 flex items-center justify-center shrink-0">
+                    <Award className="w-6 h-6 text-ocean" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-text-primary">Học Bạ Điện Tử Năm Học</div>
+                    <div className="text-xs text-text-secondary mt-0.5">
+                      {reportCard.evaluation.honorTitleLabel ? (
+                        <span className="text-yellow-700 font-medium">
+                          {reportCard.evaluation.honorTitleLabel} — {reportCard.evaluation.honorTitleReason}
+                        </span>
+                      ) : (
+                        <span>
+                          Xếp loại học lực: <strong className="text-text-primary">{reportCard.evaluation.academicClassificationLabel}</strong>
+                          {' · '}Rèn luyện: <strong className="text-text-primary">{reportCard.evaluation.conductRatingLabel ?? '—'}</strong>
+                        </span>
+                      )}
+                    </div>
+                    {reportCard.evaluation.homeroomTeacherComment && (
+                      <div className="mt-1 text-xs text-text-secondary italic">
+                        GVCN: {reportCard.evaluation.homeroomTeacherComment}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* QR code + badge column */}
+                <div className="flex items-center gap-3 shrink-0">
+                  {/* QR verification code */}
+                  <div className="flex flex-col items-center gap-1">
+                    <img
+                      src={getQrCodeUrl(reportCard.verificationCode, reportCard.student?.name || '')}
+                      alt="QR xác thực"
+                      width={56}
+                      height={56}
+                      className="rounded border border-hairline"
+                      onError={(e) => {
+                        // Fallback: hide image on error
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                    <span className="text-[9px] text-text-secondary font-mono leading-tight text-center">
+                      {reportCard.verificationCode}
+                    </span>
+                  </div>
+                  {reportCard.evaluation.honorTitle && (
+                    <Badge variant={reportCard.evaluation.honorTitle === 'XuatSac' ? 'success' : 'info'} size="md">
+                      {reportCard.evaluation.honorTitleLabel}
+                    </Badge>
+                  )}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={FileText}
+                    onClick={() => setShowReportCardModal(true)}
+                  >
+                    Xem &amp; In Học Bạ
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ) : null}
 
           {/* ── Transcript Table with Thông tư 22 breakdown ─────────────── */}
           <Card padding="p-6">
@@ -869,6 +995,184 @@ export function StudentGradesPage() {
                 </div>
               </>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* ── E-Report Card Modal (Học Bạ Điện Tử) ───────────────────── */}
+      <Modal
+        isOpen={showReportCardModal}
+        onClose={() => setShowReportCardModal(false)}
+        title={`Học Bạ Điện Tử — ${reportCard?.student?.name || ''}`}
+        size="2xl"
+      >
+        {reportCard && (
+          <div id="report-card-print" className="space-y-4">
+            {/* Administrative Header */}
+            <div className="text-center border border-hairline rounded-lg p-4 bg-surface-neutral/40">
+              <div className="text-[11px] text-text-secondary uppercase tracking-wider">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+              <div className="text-[11px] font-medium text-text-secondary uppercase">Độc lập - Tự do - Hạnh phúc</div>
+              <div className="mt-4 mb-2 text-base font-bold text-text-primary uppercase">
+                HỌC BẠ ĐIỆN TỬ
+              </div>
+              <div className="text-xs text-text-secondary">
+                Trường THCS Bắc Au · Năm học: {reportCard.academicYear}
+              </div>
+            </div>
+
+            {/* Student Info */}
+            <div className="grid grid-cols-2 gap-4 border border-hairline rounded-lg p-4">
+              <div className="space-y-1">
+                <div className="text-xs"><span className="font-medium">Họ và tên:</span> {reportCard.student?.name}</div>
+                <div className="text-xs"><span className="font-medium">Ngày sinh:</span> {reportCard.student?.birthDate ? new Date(reportCard.student.birthDate).toLocaleDateString('vi-VN') : '—'}</div>
+                <div className="text-xs"><span className="font-medium">Lớp:</span> {reportCard.student?.className || '—'}</div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs"><span className="font-medium">Mã HS:</span> {reportCard.student?.code}</div>
+                <div className="text-xs"><span className="font-medium">Giới tính:</span> {reportCard.student?.gender === 'male' ? 'Nam' : reportCard.student?.gender === 'female' ? 'Nữ' : '—'}</div>
+              </div>
+            </div>
+
+            {/* Classification Summary */}
+            <div className="flex flex-wrap gap-2 justify-center">
+              {reportCard.evaluation.honorTitleLabel && (
+                <div className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold border ${
+                  reportCard.evaluation.honorTitle === 'XuatSac'
+                    ? 'bg-yellow-50 text-yellow-800 border-yellow-300'
+                    : 'bg-blue-50 text-blue-800 border-blue-200'
+                }`}>
+                  {reportCard.evaluation.honorTitle === 'XuatSac' ? (
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-yellow-500">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-blue-500">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                    </svg>
+                  )}
+                  {reportCard.evaluation.honorTitleLabel}
+                </div>
+              )}
+              <Badge variant={reportCard.evaluation.academicClassification === 'Tot' ? 'success' : reportCard.evaluation.academicClassification === 'Kha' ? 'info' : reportCard.evaluation.academicClassification === 'Dat' ? 'warning' : 'danger'} size="md">
+                Học lực: {reportCard.evaluation.academicClassificationLabel}
+              </Badge>
+              {reportCard.evaluation.conductRatingLabel && (
+                <Badge variant={reportCard.evaluation.conductRating === 'Tot' ? 'success' : 'info'} size="md">
+                  Rèn luyện: {reportCard.evaluation.conductRatingLabel}
+                </Badge>
+              )}
+            </div>
+
+            {/* Subject Scores Table */}
+            <div className="overflow-x-auto border border-hairline rounded-lg">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-surface-neutral hairline-b">
+                    <th className="py-2 px-3 text-left font-medium text-text-secondary w-8">STT</th>
+                    <th className="py-2 px-3 text-left font-medium text-text-secondary">Môn học</th>
+                    <th className="py-2 px-3 text-center font-medium text-text-secondary">ĐTBmhk1</th>
+                    <th className="py-2 px-3 text-center font-medium text-text-secondary">ĐTBmhk2</th>
+                    <th className="py-2 px-3 text-center font-medium text-text-secondary">ĐTBmcn</th>
+                    <th className="py-2 px-3 text-center font-medium text-text-secondary">Xếp loại</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportCard.evaluation.subjectScores.map((sub, i) => {
+                    const cls = sub.yearlyScore !== null && sub.yearlyScore >= 8.5 ? 'text-success' : sub.yearlyScore !== null && sub.yearlyScore >= 5.0 ? 'text-ocean' : 'text-danger';
+                    return (
+                      <tr key={sub.subjectId} className="hairline-b hover:bg-surface-neutral/30">
+                        <td className="py-2 px-3 text-text-secondary">{i + 1}</td>
+                        <td className="py-2 px-3 text-text-primary">{sub.subjectName}</td>
+                        <td className="py-2 px-3 text-center">{sub.hk1Score?.toFixed(1) ?? '—'}</td>
+                        <td className="py-2 px-3 text-center">{sub.hk2Score?.toFixed(1) ?? '—'}</td>
+                        <td className={`py-2 px-3 text-center font-semibold ${cls}`}>{sub.yearlyScore?.toFixed(1) ?? '—'}</td>
+                        <td className="py-2 px-3 text-center">
+                          {sub.isGradingSubject ? (
+                            <Badge variant={sub.gradingResult === 'dat' ? 'success' : 'warning'} size="sm">{sub.gradingResult === 'dat' ? 'Đạt' : 'Chưa đạt'}</Badge>
+                          ) : (
+                            <span className={`text-[11px] font-medium ${cls}`}>
+                              {sub.yearlyScore !== null && sub.yearlyScore >= 8.5 ? 'Giỏi' : sub.yearlyScore !== null && sub.yearlyScore >= 7.0 ? 'Khá' : sub.yearlyScore !== null && sub.yearlyScore >= 5.0 ? 'Đạt' : 'Yếu'}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-surface-neutral font-semibold">
+                    <td colSpan={4} className="py-2 px-3 text-text-primary">Điểm trung bình cả năm (ĐTBmcn)</td>
+                    <td className="py-2 px-3 text-center text-primary text-sm">
+                      {reportCard.evaluation.yearlyGPA?.toFixed(1) ?? '—'}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* Footer: verification + QR + print */}
+            <div className="flex items-center justify-between border-t pt-3 gap-4">
+              <div className="flex items-center gap-4">
+                {/* QR Code for anti-tamper verification */}
+                <img
+                  src={getQrCodeUrl(reportCard.verificationCode, reportCard.student?.name || '')}
+                  alt="QR xác thực"
+                  width={64}
+                  height={64}
+                  className="rounded border border-hairline"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+                <div className="space-y-0.5">
+                  <div className="text-xs text-text-secondary">
+                    Mã xác thực:{' '}
+                    <span className="font-mono text-ocean font-semibold text-sm">
+                      {reportCard.verificationCode}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-text-secondary">
+                    Generated: {new Date(reportCard.generatedAt).toLocaleString('vi-VN')}
+                  </div>
+                  <div className="text-[10px] text-text-secondary">
+                    Scan QR để xác minh nguồn gốc điện tử
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={Printer}
+                  onClick={() => window.print()}
+                >
+                  In Học Bạ
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={Download}
+                  onClick={() => {
+                    // Export as print-friendly div
+                    const printContent = document.getElementById('report-card-print');
+                    if (!printContent) return;
+                    const printWindow = window.open('', '_blank');
+                    if (!printWindow) return;
+                    printWindow.document.write(`<html><head><title>Học Bạ Điện Tử - ${reportCard.student?.name}</title><style>
+                      body { font-family: 'Times New Roman', serif; margin: 20px; font-size: 12px; }
+                      table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #ddd; padding: 6px; }
+                      .print-header { text-align: center; margin-bottom: 20px; }
+                      @media print { body { margin: 0; } }
+                    </style></head><body>${printContent.innerHTML}</body></html>`);
+                    printWindow.document.close();
+                    printWindow.print();
+                  }}
+                >
+                  Tải PDF
+                </Button>
+              </div>
+            </div>
           </div>
         )}
       </Modal>
