@@ -1,6 +1,7 @@
 // =============================================================================
-// StudentLayout — Modern Collapsible Sidebar & SaaS Navigation
-// Features: Collapsible desktop sidebar (rail/expanded), mobile drawer, keyboard accessible
+// StudentLayout — Full-Width Top-Navigation & SaaS Learning Layout
+// Features: Full-width sticky top navigation, Global broadcast banner,
+//           Mobile slide-out drawer, 100% responsive without left sidebar
 // =============================================================================
 
 import React, { useState, useEffect, type ReactNode, Suspense } from 'react';
@@ -14,31 +15,12 @@ import {
   Calendar,
   UserCheck,
   Bell,
-  Menu,
   X,
+  LogOut,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
 import { GlobalBroadcastBanner } from '../components/GlobalBroadcastBanner';
-import { CollapsibleSidebar, type SidebarMenuItem } from '../components/CollapsibleSidebar';
-
-// Map of routes to menu IDs
-const ROUTE_TO_ID: Record<string, string> = {
-  '/student/dashboard': 'home',
-  '/student/timetable': 'timetable',
-  '/student/assignments': 'assignments',
-  '/student/attendance': 'attendance',
-  '/student/grades': 'grades',
-  '/student/resources': 'resources',
-  '/student/announcements': 'announcements',
-  '/student/ai-tutor': 'ai-tutor',
-};
-
-// Active route detection
-function useActiveRoute(): string {
-  const location = useLocation();
-  return ROUTE_TO_ID[location.pathname] || 'home';
-}
 
 // Mobile menu hook
 function useMobileMenu(): { isOpen: boolean; toggle: () => void; close: () => void } {
@@ -55,9 +37,28 @@ function useMobileMenu(): { isOpen: boolean; toggle: () => void; close: () => vo
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    function handleResize() {
+      if (window.innerWidth >= 1024) {
+        setIsOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    }
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   return {
     isOpen,
-    toggle: () => setIsOpen(!isOpen),
+    toggle: () => setIsOpen((prev) => !prev),
     close: () => setIsOpen(false),
   };
 }
@@ -65,31 +66,18 @@ function useMobileMenu(): { isOpen: boolean; toggle: () => void; close: () => vo
 export function StudentLayout(): ReactNode {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
-  const activeTab = useActiveRoute();
+  const location = useLocation();
   const { isOpen: isMobileMenuOpen, toggle: toggleMobileMenu, close: closeMobileMenu } = useMobileMenu();
 
-  // Collapsible sidebar state with localStorage persistence
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    return localStorage.getItem('eduportal_sidebar_collapsed') === 'true';
-  });
-
-  const toggleSidebarCollapse = () => {
-    setIsSidebarCollapsed((prev) => {
-      const next = !prev;
-      localStorage.setItem('eduportal_sidebar_collapsed', String(next));
-      return next;
-    });
-  };
-
-  const menuItems: SidebarMenuItem[] = [
+  const menuItems = [
     { id: 'home', label: 'Trang chủ', icon: Home, route: '/student/dashboard' },
-    { id: 'timetable', label: 'Thời khóa biểu', icon: Calendar, route: '/student/timetable' },
     { id: 'assignments', label: 'Khóa học & Bài tập', icon: BookOpen, route: '/student/assignments' },
-    { id: 'attendance', label: 'Chuyên cần', icon: UserCheck, route: '/student/attendance' },
+    { id: 'timetable', label: 'Thời khóa biểu', icon: Calendar, route: '/student/timetable' },
     { id: 'grades', label: 'Điểm số & Học bạ', icon: Award, route: '/student/grades' },
     { id: 'resources', label: 'Kho học liệu', icon: Layers, route: '/student/resources' },
-    { id: 'announcements', label: 'Thông báo', icon: Bell, route: '/student/announcements' },
     { id: 'ai-tutor', label: 'Gia sư AI', icon: Sparkles, route: '/student/ai-tutor', badge: 'Mới' },
+    { id: 'attendance', label: 'Chuyên cần', icon: UserCheck, route: '/student/attendance' },
+    { id: 'announcements', label: 'Thông báo', icon: Bell, route: '/student/announcements' },
   ];
 
   const handleNavigation = (route: string): void => {
@@ -98,8 +86,15 @@ export function StudentLayout(): ReactNode {
   };
 
   const handleLogout = async (): Promise<void> => {
+    closeMobileMenu();
     await logout();
     navigate('/login');
+  };
+
+  const getInitial = (name?: string) => {
+    if (!name) return 'K';
+    const parts = name.trim().split(' ');
+    return parts[parts.length - 1].charAt(0).toUpperCase();
   };
 
   return (
@@ -112,104 +107,160 @@ export function StudentLayout(): ReactNode {
         Chuyển đến nội dung chính
       </a>
 
-      <div className="min-h-screen flex bg-[#F8F9FB]">
-        {/* Desktop Collapsible Sidebar */}
-        <aside
-          className={`hidden lg:flex flex-col justify-between shrink-0 transition-all duration-300 ease-in-out ${
-            isSidebarCollapsed ? 'w-20' : 'w-64'
-          }`}
-          aria-label="Thanh điều hướng"
-        >
-          <CollapsibleSidebar
-            isCollapsed={isSidebarCollapsed}
-            onToggleCollapse={toggleSidebarCollapse}
-            menuItems={menuItems}
-            activeId={activeTab}
-            onNavigate={handleNavigation}
-            roleTitle="Cổng Học sinh"
-            currentUser={currentUser}
-            onLogout={handleLogout}
-          />
-        </aside>
+      <div className="min-h-screen flex flex-col bg-[#F8F9FB] w-full">
+        {/* Dải thông báo toàn trường (Global Broadcast Banner) trải dài 100% */}
+        <GlobalBroadcastBanner />
 
-        {/* Mobile Sidebar Overlay */}
+        {/* Header Full-Width Chuẩn VLearn Top-Nav */}
+        <Header
+          showLogo={true}
+          logoHref="/student/dashboard"
+          onToggleMobileMenu={toggleMobileMenu}
+          isMobileMenuOpen={isMobileMenuOpen}
+        />
+
+        {/* Mobile Slide-Out Drawer Overlay */}
         {isMobileMenuOpen && (
-          <>
+          <div className="lg:hidden fixed inset-0 z-50 flex">
             {/* Backdrop */}
             <div
-              className="lg:hidden fixed inset-0 bg-black/50 z-40 animate-fade-in"
+              className="fixed inset-0 bg-black/50 transition-opacity animate-fade-in"
               onClick={closeMobileMenu}
               aria-hidden="true"
             />
 
             {/* Mobile Drawer */}
             <aside
-              className="lg:hidden fixed inset-y-0 left-0 w-72 z-50 shadow-2xl animate-in slide-in-from-left duration-200"
-              aria-label="Menu điều hướng"
+              className="relative w-72 sm:w-80 bg-white h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-left duration-200 border-r border-hairline"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Menu điều hướng học sinh"
             >
-              <CollapsibleSidebar
-                isCollapsed={false}
-                onToggleCollapse={() => {}}
-                menuItems={menuItems}
-                activeId={activeTab}
-                onNavigate={handleNavigation}
-                roleTitle="Cổng Học sinh"
-                currentUser={currentUser}
-                onLogout={handleLogout}
-                isMobile={true}
-                onCloseMobile={closeMobileMenu}
-              />
-            </aside>
-          </>
-        )}
+              <div className="flex flex-col flex-1 min-h-0">
+                {/* Drawer Header */}
+                <div className="h-16 px-5 border-b border-hairline flex items-center justify-between shrink-0 bg-white">
+                  <button
+                    type="button"
+                    onClick={() => handleNavigation('/student/dashboard')}
+                    className="flex items-center gap-2.5 text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean rounded-lg"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-ocean flex items-center justify-center text-white font-black text-sm shadow-xs">
+                      <span className="tracking-tighter">EP</span>
+                    </div>
+                    <div>
+                      <div className="text-base font-extrabold text-primary tracking-tight leading-none">
+                        EduPortal
+                      </div>
+                      <div className="text-[10px] text-text-secondary mt-1 font-medium leading-none">
+                        Cổng Học sinh
+                      </div>
+                    </div>
+                  </button>
 
-        {/* Mobile Header Bar */}
-        <div className="lg:hidden fixed top-0 left-0 right-0 z-30 bg-white border-b border-hairline">
-          <div className="flex items-center justify-between h-14 px-4">
-            <button
-              onClick={toggleMobileMenu}
-              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-text-secondary hover:text-text-primary rounded hover:bg-surface-neutral transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50"
-              aria-expanded={isMobileMenuOpen}
-              aria-controls="mobile-menu"
-              aria-label={isMobileMenuOpen ? 'Đóng menu' : 'Mở menu'}
-            >
-              {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
+                  <button
+                    type="button"
+                    onClick={closeMobileMenu}
+                    className="p-1.5 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-neutral transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean"
+                    aria-label="Đóng menu"
+                  >
+                    <X className="w-5 h-5 stroke-[2]" />
+                  </button>
+                </div>
 
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-ocean flex items-center justify-center text-white font-bold text-sm">
-                EP
-              </div>
-              <span className="font-bold text-primary tracking-tight">EduPortal</span>
-            </div>
-
-            <div className="w-11" />
-          </div>
-        </div>
-
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 pt-14 lg:pt-0">
-          <GlobalBroadcastBanner />
-          <Header onToggleSidebar={toggleSidebarCollapse} isSidebarCollapsed={isSidebarCollapsed} />
-          <main
-            id="main-content"
-            className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto focus:outline-none"
-            tabIndex={-1}
-          >
-            <Suspense
-              fallback={
-                <div className="min-h-[400px] flex items-center justify-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 border-4 border-ocean/30 border-t-ocean rounded-full animate-spin" />
-                    <span className="text-sm text-text-secondary">Đang tải...</span>
+                {/* User Profile Snippet in Drawer */}
+                <div className="p-4 mx-3 my-3 bg-surface-neutral rounded-xl border border-hairline flex items-center gap-3 shrink-0">
+                  {currentUser?.avatar ? (
+                    <img
+                      src={currentUser.avatar}
+                      alt={currentUser.name || 'Học sinh'}
+                      className="w-9 h-9 rounded-full object-cover border border-hairline shadow-xs shrink-0"
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-[#0F3D5C] text-white flex items-center justify-center font-bold text-xs tracking-tight shadow-xs shrink-0">
+                      {getInitial(currentUser?.name)}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-text-primary truncate">
+                      {currentUser?.name || 'Học sinh'}
+                    </div>
+                    <div className="text-[11px] text-text-secondary truncate mt-0.5">
+                      {currentUser?.email || 'student@school.edu.vn'}
+                    </div>
                   </div>
                 </div>
-              }
-            >
-              <Outlet />
-            </Suspense>
-          </main>
-        </div>
+
+                {/* Navigation Items */}
+                <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                    Phân hệ học tập
+                  </div>
+                  {menuItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = item.route === '/student/dashboard'
+                      ? (location.pathname === '/student/dashboard' || location.pathname === '/student')
+                      : location.pathname.startsWith(item.route);
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleNavigation(item.route)}
+                        className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-colors text-left cursor-pointer ${
+                          isActive
+                            ? 'bg-sky text-primary font-bold border-l-4 border-primary'
+                            : 'text-text-secondary hover:text-text-primary hover:bg-surface-neutral'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Icon className={`w-4 h-4 stroke-[2] shrink-0 ${isActive ? 'text-primary' : 'text-text-secondary'}`} />
+                          <span className="truncate">{item.label}</span>
+                        </div>
+                        {item.badge && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 shrink-0">
+                            {item.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Drawer Footer / Logout */}
+              <div className="p-4 border-t border-hairline bg-surface-neutral/50">
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs sm:text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4 stroke-[2]" />
+                  <span>Đăng xuất</span>
+                </button>
+              </div>
+            </aside>
+          </div>
+        )}
+
+        {/* Main Content Area — Trải rộng không gian ngang với đệm max-w-[1440px] */}
+        <main
+          id="main-content"
+          className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto focus:outline-none"
+          tabIndex={-1}
+        >
+          <Suspense
+            fallback={
+              <div className="min-h-[400px] flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-10 h-10 border-4 border-ocean/30 border-t-ocean rounded-full animate-spin" />
+                  <span className="text-sm text-text-secondary">Đang tải...</span>
+                </div>
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
+        </main>
       </div>
     </>
   );

@@ -8,32 +8,20 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
-import { Badge } from '../../components/Badge';
-import { EmptyState } from '../../components/EmptyState';
 import { SkeletonCard } from '../../components/LoadingState';
 import { ErrorState } from '../../components/ErrorState';
-import { studentApi, logbookApi } from '../../services/api';
+import { studentApi } from '../../services/api';
 import {
-  Calendar,
   Clock,
   CheckCircle2,
-  TrendingUp,
-  Sparkles,
   BookOpen,
   ChevronRight,
-  Bell,
-  TrendingDown,
-  Minus,
   AlertCircle,
   Flame,
   FileText,
   Bookmark,
   MessageSquare,
-  HelpCircle,
   PlayCircle,
-  Circle,
-  Award,
-  ChevronDown,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,12 +144,18 @@ interface NextClassInfo {
 
 function getNextClass(todayClasses: TodayClass[]): NextClassInfo | null {
   if (!todayClasses || todayClasses.length === 0) return null;
+  const first = todayClasses[0];
+  const rawPeriod = first.period !== undefined && first.period !== null ? String(first.period) : '1';
+  const periodText = rawPeriod.startsWith('Tiết') ? rawPeriod : `Tiết ${rawPeriod}`;
+  const rawTime = first.time?.trim();
+  const timeText = rawTime && rawTime !== '-' ? rawTime : '07:30 - 08:15';
+
   return {
-    subject: todayClasses[0].subject || 'Toán học',
-    period: todayClasses[0].period || 1,
-    time: todayClasses[0].time || '07:30 - 08:15',
-    room: todayClasses[0].room || 'Phòng 204 - Nhà A',
-    teacher: todayClasses[0].teacher || 'Cô Mai Lan',
+    subject: first.subject || 'Toán học',
+    period: periodText,
+    time: timeText,
+    room: first.room || 'Phòng 204 - Nhà A',
+    teacher: first.teacher || 'Cô Mai Lan',
   };
 }
 
@@ -179,12 +173,15 @@ export function StudentDashboard(): React.JSX.Element {
 
   useEffect(() => {
     studentApi
-      .getDashboard()
+      .getDashboard<DashboardData>()
       .then((res) => {
-        setData(res.data as DashboardData);
+        const dashboardData = (res && 'data' in (res as Record<string, unknown>))
+          ? (res as { data: DashboardData }).data
+          : res;
+        setData(dashboardData as DashboardData);
         setLoading(false);
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         setError(err.message || 'Không thể tải dữ liệu bảng điều khiển.');
         setLoading(false);
       });
@@ -220,12 +217,9 @@ export function StudentDashboard(): React.JSX.Element {
 
   const {
     student,
-    kpis,
     todayClasses = [],
     overdueAssignments = [],
     dueSoonAssignments = [],
-    recentGrades = [],
-    attendanceSummary,
     competencies = {},
   } = data || {};
 
@@ -233,10 +227,11 @@ export function StudentDashboard(): React.JSX.Element {
   const nextClass = getNextClass(todayClasses);
 
   // Student first name for friendly greeting
-  const studentLastName = student?.name?.trim().split(' ').pop()?.toUpperCase() || 'BẠN';
+  const studentName = student?.name || 'BẠN';
+  const studentLastName = studentName.trim().split(/\s+/).pop()?.toUpperCase() || 'BẠN';
 
-  // Sample course sessions matching reference image
-  const courseSessions = [
+  // Sample course sessions matching reference image for each tab
+  const k04Sessions = [
     { id: 9, title: 'Buổi 9: ROAD ELEMENTS · Khảo sát hàm số & Cực trị', status: 'learning', progress: null },
     { id: 8, title: 'Buổi 8: AI-Assisted Data & Tích phân từng phần', status: 'progress', progress: 50 },
     { id: 7, title: 'Buổi 7: Data Pipeline & Hình học không gian Oxyz', status: 'todo', progress: null },
@@ -246,6 +241,19 @@ export function StudentDashboard(): React.JSX.Element {
     { id: 3, title: 'Buổi 3: MultiFrame Tracking & Số phức lượng giác', status: 'todo', progress: null },
     { id: 2, title: 'Buổi 2: Object Detection & Khối tròn xoay', status: 'todo', progress: null },
   ];
+
+  const k03Sessions = [
+    { id: 12, title: 'Buổi 12: Tổng ôn Chuyên đề · Hình học không gian nâng cao', status: 'learning', progress: null },
+    { id: 11, title: 'Buổi 11: Phương pháp tọa độ hóa khối đa diện Oxyz', status: 'progress', progress: 80 },
+    { id: 10, title: 'Buổi 10: Ứng dụng tích phân tính diện tích & thể tích', status: 'todo', progress: null },
+    { id: 9, title: 'Buổi 9: Hàm số lũy thừa & Cực trị hàm hợp', status: 'todo', progress: null },
+    { id: 8, title: 'Buổi 8: Số phức và các dạng toán vận dụng cao', status: 'todo', progress: null },
+    { id: 7, title: 'Buổi 7: Xác suất biến cố & Biến ngẫu nhiên rời rạc', status: 'todo', progress: null },
+    { id: 6, title: 'Buổi 6: Cấp số cộng, cấp số nhân và dãy số giới hạn', status: 'todo', progress: null },
+    { id: 5, title: 'Buổi 5: Bất phương trình mũ và logarit chứa tham số', status: 'todo', progress: null },
+  ];
+
+  const courseSessions = activeCourseTab === 'k04' ? k04Sessions : k03Sessions;
 
   // Learning streak days matching reference image
   const streakDays = [
@@ -270,7 +278,11 @@ export function StudentDashboard(): React.JSX.Element {
           </h1>
           <p className="text-xs sm:text-sm text-text-secondary mt-1 flex items-center gap-1.5 flex-wrap">
             <span className="text-amber-500 font-bold">🌟</span>
-            <span>Ghi chú gần nhất môn <strong>Toán học (Giải tích 12)</strong>. Còn 8 buổi phía trước.</span>
+            {activeCourseTab === 'k04' ? (
+              <span>Ghi chú gần nhất môn <strong>Toán học (Giải tích 12)</strong>. Còn 8 buổi phía trước.</span>
+            ) : (
+              <span>Ghi chú gần nhất môn <strong>Ôn tập THPT (Hình học & Giải tích)</strong>. Còn 6 buổi phía trước.</span>
+            )}
           </p>
         </div>
 
@@ -295,7 +307,7 @@ export function StudentDashboard(): React.JSX.Element {
                 Tiết học tiếp theo hôm nay
               </div>
               <div className="text-sm font-bold text-text-primary truncate">
-                {nextClass.subject} • Tiết {nextClass.period} ({nextClass.time})
+                {nextClass.subject} • {nextClass.period} ({nextClass.time})
               </div>
               <div className="text-xs text-text-secondary truncate">
                 {nextClass.room} • GV: {nextClass.teacher}
@@ -374,8 +386,16 @@ export function StudentDashboard(): React.JSX.Element {
                   return (
                     <div
                       key={session.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => navigate('/student/assignments')}
-                      className={`px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          navigate('/student/assignments');
+                        }
+                      }}
+                      className={`px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean ${
                         isLearning
                           ? 'bg-sky/50 hover:bg-sky/70 font-semibold'
                           : 'hover:bg-surface-neutral/60'
@@ -446,8 +466,16 @@ export function StudentDashboard(): React.JSX.Element {
                 {[...overdueAssignments, ...dueSoonAssignments].slice(0, 3).map((a) => (
                   <div
                     key={a.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => navigate('/student/assignments')}
-                    className="p-3 rounded-lg border border-hairline hover:border-ocean/40 transition-colors flex items-center justify-between gap-3 cursor-pointer bg-white"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate('/student/assignments');
+                      }
+                    }}
+                    className="p-3 rounded-lg border border-hairline hover:border-ocean/40 transition-colors flex items-center justify-between gap-3 cursor-pointer bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean"
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -459,7 +487,15 @@ export function StudentDashboard(): React.JSX.Element {
                         <span>Hạn nộp: {a.deadline || 'Hôm nay'}</span>
                       </div>
                     </div>
-                    <Button variant="primary" size="sm" className="shrink-0 text-xs px-3 py-1">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="shrink-0 text-xs px-3 py-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/student/assignments');
+                      }}
+                    >
                       Làm bài
                     </Button>
                   </div>
