@@ -107,8 +107,7 @@ export function createApp() {
   // =============================================================================
   // PUBLIC HEALTH CHECK ENDPOINTS (must be before apiRouter)
   // =============================================================================
-  app.get('/api/health', async (req, res) => {
-    const startMemory = process.memoryUsage();
+  app.get('/api/health', async (_req, res) => {
     const startTime = Date.now();
     
     try {
@@ -119,10 +118,16 @@ export function createApp() {
       try {
         const dbStart = Date.now();
         // Import dynamically to avoid circular deps
-        const { db } = await import('../shared/database/index.js');
-        db.get('SELECT 1'); // Simple ping
+        const { db, pool, isPostgresConfigured } = await import('../shared/database/index.js');
+        if (typeof isPostgresConfigured === 'function' && isPostgresConfigured() && pool) {
+          await pool.query('SELECT 1');
+        } else if (db && typeof db.prepare === 'function') {
+          db.prepare('SELECT 1').get();
+        } else if (db && typeof db.get === 'function') {
+          db.get('SELECT 1');
+        }
         dbLatency = Date.now() - dbStart;
-      } catch (dbErr) {
+      } catch (_dbErr) {
         dbStatus = 'unhealthy';
       }
       
