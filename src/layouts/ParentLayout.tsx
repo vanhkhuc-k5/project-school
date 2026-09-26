@@ -1,29 +1,28 @@
 // =============================================================================
-// ParentLayout — G42 Responsive & Accessibility (TypeScript)
-// Parent portal layout with mobile navigation and keyboard support
+// ParentLayout — Modern Collapsible Sidebar & SaaS Navigation
+// Parent portal layout with child monitoring and collapsible sidebar
 // =============================================================================
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, type ReactNode, Suspense } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
-import { Home, Award, Calendar, Bell, CreditCard, MessageSquare, Phone, LogOut, FileCheck, Menu, X } from 'lucide-react';
+import {
+  Home,
+  Award,
+  Calendar,
+  FileCheck,
+  CreditCard,
+  Bell,
+  MessageSquare,
+  Menu,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
 import { GlobalBroadcastBanner } from '../components/GlobalBroadcastBanner';
+import { CollapsibleSidebar, type SidebarMenuItem } from '../components/CollapsibleSidebar';
 
-// ── Type Definitions ──────────────────────────────────────────────────────────
-
-type MenuId = 'home' | 'grades' | 'schedule' | 'leave' | 'tuition' | 'notices' | 'messages';
-
-interface NavItem {
-  id: MenuId;
-  label: string;
-  icon: React.ElementType;
-  route: string;
-}
-
-// Map of routes to menu IDs
-const ROUTE_TO_ID: Record<string, MenuId> = {
-  '/parent': 'home',
+// Map routes to tab IDs
+const ROUTE_TO_ID: Record<string, string> = {
   '/parent/dashboard': 'home',
   '/parent/grades': 'grades',
   '/parent/schedule': 'schedule',
@@ -33,13 +32,11 @@ const ROUTE_TO_ID: Record<string, MenuId> = {
   '/parent/messages': 'messages',
 };
 
-// Active route detection
-function useActiveRoute(): MenuId {
+function useActiveRoute(): string {
   const location = useLocation();
   return ROUTE_TO_ID[location.pathname] || 'home';
 }
 
-// Mobile menu hook
 function useMobileMenu(): { isOpen: boolean; toggle: () => void; close: () => void } {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -54,129 +51,53 @@ function useMobileMenu(): { isOpen: boolean; toggle: () => void; close: () => vo
     };
   }, [isOpen]);
 
-  return { isOpen, toggle: () => setIsOpen(!isOpen), close: () => setIsOpen(false) };
+  return {
+    isOpen,
+    toggle: () => setIsOpen(!isOpen),
+    close: () => setIsOpen(false),
+  };
 }
 
-// ── Sidebar Content ────────────────────────────────────────────────────────────
-
-function SidebarContent({
-  activeTab,
-  onNavigate,
-  onLogout,
-  currentUser,
-}: {
-  activeTab: MenuId;
-  onNavigate: (route: string) => void;
-  onLogout: () => void;
-  currentUser?: { name?: string; avatar?: string } | null;
-}): React.ReactElement {
-  const menuItems: NavItem[] = [
-    { id: 'home', label: 'Trang chủ', icon: Home, route: '/parent/dashboard' },
-    { id: 'grades', label: 'Kết quả học tập', icon: Award, route: '/parent/grades' },
-    { id: 'schedule', label: 'Lịch học & Thi', icon: Calendar, route: '/parent/schedule' },
-    { id: 'leave', label: 'Đơn xin nghỉ học', icon: FileCheck, route: '/parent/leave' },
-    { id: 'tuition', label: 'Học phí & Dịch vụ', icon: CreditCard, route: '/parent/tuition' },
-    { id: 'notices', label: 'Thông báo trường', icon: Bell, route: '/parent/notices' },
-    { id: 'messages', label: 'Tin nhắn giáo viên', icon: MessageSquare, route: '/parent/messages' },
-  ];
-
-  const avatarSrc = currentUser?.avatar || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=120&h=120';
-  const displayName = currentUser?.name || 'Bác Nguyễn Văn Thành';
-
-  return (
-    <div className="flex flex-col h-full">
-      {/* Brand */}
-      <div className="h-16 px-6 flex items-center gap-3 border-b border-hairline bg-white shrink-0">
-        <img src="/assets/logo.png" alt="EduPortal Logo" className="w-8 h-8 object-contain" />
-        <div>
-          <div className="text-base font-medium text-primary tracking-tight leading-none">EduPortal</div>
-          <div className="text-[11px] text-text-secondary mt-1 leading-none">Cổng Phụ huynh</div>
-        </div>
-      </div>
-
-      {/* Nav Links */}
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto" aria-label="Điều hướng chính">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.route)}
-              aria-current={isActive ? 'page' : undefined}
-              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50 ${
-                isActive
-                  ? 'bg-sky text-primary font-medium'
-                  : 'text-text-secondary hover:text-text-primary hover:bg-hairline/40'
-              }`}
-            >
-              <Icon className={`w-5 h-5 stroke-[1.75] ${isActive ? 'text-primary' : 'text-text-secondary'}`} aria-hidden={true} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* Bottom utility hotline & Profile */}
-      <div className="p-3 space-y-2 border-t border-hairline shrink-0">
-        <div className="px-3 py-2 bg-white rounded border border-hairline flex items-center justify-between text-[11px] text-text-secondary">
-          <div className="flex items-center gap-1.5">
-            <Phone className="w-3.5 h-3.5 text-ocean" aria-hidden="true" />
-            <span>Hotline:</span>
-            <strong className="text-text-primary">1900 6868</strong>
-          </div>
-          <span className="text-[10px] text-success font-medium">Hỗ trợ 24/7</span>
-        </div>
-
-        <div className="p-3 bg-white rounded-card border border-hairline flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <img
-              src={avatarSrc}
-              alt=""
-              aria-hidden="true"
-              className="w-9 h-9 rounded-full object-cover border border-hairline"
-            />
-            <div>
-              <div className="text-xs font-medium text-text-primary leading-tight">{displayName}</div>
-              <div className="text-[11px] text-text-secondary mt-0.5">
-                Phụ huynh em Khôi
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={onLogout}
-            className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-text-secondary hover:text-danger rounded hover:bg-danger-light transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50"
-            aria-label="Đăng xuất"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Main Layout ────────────────────────────────────────────────────────────────
-
-export function ParentLayout(): React.ReactElement {
+export function ParentLayout(): ReactNode {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
   const activeTab = useActiveRoute();
   const { isOpen: isMobileMenuOpen, toggle: toggleMobileMenu, close: closeMobileMenu } = useMobileMenu();
+
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('eduportal_sidebar_collapsed') === 'true';
+  });
+
+  const toggleSidebarCollapse = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('eduportal_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
+
+  const menuItems: SidebarMenuItem[] = [
+    { id: 'home', label: 'Trang chủ', icon: Home, route: '/parent/dashboard' },
+    { id: 'grades', label: 'Kết quả học tập', icon: Award, route: '/parent/grades' },
+    { id: 'schedule', label: 'Lịch học & Thi', icon: Calendar, route: '/parent/schedule' },
+    { id: 'leave', label: 'Đơn xin nghỉ học', icon: FileCheck, route: '/parent/leave' },
+    { id: 'tuition', label: 'Học phí VietQR', icon: CreditCard, route: '/parent/tuition' },
+    { id: 'notices', label: 'Thông báo trường', icon: Bell, route: '/parent/notices' },
+    { id: 'messages', label: 'Tin nhắn giáo viên', icon: MessageSquare, route: '/parent/messages' },
+  ];
+
+  const handleNavigation = (route: string): void => {
+    navigate(route);
+    closeMobileMenu();
+  };
 
   const handleLogout = async (): Promise<void> => {
     await logout();
     navigate('/login');
   };
 
-  const handleNavigate = (route: string): void => {
-    navigate(route);
-    closeMobileMenu();
-  };
-
   return (
     <>
-      {/* Skip to main content */}
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-white focus:text-primary focus:rounded focus:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean"
@@ -187,82 +108,98 @@ export function ParentLayout(): React.ReactElement {
       <div className="min-h-screen flex bg-[#F8F9FB]">
         {/* Desktop Sidebar */}
         <aside
-          className="hidden lg:flex w-64 bg-surface-neutral flex-col justify-between shrink-0"
-          aria-label="Thanh điều hướng"
+          className={`hidden lg:flex flex-col justify-between shrink-0 transition-all duration-300 ease-in-out ${
+            isSidebarCollapsed ? 'w-20' : 'w-64'
+          }`}
+          aria-label="Thanh điều hướng phụ huynh"
         >
-          <SidebarContent
-            activeTab={activeTab}
-            onNavigate={handleNavigate}
-            onLogout={handleLogout}
+          <CollapsibleSidebar
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={toggleSidebarCollapse}
+            menuItems={menuItems}
+            activeId={activeTab}
+            onNavigate={handleNavigation}
+            roleTitle="Cổng Phụ huynh"
             currentUser={currentUser}
+            onLogout={handleLogout}
           />
         </aside>
 
-        {/* Mobile Sidebar Overlay */}
+        {/* Mobile Sidebar */}
         {isMobileMenuOpen && (
           <>
             <div
-              className="lg:hidden fixed inset-0 bg-black/50 z-40"
+              className="lg:hidden fixed inset-0 bg-black/50 z-40 animate-fade-in"
               onClick={closeMobileMenu}
               aria-hidden="true"
             />
+
             <aside
-              className="lg:hidden fixed inset-y-0 left-0 w-72 bg-surface-neutral z-50 shadow-xl"
-              aria-label="Menu điều hướng"
+              className="lg:hidden fixed inset-y-0 left-0 w-72 z-50 shadow-2xl animate-in slide-in-from-left duration-200"
+              aria-label="Menu điều hướng phụ huynh"
             >
-              <SidebarContent
-                activeTab={activeTab}
-                onNavigate={handleNavigate}
-                onLogout={handleLogout}
+              <CollapsibleSidebar
+                isCollapsed={false}
+                onToggleCollapse={() => {}}
+                menuItems={menuItems}
+                activeId={activeTab}
+                onNavigate={handleNavigation}
+                roleTitle="Cổng Phụ huynh"
                 currentUser={currentUser}
+                onLogout={handleLogout}
+                isMobile={true}
+                onCloseMobile={closeMobileMenu}
               />
             </aside>
           </>
         )}
 
-        {/* Mobile Header */}
+        {/* Mobile Header Bar */}
         <div className="lg:hidden fixed top-0 left-0 right-0 z-30 bg-white border-b border-hairline">
           <div className="flex items-center justify-between h-14 px-4">
             <button
               onClick={toggleMobileMenu}
               className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-text-secondary hover:text-text-primary rounded hover:bg-surface-neutral transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean/50"
               aria-expanded={isMobileMenuOpen}
-              aria-controls="mobile-menu"
               aria-label={isMobileMenuOpen ? 'Đóng menu' : 'Mở menu'}
             >
-              {isMobileMenuOpen ? (
-                <X className="w-6 h-6" />
-              ) : (
-                <Menu className="w-6 h-6" />
-              )}
+              {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
 
             <div className="flex items-center gap-2">
-              <img src="/assets/logo.png" alt="EduPortal Logo" className="w-7 h-7" />
-              <span className="font-medium text-primary">EduPortal</span>
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-ocean flex items-center justify-center text-white font-bold text-sm">
+                EP
+              </div>
+              <span className="font-bold text-primary tracking-tight">EduPortal Phụ huynh</span>
             </div>
 
             <div className="w-11" />
           </div>
         </div>
 
-        {/* Main Content */}
+        {/* Main Content Area */}
         <div className="flex-1 flex flex-col min-w-0 pt-14 lg:pt-0">
           <GlobalBroadcastBanner />
-          <Header searchPlaceholder="Tìm kiếm kết quả học tập, biên lai, thông báo..." />
+          <Header
+            searchPlaceholder="Tìm kiếm kết quả học tập, biên lai, thông báo..."
+            onToggleSidebar={toggleSidebarCollapse}
+            isSidebarCollapsed={isSidebarCollapsed}
+          />
           <main
             id="main-content"
-            className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1400px] w-full mx-auto focus:outline-none"
+            className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto focus:outline-none"
             tabIndex={-1}
           >
-            <Suspense fallback={
-              <div className="min-h-[400px] flex items-center justify-center">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-10 h-10 border-4 border-ocean/30 border-t-ocean rounded-full animate-spin" />
-                  <span className="text-sm text-text-secondary">Đang tải...</span>
+            <Suspense
+              fallback={
+                <div className="min-h-[400px] flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-10 h-10 border-4 border-ocean/30 border-t-ocean rounded-full animate-spin" />
+                    <span className="text-sm text-text-secondary">Đang tải...</span>
+                  </div>
                 </div>
-              </div>
-            }>
+              }
+            >
               <Outlet />
             </Suspense>
           </main>
@@ -271,5 +208,3 @@ export function ParentLayout(): React.ReactElement {
     </>
   );
 }
-
-export default ParentLayout;

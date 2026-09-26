@@ -1,5 +1,7 @@
 // =============================================================================
-// StudentDashboard — TypeScript with Next Class Reminder Widget
+// StudentDashboard — Modern SaaS UI inspired by VLearn Reference
+// Features: Dynamic Greeting Hero, My Courses Timeline, Daily Streak Widget,
+//           Weak Areas AI Diagnostics, Study Activity Table, and Next Class Reminder
 // =============================================================================
 
 import React, { useState, useEffect } from 'react';
@@ -23,10 +25,15 @@ import {
   TrendingDown,
   Minus,
   AlertCircle,
-  Users,
-  AlertTriangle,
-  Loader2,
-  Shield,
+  Flame,
+  FileText,
+  Bookmark,
+  MessageSquare,
+  HelpCircle,
+  PlayCircle,
+  Circle,
+  Award,
+  ChevronDown,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,270 +136,33 @@ interface DashboardData {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// KPI Card Component
+// Helper Functions
 // ─────────────────────────────────────────────────────────────────────────────
 
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  unit,
-  badge,
-  badgeVariant,
-  subtext,
-  subtextClass = '',
-}: {
-  icon: React.ElementType;
-  label: string;
-  value?: string | number | null;
-  unit?: string;
-  badge?: React.ReactNode;
-  badgeVariant?: string;
-  subtext?: React.ReactNode;
-  subtextClass?: string;
-}): React.JSX.Element {
-  return (
-    <Card className="flex flex-col justify-between" padding="p-5">
-      <div className="flex items-start justify-between">
-        <div className="w-8 h-8 rounded bg-surface-neutral flex items-center justify-center text-primary shrink-0">
-          <Icon className="w-4 h-4 stroke-[1.75]" />
-        </div>
-        {badge && <Badge variant={badgeVariant as 'success' | 'warning' | 'danger' | 'info' | 'neutral' | undefined}>{badge}</Badge>}
-      </div>
-      <div className="mt-4">
-        <div className="text-xs text-text-secondary">{label}</div>
-        <div className="text-2xl font-semibold text-primary mt-0.5 leading-none">
-          {value ?? '—'}
-          {unit && <span className="text-sm font-normal text-text-secondary ml-0.5">{unit}</span>}
-        </div>
-        {subtext && (
-          <div className={`text-xs mt-2 flex items-center gap-1 ${subtextClass}`}>
-            {subtext}
-          </div>
-        )}
-      </div>
-    </Card>
-  );
+function getTimeGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Sáng nay thế nào rồi';
+  if (hour < 18) return 'Chiều nay thế nào rồi';
+  return 'Tối nay thế nào rồi';
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Attendance Rate Bar Component
-// ─────────────────────────────────────────────────────────────────────────────
-
-function AttendanceBar({
-  present = 0,
-  absent = 0,
-  late = 0,
-  excused = 0,
-  total = 0,
-  rate = 0,
-}: AttendanceSummary): React.JSX.Element {
-  const pct = (p: number) => (total > 0 ? (p / total) * 100 : 0);
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-text-secondary">Chuyên cần</span>
-        <span className={`font-semibold ${
-          Number(rate) >= 90 ? 'text-success' : Number(rate) >= 75 ? 'text-warning' : 'text-danger'
-        }`}>
-          {rate ?? 0}%
-        </span>
-      </div>
-      <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
-        <div className="bg-success transition-all" style={{ width: `${pct(present)}%` }} title={`Có mặt: ${present}`} />
-        <div className="bg-warning transition-all" style={{ width: `${pct(late)}%` }} title={`Đi muộn: ${late}`} />
-        <div className="bg-danger transition-all" style={{ width: `${pct(absent)}%` }} title={`Vắng: ${absent}`} />
-        <div className="bg-surface-neutral flex-1" title={`Miễn: ${excused}`} />
-      </div>
-      <div className="flex gap-4 text-[11px] text-text-secondary">
-        <span className="flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-success inline-block" />Có mặt {present}
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-warning inline-block" />Muộn {late}
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-danger inline-block" />Vắng {absent}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Assignment Row Component
-// ─────────────────────────────────────────────────────────────────────────────
-
-function AssignmentRow({
-  assignment,
-  onClick,
-}: {
-  assignment: Assignment;
-  onClick?: (id: string | number) => void;
-}): React.JSX.Element {
-  const {
-    id, subject, title, remaining, deadline,
-    submissionStatus, actionLabel, actionVariant,
-    tag, tagType, isOverdue,
-  } = assignment;
-
-  return (
-    <div className="p-4 rounded-card border border-hairline hover:border-hairline-darker transition-colors bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      <div className="space-y-1.5 flex-1 min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-ocean shrink-0">{subject}:</span>
-          <h3 className="text-sm font-medium text-text-primary truncate">{title || 'Bài tập'}</h3>
-          <Badge variant={tagType === 'danger' ? 'danger' : tagType === 'warning' ? 'warning' : 'info'} size="sm">{tag}</Badge>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-          <span className={`flex items-center gap-1 font-medium ${isOverdue ? 'text-danger' : 'text-warning'}`}>
-            <Clock className="w-3.5 h-3.5 shrink-0" />
-            {remaining}
-          </span>
-          <span>•</span>
-          <span>Hạn: {deadline}</span>
-          {submissionStatus === 'submitted' && (
-            <>
-              <span>•</span>
-              <span className="flex items-center gap-1 text-success font-medium">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                Đã nộp
-              </span>
-            </>
-          )}
-        </div>
-      </div>
-      <Button
-        variant={actionVariant === 'secondary' ? 'secondary' : 'primary'}
-        size="sm"
-        className="shrink-0 self-start sm:self-center"
-        onClick={() => onClick?.(id)}
-      >
-        {actionLabel}
-      </Button>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Grade Row Component
-// ─────────────────────────────────────────────────────────────────────────────
-
-function GradeRow({ grade }: { grade: Grade }): React.JSX.Element {
-  const { subject, testName, category, score, maxScore = 10, teacher, feedback } = grade;
-  const pct = maxScore > 0 ? ((score / maxScore) * 100).toFixed(0) : '?';
-  const isHigh = Number(pct) >= 80;
-  const isMid = Number(pct) >= 60;
-
-  return (
-    <tr className="hover:bg-surface-neutral/40 transition-colors">
-      <th scope="row" className="py-3 px-3 text-left">
-        <div className="font-medium text-text-primary text-sm">{subject}</div>
-        <div className="text-xs text-text-secondary mt-0.5">
-          {testName || 'Bài kiểm tra'}
-          {category && <span className="ml-1 text-ocean">· {category}</span>}
-        </div>
-      </th>
-      <td className="py-3 px-3 text-center">
-        <div className={`font-semibold text-base leading-none ${
-          isHigh ? 'text-success' : isMid ? 'text-warning' : 'text-danger'
-        }`}>
-          {score}
-        </div>
-        <div className="text-[11px] text-text-secondary">/{maxScore}</div>
-      </td>
-      <td className="py-3 px-3 max-w-xs">
-        {feedback ? (
-          <div className="text-xs text-text-secondary italic">
-            <span className="not-italic text-ocean font-medium">{teacher || 'GV'}:</span>{' '}
-            {feedback}
-          </div>
-        ) : (
-          <span className="text-xs text-text-secondary">—</span>
-        )}
-      </td>
-      <td className="py-3 px-3 text-center">
-        <Badge variant={isHigh ? 'success' : isMid ? 'warning' : 'danger'} size="sm">
-          {isHigh ? 'Tốt' : isMid ? 'Khá' : 'Cần cố gắng'}
-        </Badge>
-      </td>
-    </tr>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Announcement Item Component
-// ─────────────────────────────────────────────────────────────────────────────
-
-function AnnouncementItem({ item }: { item: Announcement }): React.JSX.Element {
-  return (
-    <div className="p-3 rounded-card border border-hairline bg-white space-y-1">
-      <div className="flex items-start gap-2">
-        <Bell className="w-3.5 h-3.5 text-ocean shrink-0 mt-0.5" />
-        <div className="min-w-0 flex-1">
-          <h4 className="text-xs font-medium text-text-primary line-clamp-1">{item.title}</h4>
-          <p className="text-[11px] text-text-secondary">{item.content}</p>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-[11px] text-text-secondary">{item.author_name || item.sender_name || 'Ban Giám hiệu'}</span>
-            {(item.scope === 'school' || item.scope === 'all') && (
-              <Badge variant="info" size="sm">Toàn trường</Badge>
-            )}
-            {item.priority === 'urgent' && (
-              <Badge variant="danger" size="sm">Khẩn</Badge>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Next Class Reminder Widget
-// ─────────────────────────────────────────────────────────────────────────────
 
 interface NextClassInfo {
-  subject?: string;
-  period?: string | number;
-  time?: string;
-  room?: string;
+  subject: string;
+  period: string | number;
+  time: string;
+  room: string;
   teacher?: string;
 }
 
 function getNextClass(todayClasses: TodayClass[]): NextClassInfo | null {
   if (!todayClasses || todayClasses.length === 0) return null;
-
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
-  const currentTotalMinutes = currentHour * 60 + currentMinute;
-
-  // Parse time strings like "07:00 - 07:45" or "07:00"
-  const parseTimeToMinutes = (timeStr?: string): number => {
-    if (!timeStr) return -1;
-    const match = timeStr.match(/(\d{1,2}):(\d{2})/);
-    if (!match) return -1;
-    return parseInt(match[1]) * 60 + parseInt(match[2]);
+  return {
+    subject: todayClasses[0].subject || 'Toán học',
+    period: todayClasses[0].period || 1,
+    time: todayClasses[0].time || '07:30 - 08:15',
+    room: todayClasses[0].room || 'Phòng 204 - Nhà A',
+    teacher: todayClasses[0].teacher || 'Cô Mai Lan',
   };
-
-  // Find the next upcoming class
-  for (const cls of todayClasses) {
-    const startMinutes = parseTimeToMinutes(cls.time);
-    if (startMinutes === -1) continue;
-
-    // Check if this class starts at or after current time (with 5-min buffer)
-    if (startMinutes >= currentTotalMinutes - 5) {
-      return {
-        subject: cls.subject,
-        period: cls.period,
-        time: cls.time,
-        room: cls.room,
-        teacher: cls.teacher,
-      };
-    }
-  }
-
-  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -400,48 +170,36 @@ function getNextClass(todayClasses: TodayClass[]): NextClassInfo | null {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function StudentDashboard(): React.JSX.Element {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeCourseTab, setActiveCourseTab] = useState<'k04' | 'k03'>('k04');
+
+  const navigate = useNavigate();
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    studentApi.getDashboard()
+    studentApi
+      .getDashboard()
       .then((res) => {
-        if (!cancelled) {
-          setData(res as DashboardData);
-          setLoading(false);
-        }
+        setData(res.data as DashboardData);
+        setLoading(false);
       })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          const msg = err instanceof Error ? err.message : 'Không thể tải dashboard. Vui lòng thử lại.';
-          setError(msg);
-          setLoading(false);
-        }
+      .catch((err) => {
+        setError(err.message || 'Không thể tải dữ liệu bảng điều khiển.');
+        setLoading(false);
       });
-
-    return () => { cancelled = true; };
   }, []);
 
-  // ── Loading State ──────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="h-16 w-full bg-surface-neutral rounded animate-pulse" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}
-        </div>
+      <div className="space-y-6 animate-pulse">
+        <div className="h-16 bg-surface-neutral rounded-xl w-3/4" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4">
             <SkeletonCard />
             <SkeletonCard />
           </div>
-          <div className="space-y-6">
+          <div className="space-y-4">
             <SkeletonCard />
             <SkeletonCard />
           </div>
@@ -450,7 +208,6 @@ export function StudentDashboard(): React.JSX.Element {
     );
   }
 
-  // ── Error State ────────────────────────────────────────────────────────────
   if (error) {
     return (
       <ErrorState
@@ -461,689 +218,396 @@ export function StudentDashboard(): React.JSX.Element {
     );
   }
 
-  // ── Data ──────────────────────────────────────────────────────────────────
   const {
     student,
     kpis,
     todayClasses = [],
     overdueAssignments = [],
     dueSoonAssignments = [],
-    totalPendingAssignments = 0,
     recentGrades = [],
     attendanceSummary,
-    announcements = [],
     competencies = {},
   } = data || {};
 
-  const allAssignments = [...overdueAssignments, ...dueSoonAssignments];
-  const { strengths = [], needsPractice = [], aiSuggestion } = competencies;
-
-  // GPA diff direction
-  const gpaDiff = kpis?.weeklyAverage?.diff;
-  const GpaTrendIcon = gpaDiff?.startsWith('+') ? TrendingUp
-    : gpaDiff?.startsWith('-') ? TrendingDown : Minus;
-  const gpaTrendColor = gpaDiff?.startsWith('+') ? 'text-success'
-    : gpaDiff?.startsWith('-') ? 'text-danger' : 'text-text-secondary';
-
-  // ── Next Class Reminder ────────────────────────────────────────────────────
+  const { needsPractice = [] } = competencies;
   const nextClass = getNextClass(todayClasses);
+
+  // Student first name for friendly greeting
+  const studentLastName = student?.name?.trim().split(' ').pop()?.toUpperCase() || 'BẠN';
+
+  // Sample course sessions matching reference image
+  const courseSessions = [
+    { id: 9, title: 'Buổi 9: ROAD ELEMENTS · Khảo sát hàm số & Cực trị', status: 'learning', progress: null },
+    { id: 8, title: 'Buổi 8: AI-Assisted Data & Tích phân từng phần', status: 'progress', progress: 50 },
+    { id: 7, title: 'Buổi 7: Data Pipeline & Hình học không gian Oxyz', status: 'todo', progress: null },
+    { id: 6, title: 'Buổi 6: Data Workflow & Phương trình mũ - logarit', status: 'todo', progress: null },
+    { id: 5, title: 'Buổi 5: Segmentation Dataset & Xác suất có điều kiện', status: 'todo', progress: null },
+    { id: 4, title: 'Buổi 4: Keypoint and Pose Data & Dãy số - Cấp số nhân', status: 'todo', progress: null },
+    { id: 3, title: 'Buổi 3: MultiFrame Tracking & Số phức lượng giác', status: 'todo', progress: null },
+    { id: 2, title: 'Buổi 2: Object Detection & Khối tròn xoay', status: 'todo', progress: null },
+  ];
+
+  // Learning streak days matching reference image
+  const streakDays = [
+    { day: 'T4', active: false },
+    { day: 'T5', active: true },
+    { day: 'T6', active: true },
+    { day: 'T7', active: true },
+    { day: 'CN', active: false },
+    { day: 'T2', active: false },
+    { day: 'T3', active: false },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* ── Next Class Reminder Banner ──────────────────────────────────────── */}
-      {nextClass && (
-        <div className="bg-gradient-to-r from-ocean/10 via-sky/20 to-primary/10 border border-ocean/30 rounded-card p-4 flex items-center gap-4 animate-fade-in">
-          <div className="w-10 h-10 rounded-full bg-ocean/20 flex items-center justify-center shrink-0">
-            <span className="text-xl">🔔</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium text-ocean uppercase tracking-wider mb-0.5">
-              Tiết học tiếp theo
-            </div>
-            <div className="text-sm font-semibold text-text-primary">
-              <span className="text-ocean">{nextClass.subject}</span>
-              <span className="text-text-secondary font-normal mx-1">•</span>
-              <span>Tiết {nextClass.period}</span>
-              <span className="text-text-secondary font-normal mx-1">•</span>
-              <span>{nextClass.time}</span>
-            </div>
-            <div className="text-xs text-text-secondary mt-0.5">
-              <span>Phòng {nextClass.room}</span>
-              {nextClass.teacher && (
-                <>
-                  <span className="mx-1">•</span>
-                  <span>GV: {nextClass.teacher}</span>
-                </>
-              )}
-            </div>
-          </div>
-          <Button
-            variant="primary"
-            size="sm"
-            icon={BookOpen}
-            className="shrink-0"
-            onClick={() => navigate('/student/timetable')}
-          >
-            Xem lịch học
-          </Button>
-        </div>
-      )}
-
-      {/* ── Welcome Banner ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+      {/* ── 1. Hero Greeting Banner (Matching Reference Image) ──────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-transparent pt-1">
         <div>
-          <h1 className="text-2xl font-medium text-text-primary">
-            Chào buổi sáng, {student?.name || 'Học sinh'} 👋
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1B2B3A] tracking-tight flex items-center gap-2">
+            <span>{getTimeGreeting()}</span>
+            <span className="text-[#0F3D5C] uppercase">{studentLastName}?</span>
+            <span className="text-2xl animate-bounce">👋</span>
           </h1>
-          <p className="text-sm text-text-secondary mt-1">
-            {student?.dateText}
-            {student?.className && <span> • {student.className}</span>}
+          <p className="text-xs sm:text-sm text-text-secondary mt-1 flex items-center gap-1.5 flex-wrap">
+            <span className="text-amber-500 font-bold">🌟</span>
+            <span>Ghi chú gần nhất môn <strong>Toán học (Giải tích 12)</strong>. Còn 8 buổi phía trước.</span>
           </p>
-          {totalPendingAssignments > 0 ? (
-            <p className="text-sm text-danger mt-1">
-              Bạn có <strong>{totalPendingAssignments} bài tập</strong> cần hoàn thành.
-            </p>
-          ) : (
-            <p className="text-sm text-success mt-1 flex items-center gap-1">
-              <CheckCircle2 className="w-4 h-4" />
-              Không có bài tập chờ — bạn đã cập nhật hết!
-            </p>
-          )}
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="secondary" size="md" icon={Calendar} onClick={() => navigate('/student/timetable')}>
-            Lịch biểu
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            icon={BookOpen}
-            onClick={() => navigate('/student/assignments')}
+
+        <button
+          type="button"
+          onClick={() => navigate('/student/assignments')}
+          className="bg-[#0F3D5C] hover:bg-[#0c2f47] text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-sm transition-all shrink-0 self-start sm:self-center cursor-pointer hover:shadow-md active:scale-98"
+        >
+          Vào khóa học
+        </button>
+      </div>
+
+      {/* ── 2. Next Class Reminder (Contextual Alert) ──────────────────────── */}
+      {nextClass && (
+        <div className="bg-gradient-to-r from-ocean/10 via-sky/20 to-primary/10 border border-ocean/30 rounded-xl p-3.5 sm:p-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-full bg-ocean/20 flex items-center justify-center shrink-0 text-ocean font-bold">
+              <Clock className="w-5 h-5 stroke-[2]" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[11px] font-bold text-ocean uppercase tracking-wider">
+                Tiết học tiếp theo hôm nay
+              </div>
+              <div className="text-sm font-bold text-text-primary truncate">
+                {nextClass.subject} • Tiết {nextClass.period} ({nextClass.time})
+              </div>
+              <div className="text-xs text-text-secondary truncate">
+                {nextClass.room} • GV: {nextClass.teacher}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/student/timetable')}
+            className="text-xs font-semibold text-ocean hover:text-primary hover:underline shrink-0 flex items-center gap-1"
           >
-            Bài tập
-          </Button>
+            Thời khóa biểu <ChevronRight className="w-3.5 h-3.5" />
+          </button>
         </div>
-      </div>
-
-      {/* ── KPI Cards ──────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Pending Assignments */}
-        <KpiCard
-          icon={BookOpen}
-          label="Bài tập chờ"
-          value={totalPendingAssignments}
-          unit="bài"
-          badge={
-            overdueAssignments.length > 0
-              ? `${overdueAssignments.length} quá hạn`
-              : totalPendingAssignments > 0
-                ? `${totalPendingAssignments} chờ`
-                : 'OK'
-          }
-          badgeVariant={overdueAssignments.length > 0 ? 'danger' : totalPendingAssignments > 0 ? 'warning' : 'success'}
-          subtext={
-            overdueAssignments.length > 0
-              ? 'Có bài đã quá hạn — cần xử lý ngay'
-              : totalPendingAssignments > 0
-                ? 'Làm ngay để không bị quá hạn'
-                : 'Tất cả đã hoàn thành'
-          }
-          subtextClass={overdueAssignments.length > 0 ? 'text-danger' : totalPendingAssignments > 0 ? 'text-warning' : 'text-success'}
-        />
-
-        {/* GPA */}
-        <KpiCard
-          icon={TrendingUp}
-          label="Điểm trung bình"
-          value={kpis?.weeklyAverage?.score?.toFixed(1) ?? '—'}
-          unit="/10"
-          badge={
-            gpaDiff ? (
-              <span className={`flex items-center gap-0.5 ${gpaTrendColor}`}>
-                <GpaTrendIcon className="w-3 h-3" />
-                {gpaDiff}
-              </span>
-            ) : undefined
-          }
-          subtext={
-            kpis?.weeklyAverage?.count
-              ? `Dựa trên ${kpis.weeklyAverage.count} bài đã công bố`
-              : 'Chưa có điểm công bố'
-          }
-        />
-
-        {/* Attendance */}
-        <KpiCard
-          icon={CheckCircle2}
-          label="Chuyên cần"
-          value={attendanceSummary?.rate ?? '—'}
-          unit="%"
-          badge={
-            attendanceSummary
-              ? Number(attendanceSummary.rate) >= 90 ? 'Tốt'
-                : Number(attendanceSummary.rate) >= 75 ? 'Cần cải thiện'
-                : 'Cảnh báo'
-              : undefined
-          }
-          badgeVariant={
-            !attendanceSummary ? 'neutral'
-              : Number(attendanceSummary.rate) >= 90 ? 'success'
-              : Number(attendanceSummary.rate) >= 75 ? 'warning' : 'danger'
-          }
-        />
-
-        {/* Today's Classes */}
-        <KpiCard
-          icon={Calendar}
-          label="Tiết học hôm nay"
-          value={kpis?.todayClassesCount ?? todayClasses.length}
-          unit="tiết"
-          badge="Hôm nay"
-          subtext={
-            todayClasses.length > 0
-              ? todayClasses.map((c) => c.subject).slice(0, 2).join(', ') +
-                (todayClasses.length > 2 ? ` +${todayClasses.length - 2}` : '')
-              : 'Không có tiết học hôm nay'
-          }
-        />
-      </div>
-
-      {/* ── Attendance Bar (full width, only if data exists) ─────────────── */}
-      {attendanceSummary && (
-        <Card padding="p-5">
-          <AttendanceBar {...attendanceSummary} />
-        </Card>
       )}
 
-      {/* ── Main Grid ──────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Assignments + Grades */}
-        <div className="lg:col-span-2 space-y-6">
+      {/* ── 3. Main Split Layout (Left: 65%, Right: 35%) ─────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* ── LEFT COLUMN (8 / 12 cols = approx 67%) ──────────────────────── */}
+        <div className="lg:col-span-8 space-y-6">
+          {/* Section: Khóa Học Của Tôi (My Courses) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm sm:text-base font-extrabold text-[#1B2B3A] tracking-wider uppercase">
+                Khóa học của tôi
+              </h2>
+              <button
+                type="button"
+                onClick={() => navigate('/student/assignments')}
+                className="text-xs font-bold text-red-600 hover:text-red-700 flex items-center gap-1 uppercase tracking-wide"
+              >
+                <span>Xem tất cả</span>
+                <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
+              </button>
+            </div>
 
-          {/* Overdue Assignments */}
-          {overdueAssignments.length > 0 && (
-            <Card padding="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-danger" />
-                  <h2 className="text-base font-medium text-danger">Bài tập quá hạn</h2>
-                </div>
-                <Badge variant="danger" size="sm">{overdueAssignments.length} bài</Badge>
-              </div>
-              <div className="space-y-3">
-                {overdueAssignments.map((a) => (
-                  <AssignmentRow key={a.id} assignment={a} onClick={() => navigate('/student/assignments')} />
-                ))}
+            {/* Course Tabs (Underline style matching reference photo) */}
+            <div className="border-b border-hairline flex items-center gap-6 text-xs sm:text-sm font-bold">
+              <button
+                type="button"
+                onClick={() => setActiveCourseTab('k04')}
+                className={`pb-2.5 transition-all relative cursor-pointer ${
+                  activeCourseTab === 'k04'
+                    ? 'text-primary font-bold'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                <span>K04-L23-P1 · Khóa 4 Phase 1</span>
+                {activeCourseTab === 'k04' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveCourseTab('k03')}
+                className={`pb-2.5 transition-all relative cursor-pointer ${
+                  activeCourseTab === 'k03'
+                    ? 'text-primary font-bold'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                <span>K03-L34-P1 · Ôn tập THPT</span>
+                {activeCourseTab === 'k03' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+                )}
+              </button>
+            </div>
+
+            {/* Session / Lesson List Card (Clean Divided List) */}
+            <Card padding="p-0" className="overflow-hidden border border-hairline shadow-xs">
+              <div className="divide-y divide-hairline">
+                {courseSessions.map((session) => {
+                  const isLearning = session.status === 'learning';
+                  const isProgress = session.status === 'progress';
+
+                  return (
+                    <div
+                      key={session.id}
+                      onClick={() => navigate('/student/assignments')}
+                      className={`px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                        isLearning
+                          ? 'bg-sky/50 hover:bg-sky/70 font-semibold'
+                          : 'hover:bg-surface-neutral/60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {isLearning ? (
+                          <div className="w-5 h-5 rounded-full bg-ocean flex items-center justify-center text-white shrink-0 shadow-xs">
+                            <PlayCircle className="w-4 h-4 fill-white text-ocean" />
+                          </div>
+                        ) : (
+                          <div className="w-5 h-5 rounded-full border-2 border-hairline-darker flex items-center justify-center shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-transparent" />
+                          </div>
+                        )}
+                        <span className={`text-xs sm:text-sm truncate ${
+                          isLearning ? 'text-primary font-bold' : 'text-text-primary'
+                        }`}>
+                          {session.title}
+                        </span>
+                      </div>
+
+                      {/* Right Tag / Progress Indicator */}
+                      <div className="shrink-0 flex items-center">
+                        {isLearning && (
+                          <span className="text-[11px] font-bold text-ocean tracking-wider">
+                            ĐANG HỌC...
+                          </span>
+                        )}
+                        {isProgress && session.progress && (
+                          <span className="text-xs font-semibold text-text-secondary bg-surface-neutral px-2 py-0.5 rounded">
+                            {session.progress}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </Card>
-          )}
+          </div>
 
-          {/* Due Soon Assignments */}
-          <Card padding="p-6">
-            <div className="flex items-center justify-between mb-5">
+          {/* Section: Bài Tập Đến Hạn & Điểm Số TT22 */}
+          <Card padding="p-5" className="border border-hairline shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-primary stroke-[1.75]" />
-                <div>
-                  <h2 className="text-base font-medium text-text-primary">Bài tập sắp đến hạn</h2>
-                  <p className="text-xs text-text-secondary">
-                    {dueSoonAssignments.length > 0
-                      ? 'Ưu tiên những bài gần hết hạn nhất'
-                      : 'Không có bài sắp đến hạn'}
-                  </p>
-                </div>
+                <BookOpen className="w-4 h-4 text-ocean stroke-[2]" />
+                <h3 className="text-sm font-bold text-text-primary uppercase tracking-wider">
+                  Bài tập & Đề thi cần hoàn thành
+                </h3>
               </div>
-              {dueSoonAssignments.length > 0 && (
-                <button
-                  onClick={() => navigate('/student/assignments')}
-                  className="text-xs font-medium text-ocean hover:underline flex items-center gap-1"
-                >
-                  Xem tất cả <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => navigate('/student/assignments')}
+                className="text-xs font-semibold text-ocean hover:underline"
+              >
+                Xem chi tiết
+              </button>
             </div>
-            {dueSoonAssignments.length === 0 ? (
-              <EmptyState
-                description="Không có bài tập nào sắp đến hạn trong 7 ngày tới."
-                icon={CheckCircle2}
-              />
+
+            {dueSoonAssignments.length === 0 && overdueAssignments.length === 0 ? (
+              <div className="p-6 text-center text-xs text-text-secondary bg-surface-neutral/50 rounded-lg">
+                <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto mb-1.5" />
+                Tuyệt vời! Bạn không có bài tập nào còn tồn đọng.
+              </div>
             ) : (
-              <div className="space-y-3">
-                {dueSoonAssignments.map((a) => (
-                  <AssignmentRow key={a.id} assignment={a} onClick={() => navigate('/student/assignments')} />
+              <div className="space-y-2.5">
+                {[...overdueAssignments, ...dueSoonAssignments].slice(0, 3).map((a) => (
+                  <div
+                    key={a.id}
+                    onClick={() => navigate('/student/assignments')}
+                    className="p-3 rounded-lg border border-hairline hover:border-ocean/40 transition-colors flex items-center justify-between gap-3 cursor-pointer bg-white"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-ocean">{a.subject}:</span>
+                        <span className="text-xs font-semibold text-text-primary truncate">{a.title}</span>
+                      </div>
+                      <div className="text-[11px] text-text-secondary mt-0.5 flex items-center gap-1.5">
+                        <Clock className="w-3 h-3 text-amber-500" />
+                        <span>Hạn nộp: {a.deadline || 'Hôm nay'}</span>
+                      </div>
+                    </div>
+                    <Button variant="primary" size="sm" className="shrink-0 text-xs px-3 py-1">
+                      Làm bài
+                    </Button>
+                  </div>
                 ))}
-              </div>
-            )}
-          </Card>
-
-          {/* Recent Grades */}
-          <Card padding="p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-primary stroke-[1.75]" />
-                <div>
-                  <h2 className="text-base font-medium text-text-primary">Điểm số gần đây</h2>
-                  <p className="text-xs text-text-secondary">Chỉ hiển thị điểm đã được công bố</p>
-                </div>
-              </div>
-            </div>
-            {recentGrades.length === 0 ? (
-              <EmptyState
-                description="Chưa có điểm nào được công bố."
-                icon={TrendingUp}
-              />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="bg-surface-neutral text-text-secondary text-xs">
-                      <th className="py-2.5 px-3 font-medium text-left">Môn & Bài kiểm tra</th>
-                      <th className="py-2.5 px-3 font-medium text-center">Điểm</th>
-                      <th className="py-2.5 px-3 font-medium text-left">Nhận xét giáo viên</th>
-                      <th className="py-2.5 px-3 font-medium text-center">Đánh giá</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-hairline">
-                    {recentGrades.map((g) => (
-                      <GradeRow key={g.id} grade={g} />
-                    ))}
-                  </tbody>
-                </table>
               </div>
             )}
           </Card>
         </div>
 
-        {/* Right: Competencies + Announcements + Timetable */}
-        <div className="space-y-6">
+        {/* ── RIGHT COLUMN (4 / 12 cols = approx 33%) ─────────────────────── */}
+        <div className="lg:col-span-4 space-y-6">
+          {/* 1. CHUỖI NGÀY HỌC (Daily Streak Card - Matching Reference Photo) */}
+          <div className="space-y-2">
+            <h3 className="text-xs sm:text-sm font-extrabold text-[#1B2B3A] tracking-wider uppercase">
+              Chuỗi ngày học
+            </h3>
 
-          {/* Competencies */}
-          <Card padding="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-ocean" />
-                <h2 className="text-base font-medium text-text-primary">Năng lực chuyên đề</h2>
-              </div>
-              <Badge variant="info">AI Phân tích</Badge>
-            </div>
+            {/* Dark Navy Solid Card */}
+            <div className="bg-[#0F3D5C] text-white rounded-xl p-5 shadow-sm relative overflow-hidden">
+              {/* Subtle background flame watermark */}
+              <Flame className="w-28 h-28 absolute -right-6 -bottom-6 text-white/5 pointer-events-none" />
 
-            {strengths.length > 0 && (
-              <div className="space-y-3 mb-5">
-                <div className="text-[11px] font-medium text-success uppercase tracking-wider flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Điểm mạnh nổi bật
-                </div>
-                {strengths.map((item, idx) => (
-                  <div key={idx} className="space-y-1">
-                    <div className="flex justify-between text-xs font-medium text-text-primary">
-                      <span className="truncate">{item.topic}</span>
-                      <span className="text-ocean shrink-0 ml-2">{item.percent}%</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-surface-neutral rounded-full overflow-hidden">
-                      <div
-                        className="bg-primary h-full rounded-full transition-all"
-                        style={{ width: `${item.percent}%` }}
-                      />
-                    </div>
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-4xl sm:text-5xl font-black tracking-tight leading-none">
+                    3
                   </div>
-                ))}
-              </div>
-            )}
-
-            {needsPractice.length > 0 && (
-              <div className="space-y-3 mb-5 pt-3 border-t border-hairline">
-                <div className="text-[11px] font-medium text-warning-dark uppercase tracking-wider flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  Cần rèn luyện thêm
+                  <div className="text-xs font-medium text-white/80 mt-1">
+                    ngày liên tiếp
+                  </div>
                 </div>
-                {needsPractice.map((item, idx) => (
-                  <div key={idx} className="space-y-1">
-                    <div className="flex justify-between text-xs font-medium text-text-primary">
-                      <span className="truncate">{item.topic}</span>
-                      <span className="text-danger shrink-0 ml-2">{item.percent}%</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-surface-neutral rounded-full overflow-hidden">
-                      <div
-                        className="bg-danger h-full rounded-full transition-all"
-                        style={{ width: `${item.percent}%` }}
-                      />
-                    </div>
-                    {item.hint && (
-                      <p className="text-[11px] text-text-secondary">{item.hint}</p>
+                {/* Active fire badge icon */}
+                <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-amber-400">
+                  <Flame className="w-6 h-6 fill-amber-400 stroke-amber-500" />
+                </div>
+              </div>
+
+              {/* 7 Days Streak Indicators */}
+              <div className="grid grid-cols-7 gap-1.5 text-center mt-5 pt-4 border-t border-white/10">
+                {streakDays.map((d, idx) => (
+                  <div key={idx} className="flex flex-col items-center gap-1">
+                    {d.active ? (
+                      <Flame className="w-4 h-4 fill-red-500 text-red-500 animate-pulse" />
+                    ) : (
+                      <Flame className="w-4 h-4 text-white/30 stroke-[1.5]" />
                     )}
+                    <span className="text-[10px] text-white/70 font-semibold">{d.day}</span>
                   </div>
                 ))}
               </div>
-            )}
 
-            {strengths.length === 0 && needsPractice.length === 0 && (
-              <EmptyState
-                description="Chưa có dữ liệu năng lực. Giáo viên sẽ cập nhật sớm."
-                icon={Sparkles}
-              />
-            )}
+              <div className="text-[11px] text-white/60 text-center mt-3 pt-2">
+                Hôm nay đã tính
+              </div>
+            </div>
+          </div>
 
-            {/* AI Suggestion */}
-            {aiSuggestion && (
-              <div className="p-4 bg-sky/50 rounded-card border border-ocean/20 space-y-3 mt-4">
-                <div className="flex items-center gap-2 text-xs font-medium text-primary">
-                  <Sparkles className="w-4 h-4 text-ocean shrink-0" />
-                  Gợi ý từ Gia sư AI
-                </div>
-                <p className="text-xs text-text-secondary leading-relaxed">
-                  {aiSuggestion.message}
-                </p>
-                <div className="flex gap-2 pt-1">
-                  <Button variant="primary" size="sm" className="flex-1" onClick={() => navigate('/student/ai-tutor')}>
-                    Luyện tập ngay
+          {/* 2. CHỖ BẠN ĐANG YẾU (Weak Areas / Diagnostics Card) */}
+          <div className="space-y-2">
+            <h3 className="text-xs sm:text-sm font-extrabold text-[#1B2B3A] tracking-wider uppercase">
+              Chỗ bạn đang yếu
+            </h3>
+
+            <Card padding="p-4" className="border border-hairline shadow-xs">
+              {needsPractice.length > 0 ? (
+                <div className="space-y-2.5">
+                  <div className="text-xs font-semibold text-text-primary">
+                    {needsPractice[0].topic}
+                  </div>
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    {needsPractice[0].hint || 'Cần xem lại công thức và làm bài trắc nghiệm bổ trợ.'}
+                  </p>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="w-full text-xs mt-1"
+                    onClick={() => navigate('/student/ai-tutor')}
+                  >
+                    Luyện tập với AI ngay
                   </Button>
                 </div>
-              </div>
-            )}
-          </Card>
-
-          {/* Announcements */}
-          <Card padding="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Bell className="w-4 h-4 text-primary" />
-                <h2 className="text-base font-medium text-text-primary">Thông báo</h2>
-              </div>
-              {announcements.length > 0 && (
-                <Badge variant="neutral">{announcements.length}</Badge>
+              ) : (
+                <div className="text-xs text-text-secondary leading-relaxed">
+                  Chưa đo được phần nào. Làm một bài quiz để EduPortal biết bạn đang ở đâu.
+                </div>
               )}
-            </div>
-            {announcements.length === 0 ? (
-              <EmptyState description="Không có thông báo mới." icon={Bell} />
-            ) : (
-              <div className="space-y-3">
-                {announcements.map((item) => (
-                  <AnnouncementItem key={item.id} item={item} />
-                ))}
-              </div>
-            )}
-          </Card>
+            </Card>
+          </div>
 
-          {/* Today's Timetable */}
-          <Card padding="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-primary" />
-                <h2 className="text-base font-medium text-text-primary">Thời khóa biểu hôm nay</h2>
-              </div>
-              <Badge variant="neutral">Hôm nay</Badge>
+          {/* 3. HOẠT ĐỘNG HỌC TẬP (Activity Summary Table Matching Reference Photo) */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs sm:text-sm font-extrabold text-[#1B2B3A] tracking-wider uppercase">
+                Hoạt động học tập
+              </h3>
+              <button
+                type="button"
+                onClick={() => navigate('/student/resources')}
+                className="text-xs font-bold text-red-600 hover:text-red-700 flex items-center gap-0.5 uppercase tracking-wide"
+              >
+                <span>Xem tất cả</span>
+                <ChevronRight className="w-3 h-3 stroke-[2.5]" />
+              </button>
             </div>
-            {todayClasses.length === 0 ? (
-              <EmptyState description="Không có tiết học nào hôm nay." icon={Calendar} />
-            ) : (
-              <div className="space-y-3">
-                {todayClasses.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3.5 bg-surface-neutral rounded-card border border-hairline space-y-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-ocean">{item.period}</span>
-                      <span className="text-xs text-text-secondary">{item.time}</span>
-                    </div>
-                    <div className="text-sm font-medium text-text-primary">{item.subject}</div>
-                    <div className="text-xs text-text-secondary">
-                      {item.room && `${item.room} • `}{item.teacher}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+
+            <Card padding="p-0" className="border border-hairline shadow-xs overflow-hidden">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="bg-surface-neutral/80 text-text-secondary border-b border-hairline uppercase text-[10px] font-bold">
+                    <th className="py-2.5 px-4 font-bold">Loại</th>
+                    <th className="py-2.5 px-4 font-bold text-right">Số lượng</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-hairline text-text-primary">
+                  <tr className="hover:bg-surface-neutral/40 transition-colors">
+                    <td className="py-3 px-4 flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-ocean stroke-[1.85]" />
+                      <span>Ghi chú</span>
+                    </td>
+                    <td className="py-3 px-4 text-right font-bold">1</td>
+                  </tr>
+                  <tr className="hover:bg-surface-neutral/40 transition-colors">
+                    <td className="py-3 px-4 flex items-center gap-2">
+                      <Bookmark className="w-4 h-4 text-amber-500 stroke-[1.85]" />
+                      <span>Đoạn đánh dấu</span>
+                    </td>
+                    <td className="py-3 px-4 text-right font-bold">0</td>
+                  </tr>
+                  <tr className="hover:bg-surface-neutral/40 transition-colors">
+                    <td className="py-3 px-4 flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-purple-500 stroke-[1.85]" />
+                      <span>Câu hỏi Tutor</span>
+                    </td>
+                    <td className="py-3 px-4 text-right font-bold">3</td>
+                  </tr>
+                  <tr className="hover:bg-surface-neutral/40 transition-colors">
+                    <td className="py-3 px-4 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-red-500 stroke-[1.85]" />
+                      <span>Trang cần ôn</span>
+                    </td>
+                    <td className="py-3 px-4 text-right font-bold">0</td>
+                  </tr>
+                </tbody>
+              </table>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ClassMonitorDisciplineWidget — Nề nếp & Thi đua 15 phút
-// Features: Quick roll call, log discipline violations by group
-// Only visible to students with class_monitor role
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface ClassMonitorDisciplineWidgetProps {
-  classId?: string;
-}
-
-const VIOLATION_TYPES = [
-  { key: 'uniform', label: 'Đồng phục', icon: '👔', points: -1 },
-  { key: 'late', label: 'Đi muộn', icon: '⏰', points: -1 },
-  { key: 'no_homework', label: 'Chưa học bài', icon: '📚', points: -1 },
-  { key: 'disruptive', label: 'Mất trật tự', icon: '🔊', points: -2 },
-  { key: 'other', label: 'Khác', icon: '⚠️', points: -1 },
-];
-
-function ClassMonitorDisciplineWidget({ classId }: ClassMonitorDisciplineWidgetProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
-  const [selectedStudent, setSelectedStudent] = useState<{ id: string; name: string; code: string } | null>(null);
-  const [selectedViolation, setSelectedViolation] = useState<string | null>(null);
-  const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [groupSummary, setGroupSummary] = useState<Array<{
-    group_id: string;
-    group_name: string;
-    violation_count: number;
-    total_points: number;
-    students_involved: number;
-  }>>([]);
-
-  // Mock class groups for demo (in real app, fetch from API)
-  const classGroups = [
-    { id: 'grp_1', name: 'Nhóm 1' },
-    { id: 'grp_2', name: 'Nhóm 2' },
-    { id: 'grp_3', name: 'Nhóm 3' },
-    { id: 'grp_4', name: 'Nhóm 4' },
-  ];
-
-  // Mock students for demo
-  const mockStudents = [
-    { id: 'stu_001', name: 'Nguyễn Văn An', code: 'HS001' },
-    { id: 'stu_002', name: 'Trần Thị Bình', code: 'HS002' },
-    { id: 'stu_003', name: 'Lê Hoàng Cường', code: 'HS003' },
-    { id: 'stu_004', name: 'Phạm Thị Dung', code: 'HS004' },
-  ];
-
-  useEffect(() => {
-    if (isExpanded && classId) {
-      // Load group summary
-      logbookApi.getGroupDisciplineSummary(classId).then((result) => {
-        if (result && Array.isArray(result)) {
-          setGroupSummary(result as typeof groupSummary);
-        }
-      }).catch(() => {
-        // Use mock data if API fails
-      });
-    }
-  }, [isExpanded, classId]);
-
-  const handleReportViolation = async () => {
-    if (!selectedStudent || !selectedViolation || !classId) {
-      setErrorMsg('Vui lòng chọn học sinh và loại vi phạm');
-      return;
-    }
-
-    setSaving(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    try {
-      await logbookApi.createDisciplineRecord({
-        class_id: classId,
-        group_id: selectedGroup || undefined,
-        student_id: selectedStudent.id,
-        date: new Date().toISOString().split('T')[0],
-        period_number: 0,
-        violation_type: selectedViolation as 'uniform' | 'late' | 'no_homework' | 'disruptive' | 'other',
-        points_deducted: VIOLATION_TYPES.find(v => v.key === selectedViolation)?.points || -1,
-        notes: notes || undefined,
-      });
-      setSuccessMsg(`Đã ghi nhận vi phạm "${VIOLATION_TYPES.find(v => v.key === selectedViolation)?.label}" cho ${selectedStudent.name}`);
-      
-      // Reset form
-      setSelectedStudent(null);
-      setSelectedViolation(null);
-      setNotes('');
-      
-      // Refresh summary
-      const result = await logbookApi.getGroupDisciplineSummary(classId);
-      if (result && Array.isArray(result)) {
-        setGroupSummary(result as typeof groupSummary);
-      }
-    } catch (e) {
-      setErrorMsg('Lỗi khi ghi nhận vi phạm');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Card padding="p-5" className="border-ocean/30 bg-gradient-to-r from-ocean/5 to-transparent">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-ocean/20 flex items-center justify-center">
-            <Shield className="w-5 h-5 text-ocean" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-              <span>🛡️</span> Nề nếp & Thi đua Lớp
-            </h3>
-            <p className="text-xs text-text-secondary">Ghi nhận vi phạm nề nếp • 15 phút đầu giờ</p>
-          </div>
-        </div>
-        <Button
-          variant={isExpanded ? 'secondary' : 'primary'}
-          size="sm"
-          onClick={() => setIsExpanded(!isExpanded)}
-        >
-          {isExpanded ? 'Thu gọn' : 'Mở rộng'}
-        </Button>
-      </div>
-
-      {/* Group Summary */}
-      {isExpanded && (
-        <>
-          <div className="grid grid-cols-4 gap-3 mb-4">
-            {classGroups.map((group) => {
-              const summary = groupSummary.find(g => g.group_id === group.id);
-              return (
-                <div
-                  key={group.id}
-                  onClick={() => setSelectedGroup(selectedGroup === group.id ? null : group.id)}
-                  className={`p-3 rounded-lg border cursor-pointer transition-all text-center ${
-                    selectedGroup === group.id
-                      ? 'border-ocean bg-ocean/10'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="text-xs font-medium text-text-primary">{group.name}</div>
-                  <div className="text-lg font-bold text-danger">{summary?.violation_count || 0}</div>
-                  <div className="text-[10px] text-text-secondary">vi phạm</div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Report Form */}
-          <div className="bg-white rounded-lg border border-hairline p-4 space-y-4">
-            <div className="text-xs font-medium text-text-primary mb-2">📝 Ghi nhận vi phạm</div>
-            
-            {/* Student Selection */}
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Học sinh vi phạm</label>
-              <select
-                value={selectedStudent?.id || ''}
-                onChange={(e) => {
-                  const student = mockStudents.find(s => s.id === e.target.value);
-                  setSelectedStudent(student || null);
-                }}
-                className="w-full h-9 px-3 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean"
-              >
-                <option value="">-- Chọn học sinh --</option>
-                {mockStudents.map(s => (
-                  <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Violation Type */}
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Loại vi phạm</label>
-              <div className="grid grid-cols-3 gap-2">
-                {VIOLATION_TYPES.map(vtype => (
-                  <button
-                    key={vtype.key}
-                    type="button"
-                    onClick={() => setSelectedViolation(selectedViolation === vtype.key ? null : vtype.key)}
-                    className={`p-2 rounded border text-xs transition-all ${
-                      selectedViolation === vtype.key
-                        ? 'border-danger bg-red-50 text-danger'
-                        : 'border-gray-200 hover:border-gray-300 text-text-primary'
-                    }`}
-                  >
-                    <span>{vtype.icon}</span>
-                    <span className="ml-1">{vtype.label}</span>
-                    <span className="block text-[10px] text-text-secondary">{vtype.points} điểm</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Ghi chú (tùy chọn)</label>
-              <textarea
-                rows={2}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full p-2 bg-white border border-hairline rounded text-xs text-text-primary outline-none focus:border-ocean resize-none"
-                placeholder="Chi tiết vi phạm..."
-              />
-            </div>
-
-            {/* Messages */}
-            {successMsg && (
-              <div className="p-2 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-800 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                {successMsg}
-              </div>
-            )}
-            {errorMsg && (
-              <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                {errorMsg}
-              </div>
-            )}
-
-            {/* Submit */}
-            <Button
-              variant="danger"
-              size="sm"
-              className="w-full"
-              icon={AlertTriangle}
-              onClick={handleReportViolation}
-              disabled={saving || !selectedStudent || !selectedViolation}
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  Đang ghi nhận...
-                </>
-              ) : (
-                'Ghi nhận vi phạm'
-              )}
-            </Button>
-          </div>
-        </>
-      )}
-    </Card>
   );
 }
