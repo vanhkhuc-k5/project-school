@@ -19,7 +19,7 @@ async function loginViaAPI(page, credentials) {
   await page.goto('/');
   
   // Login via backend API
-  const response = await page.request.post('http://localhost:5000/api/auth/login', {
+  const response = await page.request.post('http://127.0.0.1:5000/api/auth/login', {
     data: {
       identifier: credentials.email,
       password: credentials.password,
@@ -277,7 +277,7 @@ test.describe('Cross-Role Security', () => {
   test('student cannot access admin API endpoints', async ({ page }) => {
     await loginViaAPI(page, TEST_CREDENTIALS.studentA1);
     const token = await page.evaluate(() => localStorage.getItem('eduportal_session_token'));
-    const response = await page.request.get('http://localhost:5000/api/admin/users', {
+    const response = await page.request.get('http://127.0.0.1:5000/api/admin/users', {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -289,7 +289,7 @@ test.describe('Cross-Role Security', () => {
   test('parent cannot access teacher API endpoints', async ({ page }) => {
     await loginViaAPI(page, TEST_CREDENTIALS.parentA);
     const token = await page.evaluate(() => localStorage.getItem('eduportal_session_token'));
-    const response = await page.request.get('http://localhost:5000/api/teacher/classes', {
+    const response = await page.request.get('http://127.0.0.1:5000/api/teacher/classes', {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -302,7 +302,7 @@ test.describe('Cross-Role Security', () => {
     await loginViaAPI(page, TEST_CREDENTIALS.teacherA);
     const token = await page.evaluate(() => localStorage.getItem('eduportal_session_token'));
     // School B teacher should not access School A data
-    const response = await page.request.get('http://localhost:5000/api/admin/users?schoolId=sch_hoasen', {
+    const response = await page.request.get('http://127.0.0.1:5000/api/admin/users?schoolId=sch_hoasen', {
       headers: {
         'Authorization': `Bearer ${token}`,
       },

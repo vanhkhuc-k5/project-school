@@ -21,7 +21,7 @@ export const test = base.extend({
  * Login via API and set auth state in localStorage
  */
 export async function loginViaAPI(page, { email, password }) {
-  const response = await page.request.post('http://localhost:5000/api/auth/login', {
+  const response = await page.request.post('http://127.0.0.1:5000/api/auth/login', {
     data: { identifier: email, password },
   });
   

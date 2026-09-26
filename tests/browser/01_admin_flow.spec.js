@@ -16,7 +16,7 @@ import { TEST_CREDENTIALS } from '../fixtures/testFixtures.js';
 async function loginAs(page, credentials) {
   await page.goto('/');
   
-  const response = await page.request.post('http://localhost:5000/api/auth/login', {
+  const response = await page.request.post('http://127.0.0.1:5000/api/auth/login', {
     data: {
       identifier: credentials.email,
       password: credentials.password,

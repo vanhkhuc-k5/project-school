@@ -21,6 +21,17 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    preview: {
+      host: '127.0.0.1',
+      port: 4173,
+      proxy: {
+        '/api': {
+          target: env.VITE_API_URL || 'http://127.0.0.1:5000',
+          changeOrigin: true,
+          secure: false,
+        },
+      },
+    },
     define: {
       'import.meta.env.NODE_ENV': JSON.stringify(env.NODE_ENV || mode),
     },
