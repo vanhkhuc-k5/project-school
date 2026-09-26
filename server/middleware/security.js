@@ -114,6 +114,8 @@ export const apiRateLimiter = rateLimit({
   standardHeaders: true, // Return rate limit info in headers
   legacyHeaders: false, // Disable X-RateLimit-* headers
   skip: (req) => {
+    // If test sends x-test-rate-limit: 'true' -> do NOT skip, so we can test 429 response
+    if (req.headers['x-test-rate-limit'] === 'true') return false;
     // Skip rate limiting for health checks and in test environment
     const isTest = req.headers['x-test-env'] === 'true' || process.env.NODE_ENV === 'test';
     return req.path === '/api/health' || req.path === '/api/health/detailed' || isTest;
@@ -147,6 +149,8 @@ export const authRateLimiter = rateLimit({
     return `${ip}:${email.toLowerCase()}`;
   },
   skip: (req) => {
+    // If test sends x-test-rate-limit: 'true' -> do NOT skip, so we can test 429 response
+    if (req.headers['x-test-rate-limit'] === 'true') return false;
     // Skip in test environment and for non-login paths
     const isTest = req.headers['x-test-env'] === 'true' || process.env.NODE_ENV === 'test';
     return !req.path.includes('/auth/login') || isTest;
@@ -176,6 +180,8 @@ export const failedLoginRateLimiter = rateLimit({
     return `failed:${ip}:${identifier}`;
   },
   skip: (req) => {
+    // If test sends x-test-rate-limit: 'true' -> do NOT skip, so we can test 429 response
+    if (req.headers['x-test-rate-limit'] === 'true') return false;
     // Skip in test environment and for non-login paths
     const isTest = req.headers['x-test-env'] === 'true' || process.env.NODE_ENV === 'test';
     return !req.path.includes('/auth/login') || isTest;
@@ -306,6 +312,7 @@ export function maskPII(input) {
  * Safe logging that automatically masks PII
  */
 export function safeLog(level, message, meta = {}) {
+  const cfg = getConfig();
   const maskedMeta = maskPII(meta);
   
   switch (level) {
@@ -316,7 +323,7 @@ export function safeLog(level, message, meta = {}) {
       console.warn(`[WARN] ${message}`, maskedMeta);
       break;
     case 'debug':
-      if (!config.IS_PRODUCTION) {
+      if (!cfg.IS_PRODUCTION) {
         console.debug(`[DEBUG] ${message}`, maskedMeta);
       }
       break;

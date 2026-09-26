@@ -26,8 +26,8 @@ function runCommand(name, cmd) {
   try {
     const output = execSync(cmd, { 
       encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 300000 // 5 min max
+      stdio: 'inherit', // Stream output directly to terminal - prevents pipe buffer deadlock
+      timeout: 600000 // 10 min max - allows 883 tests to complete
     });
     const duration = ((Date.now() - start) / 1000).toFixed(1);
     log(`  ✅ PASS (${duration}s)`, GREEN);

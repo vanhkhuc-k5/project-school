@@ -14,6 +14,7 @@
 // process.env must be set BEFORE any static import to ensure env.js captures isTest=true.
 process.env.NODE_ENV = 'test';
 process.env.DB_PATH = ':memory:';   // In-memory SQLite — no production data ever touched
+process.env.BCRYPT_ROUNDS = '4';    // Fast hashing for tests (2ms vs 150ms)
 
 // STEP 2: Static imports — executed after process.env is set above.
 // NOTE: server/config/env.js is imported transitively via db.js and app.js.
@@ -138,8 +139,8 @@ async function startServer() {
 
   // Start HTTP server
   return new Promise((resolve) => {
-    server = app.listen(5000, () => {
-      console.log(`${colors.green}✅ Test server listening on http://127.0.0.1:5000${colors.reset}\n`);
+    server = app.listen(5001, () => {
+      console.log(`${colors.green}✅ Test server listening on http://127.0.0.1:5001${colors.reset}\n`);
       resolve();
     });
   });

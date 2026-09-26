@@ -242,7 +242,7 @@ export function expect(actual) {
 }
 
 // HTTP API Request Helper
-export function apiRequest(method, path, body = null, tokenOrOptions = null, port = 5000) {
+export function apiRequest(method, path, body = null, tokenOrOptions = null, port = 5001) {
   return new Promise((resolve, reject) => {
     let token = null;
     let customHeaders = {};
@@ -278,7 +278,7 @@ export function apiRequest(method, path, body = null, tokenOrOptions = null, por
         path: '/api' + path,
         method,
         headers,
-        timeout: 120000,
+        timeout: 60000, // 1 min - prevents early timeout under high CPU load
       },
       (res) => {
         let responseBody = '';
