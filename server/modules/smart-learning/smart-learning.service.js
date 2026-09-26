@@ -402,7 +402,7 @@ export const smartLearningService = {
 
     // Check for bold/underline markers like **(A)**, __A__, or color markers
     const answerPatterns = [
-      /[\*_]{2}\(?([A-D])\)?[\*_]{2}/i,  // **A** or __A__
+      /[*_]{2}\(?([A-D])\)?[*_]{2}/i,  // **A** or __A__
       /<([A-D])>/,                          // <A>
       /\^([A-D])\$/i,                      // ^A$
       /(?:đáp án|answer|correct)[:\s]*([A-D])/i,

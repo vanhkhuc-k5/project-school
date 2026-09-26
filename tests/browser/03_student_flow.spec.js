@@ -102,7 +102,7 @@ test.describe('Student Exam Runner v2', () => {
   test('should display timer in Exam Runner', async ({ page }) => {
     await page.goto('/student/assignments');
     await page.waitForLoadState('networkidle');
-    const timer = page.locator('[class*="timer" i], text=/^\d+:\d+/');
+    const timer = page.locator('[class*="timer" i], text=/^[0-9]+:[0-9]+/');
     expect(await timer.count() >= 0).toBeTruthy();
   });
 });

@@ -5,24 +5,19 @@
 
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import { config } from '../config/env.js';
 
 // =============================================================================
-// ENV CONFIGURATION (lazy loaded to avoid circular dependency)
+// ENV CONFIGURATION
 // =============================================================================
 
 function getConfig() {
-  // Lazy import to avoid circular dependency issues in test environment
-  try {
-    const { config } = require('../config/env.js');
-    return config;
-  } catch {
-    // Return defaults for test environment
-    return {
-      IS_PRODUCTION: false,
-      NODE_ENV: 'test',
-      API_BASE_URL: 'http://localhost:5000',
-    };
-  }
+  if (config) return config;
+  return {
+    IS_PRODUCTION: false,
+    NODE_ENV: 'test',
+    API_BASE_URL: 'http://localhost:5000',
+  };
 }
 
 // =============================================================================

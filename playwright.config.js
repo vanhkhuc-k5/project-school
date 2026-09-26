@@ -17,7 +17,7 @@ export default defineConfig({
   ],
   
   use: {
-    baseURL: 'http://localhost:4173',
+    baseURL: 'http://127.0.0.1:4173',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -39,19 +39,19 @@ export default defineConfig({
   //
   // Frontend: Vite preview server (uses built files for faster startup)
   //   - Default port: 4173
-  //   - Proxies /api/* to backend at localhost:5000
+  //   - Proxies /api/* to backend at 127.0.0.1:5000
   webServer: [
     {
       command: 'node tests/browser/e2e-server.js',
-      url: 'http://localhost:5000/api/health',
+      url: 'http://127.0.0.1:5000/api/health',
       reuseExistingServer: !process.env.CI,
       timeout: 120000,
       stdout: 'pipe',
       stderr: 'pipe',
     },
     {
-      command: 'npm run preview',
-      url: 'http://localhost:4173/',
+      command: 'npm run preview -- --host 127.0.0.1 --port 4173',
+      url: 'http://127.0.0.1:4173/',
       reuseExistingServer: !process.env.CI,
       timeout: 120000,
       stdout: 'pipe',

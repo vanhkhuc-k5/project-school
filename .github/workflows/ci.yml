@@ -140,6 +140,9 @@ jobs:
     - name: Install Playwright browsers
       run: npx playwright install --with-deps chromium
 
+    - name: Build frontend for preview server
+      run: npm run build
+
     # NOTE: Playwright manages both backend and frontend servers automatically
     # via webServer configuration in playwright.config.js
     # Do NOT manually start servers here - it causes double-binding and segfaults
