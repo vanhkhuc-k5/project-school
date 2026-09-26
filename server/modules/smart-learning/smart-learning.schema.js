@@ -46,11 +46,11 @@ export const reviewFlashcardSchema = z.object({
 
 export const queryFlashcardDecksSchema = z.object({
   subject_id: z.string().optional(),
-  grade_level: z.number().int().min(1).max(12).optional(),
+  grade_level: z.coerce.number().int().min(1).max(12).optional(),
   deck_type: z.enum(['general', 'vocabulary', 'formula', 'history', 'geography', 'science']).optional(),
   search: z.string().optional(),
-  page: z.number().int().min(1).default(1),
-  limit: z.number().int().min(1).max(50).default(20),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -84,8 +84,8 @@ export const queryFlippedMaterialsSchema = z.object({
   class_id: z.string().optional(),
   subject_id: z.string().optional(),
   timetable_entry_id: z.string().optional(),
-  page: z.number().int().min(1).default(1),
-  limit: z.number().int().min(1).max(50).default(20),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

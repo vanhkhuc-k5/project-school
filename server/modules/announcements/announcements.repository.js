@@ -140,15 +140,15 @@ export async function listAnnouncements({ filters = {}, schoolId, page = 1, limi
   }
 
   if (filters.search) {
-    conditions.push(`(a.title ILIKE $${paramIdx} OR a.content ILIKE $${paramIdx})`);
-    params.push(`%${filters.search}%`);
-    paramIdx++;
+    conditions.push(`(a.title ILIKE $${paramIdx} OR a.content ILIKE $${paramIdx + 1})`);
+    params.push(`%${filters.search}%`, `%${filters.search}%`);
+    paramIdx += 2;
   }
 
   if (filters.authorId) {
-    conditions.push(`(a.author_id = $${paramIdx} OR a.sender_id = $${paramIdx})`);
-    params.push(filters.authorId);
-    paramIdx++;
+    conditions.push(`(a.author_id = $${paramIdx} OR a.sender_id = $${paramIdx + 1})`);
+    params.push(filters.authorId, filters.authorId);
+    paramIdx += 2;
   }
 
   if (filters.fromDate) {
@@ -188,14 +188,15 @@ export async function listAnnouncements({ filters = {}, schoolId, page = 1, limi
     );
     rows = dataRes.rows;
   } else {
-    total = db.prepare(`SELECT COUNT(*) as count FROM announcements a WHERE ${whereClause}`).get(...params)?.count || 0;
+    const sqliteWhere = whereClause.replace(/\$[0-9]+/g, '?');
+    total = db.prepare(`SELECT COUNT(*) as count FROM announcements a WHERE ${sqliteWhere}`).get(...params)?.count || 0;
 
     rows = db.prepare(`
       SELECT a.*, COALESCE(u.name, a.author_name, a.sender_name) as author_name,
              (SELECT COUNT(*) FROM announcement_reads ar WHERE ar.announcement_id = a.id) as read_count
       FROM announcements a
       LEFT JOIN users u ON a.sender_id = u.id
-      WHERE ${whereClause}
+      WHERE ${sqliteWhere}
       ${orderBy.replace('ILIKE', 'LIKE')}
       LIMIT ? OFFSET ?
     `).all(...params, limit, offset);

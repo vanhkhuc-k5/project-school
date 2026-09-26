@@ -781,9 +781,9 @@ router.get('/grades', requirePermission('grade.read'), async (req, res) => {
     const gradeParams = [studentId];
 
     if (period === 'hk1') {
-      gradeQuery += ' AND (g.semester = 1 OR g.semester = "HK1")';
+      gradeQuery += " AND (g.semester = 1 OR g.semester = 'HK1')";
     } else if (period === 'hk2') {
-      gradeQuery += ' AND (g.semester = 2 OR g.semester = "HK2")';
+      gradeQuery += " AND (g.semester = 2 OR g.semester = 'HK2')";
     }
 
     gradeQuery += ' ORDER BY g.graded_at DESC';

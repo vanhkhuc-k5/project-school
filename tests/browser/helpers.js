@@ -145,7 +145,7 @@ export async function waitForDialog(page, timeout = 5000) {
  * Close dialog/modal
  */
 export async function closeDialog(page) {
-  const closeButtons = page.locator('button:has-text("close" i), button:has-text("đóng" i), [aria-label="close"]');
+  const closeButtons = page.locator('button:has-text("close"), button:has-text("đóng"), [aria-label="close"]');
   if (await closeButtons.first().isVisible({ timeout: 500 }).catch(() => false)) {
     await closeButtons.first().click();
   } else {

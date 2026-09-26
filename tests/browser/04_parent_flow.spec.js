@@ -73,14 +73,14 @@ test.describe('Parent Tuition & VietQR', () => {
   test('should show VietQR payment option', async ({ page }) => {
     await page.goto('/parent/tuition');
     await page.waitForLoadState('networkidle');
-    const vietqrButton = page.locator('text=/vietqr|QR|thanh toán|payment/i, button').first();
+    const vietqrButton = page.locator('button:has-text("vietqr"), button:has-text("QR"), button:has-text("thanh toán"), button').first();
     expect(await vietqrButton.isVisible({ timeout: 2000 }).catch(() => false) || true).toBeTruthy();
   });
 
   test('should display QR payment code', async ({ page }) => {
     await page.goto('/parent/tuition');
     await page.waitForLoadState('networkidle');
-    const payButton = page.locator('button:has-text("vietqr" i), button:has-text("thanh toán" i)').first();
+    const payButton = page.locator('button:has-text("vietqr"), button:has-text("thanh toán")').first();
     if (await payButton.isVisible({ timeout: 1000 }).catch(() => false)) {
       await payButton.click();
       await page.waitForTimeout(1000);
@@ -116,7 +116,7 @@ test.describe('Parent Messaging', () => {
   test('should open Message composer', async ({ page }) => {
     await page.goto('/parent/messages');
     await page.waitForLoadState('networkidle');
-    const composeButton = page.locator('button:has-text("mới" i), button:has-text("soạn" i), button[aria-label*="new" i]').first();
+    const composeButton = page.locator('button:has-text("mới"), button:has-text("soạn"), button[aria-label*="new" i]').first();
     if (await composeButton.isVisible({ timeout: 1000 }).catch(() => false)) {
       await composeButton.click();
       await page.waitForTimeout(500);
@@ -128,7 +128,7 @@ test.describe('Parent Messaging', () => {
   test('should send test message to teacher', async ({ page }) => {
     await page.goto('/parent/messages');
     await page.waitForLoadState('networkidle');
-    const composeButton = page.locator('button:has-text("mới" i), button:has-text("soạn" i)').first();
+    const composeButton = page.locator('button:has-text("mới"), button:has-text("soạn")').first();
     if (await composeButton.isVisible({ timeout: 1000 }).catch(() => false)) {
       await composeButton.click();
       await page.waitForTimeout(500);
@@ -136,7 +136,7 @@ test.describe('Parent Messaging', () => {
     const messageInput = page.locator('textarea, [role="textbox"], input[type="text"]').first();
     if (await messageInput.isVisible({ timeout: 2000 }).catch(() => false)) {
       await messageInput.fill('Xin chào, đây là tin nhắn kiểm thử tự động từ E2E test.');
-      const sendButton = page.locator('button:has-text("gửi" i), button:has-text("send" i)').first();
+      const sendButton = page.locator('button:has-text("gửi"), button:has-text("send")').first();
       if (await sendButton.isVisible({ timeout: 1000 }).catch(() => false)) {
         await sendButton.click();
         await page.waitForTimeout(1000);
